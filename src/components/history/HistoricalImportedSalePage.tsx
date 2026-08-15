@@ -4,6 +4,7 @@ import { ArrowLeft, Calendar, ClipboardList, Landmark, ShoppingBag, Wallet } fro
 import { useRouter } from 'next/navigation'
 import HistoricalSaleItemsEditor from '@/components/history/HistoricalSaleItemsEditor'
 import FinanciamentoBox from '@/components/vendas/FinanciamentoBox'
+import { getInstallmentOutstanding } from '@/lib/installment-balance'
 import type { VendaPageData } from '@/lib/actions/vendas.actions'
 
 const formatCurrency = (value: number | null | undefined) =>
@@ -23,7 +24,7 @@ export default function HistoricalImportedSalePage({ data, storeId }: { data: Ve
     return status !== 'pago' && !parcela.data_pagamento
   }) || []
   const saldoCarneAberto = parcelasPendentes.reduce(
-    (total: number, parcela: any) => total + Number(parcela.valor_parcela || 0),
+    (total: number, parcela: any) => total + getInstallmentOutstanding(parcela),
     0
   )
   const temParcelasPendentes = parcelasPendentes.length > 0

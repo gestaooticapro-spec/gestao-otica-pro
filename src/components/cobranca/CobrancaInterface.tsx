@@ -19,6 +19,7 @@ import { updateCustomerPhone } from '@/lib/actions/lab.actions'
 import { toast } from 'sonner'
 import { sendManualWhatsAppFromClient } from '@/lib/whatsapp/manual-client'
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle'
+import { getInstallmentOutstanding } from '@/lib/installment-balance'
 
 // --- COMPONENTES UI SIMPLES ---
 const Badge = ({ children, className }: { children: React.ReactNode, className?: string }) => (
@@ -684,7 +685,7 @@ export default function CobrancaInterface({
                                                                             'bg-slate-700/30 text-slate-400'
                                                                         }`}>
                                                                         <span>{parc.numero_parcela}ª Parc - {new Date(parc.data_vencimento).toLocaleDateString()}</span>
-                                                                        <span className="font-bold">{formatMoney(parc.valor_parcela)}</span>
+                                                                        <span className="font-bold">{formatMoney(getInstallmentOutstanding(parc))}</span>
                                                                     </div>
                                                                 )
                                                             })}

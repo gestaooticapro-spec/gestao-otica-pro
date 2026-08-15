@@ -51,7 +51,7 @@ export async function getReceiptReversalMetadata(
       `)
       .in('financiamento_id', financingIds),
     (supabaseAdmin.from('installment_receipt_operations') as any)
-      .select('id, financiamento_id, origin_installment_id, received_amount, interest_amount, payment_method, received_on, created_at, affected_installment_count')
+      .select('id, financiamento_id, origin_installment_id, received_amount, interest_amount, payment_method, received_on, created_at, affected_installment_count, strategy')
       .in('financiamento_id', financingIds)
       .eq('state', 'completed')
       .is('reversed_at', null)
@@ -60,9 +60,14 @@ export async function getReceiptReversalMetadata(
   ])
 
   const latestTrackedByFinancing = new Map<number, any>()
+  const financingWithLatestOperation = new Set<number>()
   for (const operation of operations || []) {
     const financingId = Number(operation.financiamento_id)
-    if (!latestTrackedByFinancing.has(financingId)) latestTrackedByFinancing.set(financingId, operation)
+    if (financingWithLatestOperation.has(financingId)) continue
+    financingWithLatestOperation.add(financingId)
+    if (operation.strategy !== 'legacy_reconciliation') {
+      latestTrackedByFinancing.set(financingId, operation)
+    }
   }
 
   for (const operation of latestTrackedByFinancing.values()) {
@@ -77,7 +82,7 @@ export async function getReceiptReversalMetadata(
     })
   }
 
-  const financingWithoutTrackedOperation = financingIds.filter((id) => !latestTrackedByFinancing.has(id))
+  const financingWithoutTrackedOperation = financingIds.filter((id) => !financingWithLatestOperation.has(id))
   if (financingWithoutTrackedOperation.length === 0) return result
 
   const allInstallments = (installments || []) as any[]

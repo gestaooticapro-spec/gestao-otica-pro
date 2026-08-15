@@ -19,6 +19,8 @@ import {
 } from '@/lib/server/employee-authorization'
 import { getReceiptReversalMetadata } from '@/lib/installment-reversal.server'
 import { closeOpenServiceOrdersForVenda } from '@/lib/actions/service-order-cancellation.actions'
+import { getInstallmentOutstanding } from '@/lib/installment-balance'
+import { randomUUID } from 'node:crypto'
 
 // ================================================================
 // --- TIPOS GLOBAIS ---
@@ -89,6 +91,9 @@ export type VendaPageData = {
   vendaItens: VendaItem[]
   serviceOrders: ServiceOrderWithLinks[]
   pagamentos: Pagamento[]
+  // Um recebimento pode ser distribuído entre várias parcelas. Esta lista
+  // preserva o valor efetivamente entregue pelo cliente, antes da distribuição.
+  receiptOperations: any[]
   financiamento: (Financiamento & { financiamento_parcelas: Array<FinanciamentoParcela & { reversible_receipt_operation?: any }> }) | null
   storeSettings: StoreSettings
   dependentes: Dependente[]
@@ -1206,6 +1211,7 @@ export async function getVendaPageData(
       itensRes,
       osRes,
       pagamentosRes,
+      receiptOperationsRes,
       financiamentoRes,
       storeRes,
       dependentesRes,
@@ -1225,6 +1231,10 @@ export async function getVendaPageData(
         .order('created_at'),
       // CORREÇÃO: Cast 'as any' para buscar relacionamento com employees
       (supabaseAdmin.from('pagamentos') as any).select('*, employee:employees(full_name)').eq('venda_id', vendaId).order('data_pagamento'),
+      (supabaseAdmin.from('installment_receipt_operations') as any)
+        .select('id, venda_id, origin_installment_id, received_amount, interest_amount, payment_method, received_on, state, reversed_at, created_at, strategy, transferred_amount, destination_installment_id, installments_before')
+        .eq('venda_id', vendaId)
+        .order('id', { ascending: false }),
       supabaseAdmin.from('financiamento_loja').select('*, financiamento_parcelas(*), employee:employees(full_name)').eq('venda_id', vendaId).maybeSingle(),
       supabaseAdmin.from('stores').select('settings').eq('id', storeId).single(),
       supabaseAdmin.from('dependentes').select('*').eq('customer_id', customer_id).order('full_name'),
@@ -1283,6 +1293,7 @@ export async function getVendaPageData(
       vendaItens: itensRes.data || [],
       serviceOrders: osRes.data || [],
       pagamentos: pagamentosRes.data as any || [], // Cast as any para aceitar o campo employee extra
+      receiptOperations: receiptOperationsRes.data || [],
       financiamento: financiamentoData,
       storeSettings: ((storeRes.data as { settings?: unknown } | null)?.settings || {}) as StoreSettings,
       dependentes: dependentesRes.data || [],
@@ -1752,6 +1763,7 @@ const PagamentoSchema = z.object({
   venda_id: z.coerce.number(),
   customer_id: z.coerce.number(),
   employee_id: z.coerce.number(),
+  idempotency_key: z.string().uuid().optional(),
   forma_pagamento: z.string().min(1, { message: 'Forma de pagamento é obrigatória.' }),
   valor_pago: z.coerce.number().min(0.01, { message: 'Valor deve ser positivo.' }),
   parcelas: z.coerce.number().min(1),
@@ -3086,7 +3098,7 @@ const ReceberParcelaSchema = z.object({
   venda_id: z.coerce.number(),
   store_id: z.coerce.number(),
   employee_id: z.coerce.number(),
-  valor_original: z.coerce.number(),
+  idempotency_key: z.string().uuid().optional(),
   valor_pago_total: z.coerce.number().min(0.01),
   valor_juros: z.coerce.number().default(0),
   forma_pagamento: z.string().min(1),
@@ -3095,7 +3107,7 @@ const ReceberParcelaSchema = z.object({
     valor: z.coerce.number().min(0.01),
   })).min(1).optional(),
   data_pagamento: z.string(),
-  estrategia: z.enum(['quitacao_total', 'criar_pendencia', 'somar_proxima']).default('quitacao_total'),
+  estrategia: z.enum(['quitacao_total', 'baixa_parcial', 'somar_proxima']).default('quitacao_total'),
 })
 
 // --- 2. NOVA FUNÇÃO DE SEGURANÇA (Adicione isso antes da função principal) ---
@@ -3156,7 +3168,7 @@ async function sincronizarSaldoVendaHistorica(financiamentoId: number) {
 
   const { data: parcelas, error: parcelasError } = await (supabaseAdmin
     .from('financiamento_parcelas') as any)
-    .select('status, data_pagamento, valor_parcela')
+    .select('status, data_pagamento, valor_parcela, valor_pago, valor_transferido_entrada, valor_transferido_saida')
     .eq('financiamento_id', financiamentoId)
 
   if (parcelasError) {
@@ -3164,8 +3176,7 @@ async function sincronizarSaldoVendaHistorica(financiamentoId: number) {
   }
 
   const saldoAberto = (parcelas || []).reduce((total: number, parcela: any) => {
-    const estaPaga = String(parcela.status || '').toLowerCase() === 'pago' || parcela.data_pagamento != null
-    return estaPaga ? total : total + Number(parcela.valor_parcela || 0)
+    return total + getInstallmentOutstanding(parcela)
   }, 0)
 
   const { error: updateError } = await (supabaseAdmin.from('vendas') as any)
@@ -3178,6 +3189,88 @@ async function sincronizarSaldoVendaHistorica(financiamentoId: number) {
 }
 
 export async function receberParcela(prevState: any, formData: FormData) {
+  const supabaseAdmin = createAdminClient()
+  const { data: { user } } = await createClient().auth.getUser()
+  if (!user) return { success: false, message: 'Usuario nao autenticado.' }
+
+  const profile = await getProfileByAdmin(user.id) as any
+  if (!profile?.tenant_id) return { success: false, message: 'Perfil nao encontrado.' }
+
+  const valorPagoTotal = parseMoneySeguro(formData.get('valor_pago_total') as string)
+  const valorJuros = parseMoneySeguro(formData.get('valor_juros') as string)
+  const inputData = {
+    parcela_id: formData.get('parcela_id'),
+    venda_id: formData.get('venda_id'),
+    store_id: formData.get('store_id'),
+    employee_id: formData.get('employee_id'),
+    idempotency_key: formData.get('idempotency_key') || undefined,
+    valor_pago_total: valorPagoTotal,
+    valor_juros: valorJuros,
+    forma_pagamento: formData.get('forma_pagamento'),
+    data_pagamento: formData.get('data_pagamento'),
+    estrategia: formData.get('estrategia'),
+    recebimentos: (() => {
+      const raw = formData.get('recebimentos')
+      if (!raw || typeof raw !== 'string') return undefined
+      try { return JSON.parse(raw) } catch { return undefined }
+    })(),
+  }
+
+  const validated = ReceberParcelaSchema.safeParse(inputData)
+  if (!validated.success) return { success: false, message: 'Dados invalidos.' }
+  const data = validated.data
+  if (!(await isStoreModuleEnabledForStore(data.store_id, 'installments'))) {
+    return { success: false, message: 'Modulo de parcelamento desativado para esta loja.' }
+  }
+  if (profile.role !== 'admin' && Number(profile.store_id) !== data.store_id) {
+    return { success: false, message: 'Acesso negado para esta loja.' }
+  }
+
+  const recebimentos = data.recebimentos || [{ forma_pagamento: data.forma_pagamento, valor: data.valor_pago_total }]
+  const idempotencyKey = data.idempotency_key || randomUUID()
+  const totalRecebimentos = recebimentos.reduce((total, recebimento) => total + recebimento.valor, 0)
+  if (Math.abs(totalRecebimentos - data.valor_pago_total) > 0.01) {
+    return { success: false, message: 'A soma das formas de recebimento difere do total informado.' }
+  }
+
+  const { data: result, error } = await (supabaseAdmin.rpc as any)('receive_installment_payment', {
+    p_installment_id: data.parcela_id,
+    p_sale_id: data.venda_id,
+    p_store_id: data.store_id,
+    p_employee_id: data.employee_id,
+    p_user_id: user.id,
+    p_tenant_id: profile.tenant_id,
+    p_received_amount: data.valor_pago_total,
+    p_interest_amount: data.valor_juros,
+    p_received_on: data.data_pagamento,
+    p_strategy: data.estrategia,
+    p_receipts: { idempotency_key: idempotencyKey, items: recebimentos },
+  })
+
+  if (error) return { success: false, message: `Erro: ${error.message}` }
+
+  revalidatePath(`/dashboard/loja/${data.store_id}/vendas/${data.venda_id}`)
+  revalidatePath(`/dashboard/loja/${data.store_id}/vendas/${data.venda_id}/experimental`)
+  revalidatePath(`/dashboard/loja/${data.store_id}/financeiro/parcelas`)
+  revalidatePath(`/dashboard/loja/${data.store_id}/reports/parcelamento`)
+  revalidatePath(`/dashboard/loja/${data.store_id}`)
+
+  return {
+    success: true,
+    message: data.estrategia === 'somar_proxima' && Number(result?.transferred_amount || 0) > 0
+      ? `Pagamento recebido. R$ ${Number(result.transferred_amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} transferidos para a proxima parcela.`
+      : 'Pagamento recebido com sucesso!',
+    payment_ids: Array.isArray(result?.payment_ids) ? result.payment_ids.map(Number) : [],
+    receipt_installment_ids: Array.isArray(result?.receipt_installment_ids) ? result.receipt_installment_ids.map(Number) : [],
+    transferred_amount: Number(result?.transferred_amount || 0),
+    destination_installment_id: result?.destination_installment_id ? Number(result.destination_installment_id) : null,
+  }
+}
+
+/*
+ * Referencia historica da regra anterior, mantida comentada durante a
+ * estabilizacao da operacao atomica. Nao e compilada nem chamada pelas UIs.
+async function receberParcelaLegacy(prevState: any, formData: FormData) {
   const supabaseAdmin = createAdminClient()
   let receiptOperationId: number | null = null
   const { data: { user } } = await createClient().auth.getUser()
@@ -3229,7 +3322,6 @@ export async function receberParcela(prevState: any, formData: FormData) {
   }
 
   const principalAbatido = valor_pago_total - valor_juros
-  const diferencaDivida = valor_original - principalAbatido
 
   try {
     const { data: parcelaRaw } = await supabaseAdmin
@@ -3240,6 +3332,10 @@ export async function receberParcela(prevState: any, formData: FormData) {
 
     if (!parcelaRaw) throw new Error('Parcela não encontrada.')
     const parcelaAtual = parcelaRaw as any;
+    const valorNominalParcelaAtual = Number(parcelaAtual.valor_parcela || 0)
+    const valorJaPagoParcelaAtual = Number(parcelaAtual.valor_pago || 0)
+    const saldoParcelaAtual = Math.max(0, valorNominalParcelaAtual - valorJaPagoParcelaAtual)
+    const diferencaDivida = saldoParcelaAtual - principalAbatido
 
     const [{ data: installmentsBefore, error: installmentsBeforeError }, { data: saleBefore, error: saleBeforeError }] = await Promise.all([
       (supabaseAdmin.from('financiamento_parcelas') as any)
@@ -3290,7 +3386,7 @@ export async function receberParcela(prevState: any, formData: FormData) {
     const parcelasQuitadas = [{
       id: parcelaAtual.id,
       numero_parcela: parcelaAtual.numero_parcela,
-      valor: Math.min(principalAbatido, valor_original) + valor_juros
+      valor: Math.min(principalAbatido, saldoParcelaAtual) + valor_juros
     }]
 
     let proximasParcelasQuitacao: any[] = []
@@ -3310,7 +3406,9 @@ export async function receberParcela(prevState: any, formData: FormData) {
       proximasParcelasQuitacao = (proximasParcelas || []) as any[]
       for (const prox of proximasParcelasQuitacao) {
         if (excedenteParaDistribuir <= 0.01) break
-        const valorQuitado = Math.min(excedenteParaDistribuir, Number(prox.valor_parcela))
+        const saldoParcela = Math.max(0, Number(prox.valor_parcela) - Number(prox.valor_pago || 0))
+        if (saldoParcela <= 0.01) continue
+        const valorQuitado = Math.min(excedenteParaDistribuir, saldoParcela)
         parcelasQuitadas.push({ id: prox.id, numero_parcela: prox.numero_parcela, valor: valorQuitado })
         excedenteParaDistribuir -= valorQuitado
       }
@@ -3360,78 +3458,21 @@ export async function receberParcela(prevState: any, formData: FormData) {
     if (errorPagto) throw new Error(`Erro ao registrar pagamento: ${errorPagto.message}`)
 
     // Baixa a parcela
+    // O valor da parcela é o valor contratado e nunca deve ser reduzido por
+    // uma baixa parcial. O que muda é somente o quanto dela já foi pago.
+    const principalNaParcelaAtual = Math.min(principalAbatido, saldoParcelaAtual)
+    const novoValorPagoParcelaAtual = Number((valorJaPagoParcelaAtual + principalNaParcelaAtual).toFixed(2))
+    const parcelaAtualQuitada = novoValorPagoParcelaAtual >= valorNominalParcelaAtual - 0.01
     const { error: errBaixa } = await (supabaseAdmin.from('financiamento_parcelas') as any).update({
-      status: 'Pago',
-      data_pagamento: new Date().toISOString(),
-      valor_parcela: Math.min(principalAbatido, valor_original),
-      valor_pago: Math.min(principalAbatido, valor_original)
+      status: parcelaAtualQuitada ? 'Pago' : 'Pendente',
+      data_pagamento: parcelaAtualQuitada ? new Date(`${data_pagamento}T12:00:00Z`).toISOString() : null,
+      valor_pago: parcelaAtualQuitada ? valorNominalParcelaAtual : novoValorPagoParcelaAtual
     }).eq('id', parcela_id)
     if (errBaixa) throw new Error(`Erro ao baixar a parcela original: ${errBaixa.message}`)
 
-    // Lógica de Diferença (Exatamente igual ao seu original)
-    if (diferencaDivida > 0.01) {
-      const { data: ultimaParcelaRaw } = await supabaseAdmin
-        .from('financiamento_parcelas')
-        .select('numero_parcela')
-        .eq('financiamento_id', parcelaAtual.financiamento_id)
-        .order('numero_parcela', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
-      const ultimaParcela = ultimaParcelaRaw as any
-      const proximoNumeroParcela = Number(ultimaParcela?.numero_parcela || parcelaAtual.numero_parcela) + 1
-
-      if (estrategia === 'criar_pendencia') {
-        const novaDataVencimento = new Date(parcelaAtual.data_vencimento)
-        novaDataVencimento.setDate(novaDataVencimento.getDate() + 30)
-
-        const { error: errPendencia } = await (supabaseAdmin.from('financiamento_parcelas') as any).insert({
-          tenant_id: (profile as any).tenant_id,
-          store_id: store_id,
-          financiamento_id: parcelaAtual.financiamento_id,
-          customer_id: parcelaAtual.customer_id,
-          numero_parcela: proximoNumeroParcela,
-          data_vencimento: novaDataVencimento.toISOString(),
-          valor_parcela: diferencaDivida,
-          status: 'Pendente'
-        })
-        if (errPendencia) throw new Error(`Erro criar pendencia: ${errPendencia.message}`)
-      } else if (estrategia === 'somar_proxima') {
-        const { data: proxParcela } = await supabaseAdmin
-          .from('financiamento_parcelas')
-          .select('*')
-          .eq('financiamento_id', parcelaAtual.financiamento_id)
-          .gt('numero_parcela', parcelaAtual.numero_parcela)
-          .eq('status', 'Pendente')
-          .gt('valor_parcela', 0.01)
-          .order('numero_parcela', { ascending: true })
-          .limit(1)
-          .maybeSingle()
-
-        if (proxParcela) {
-          const prox = proxParcela as any;
-          const { error: errUpdateProx } = await (supabaseAdmin.from('financiamento_parcelas') as any)
-            .update({ valor_parcela: prox.valor_parcela + diferencaDivida })
-            .eq('id', prox.id)
-
-          if (errUpdateProx) throw new Error(`Erro ao somar na próxima parcela: ${errUpdateProx.message}`)
-        } else {
-          const novaData = new Date(parcelaAtual.data_vencimento)
-          novaData.setDate(novaData.getDate() + 30)
-          const { error: errNewProx } = await (supabaseAdmin.from('financiamento_parcelas') as any).insert({
-            tenant_id: (profile as any).tenant_id,
-            store_id: store_id,
-            financiamento_id: parcelaAtual.financiamento_id,
-            customer_id: parcelaAtual.customer_id,
-            numero_parcela: proximoNumeroParcela,
-            data_vencimento: novaData.toISOString(),
-            valor_parcela: diferencaDivida,
-            status: 'Pendente'
-          })
-          if (errNewProx) throw new Error(`Erro criar nova parcela: ${errNewProx.message}`)
-        }
-      }
-    } else if (diferencaDivida < -0.01) {
+    // Quando o valor não quita a parcela atual, a baixa fica nela como parcial.
+    // Somente o excedente é distribuído pelas parcelas seguintes.
+    if (diferencaDivida < -0.01) {
       // Excedente: quita parcelas seguintes em cascata até o dinheiro acabar
       let excedente = Math.abs(diferencaDivida)
 
@@ -3439,18 +3480,20 @@ export async function receberParcela(prevState: any, formData: FormData) {
         for (const prox of proximasParcelasQuitacao) {
           if (excedente <= 0.01) break
 
-          if (excedente >= prox.valor_parcela - 0.01) {
+          const saldoParcela = Math.max(0, Number(prox.valor_parcela) - Number(prox.valor_pago || 0))
+          if (excedente >= saldoParcela - 0.01) {
             // Quita essa parcela inteira
             const { error: errQuita } = await (supabaseAdmin.from('financiamento_parcelas') as any)
-              .update({ status: 'Pago', data_pagamento: new Date().toISOString(), valor_pago: prox.valor_parcela })
+            .update({ status: 'Pago', data_pagamento: new Date(`${data_pagamento}T12:00:00Z`).toISOString(), valor_pago: prox.valor_parcela })
               .eq('id', prox.id)
             if (errQuita) throw new Error(`Erro ao quitar parcela ${prox.numero_parcela}: ${errQuita.message}`)
-            excedente -= prox.valor_parcela
+            excedente -= saldoParcela
           } else {
-            const saldoRestante = Number((prox.valor_parcela - excedente).toFixed(2))
-            const updateParcela = saldoRestante <= 0.01
-              ? { status: 'Pago', data_pagamento: new Date(`${data_pagamento}T12:00:00Z`).toISOString(), valor_parcela: 0 }
-              : { valor_parcela: saldoRestante }
+            const valorPagoAnterior = Number(prox.valor_pago || 0)
+            const novoValorPago = Number((valorPagoAnterior + excedente).toFixed(2))
+            const updateParcela = novoValorPago >= Number(prox.valor_parcela) - 0.01
+              ? { status: 'Pago', data_pagamento: new Date(`${data_pagamento}T12:00:00Z`).toISOString(), valor_pago: Number(prox.valor_parcela) }
+              : { status: 'Pendente', valor_pago: novoValorPago }
 
             const { error: errAbate } = await (supabaseAdmin.from('financiamento_parcelas') as any)
               .update(updateParcela)
@@ -3527,6 +3570,7 @@ export async function receberParcela(prevState: any, formData: FormData) {
     return { success: false, message: `Erro: ${e.message}` }
   }
 }
+*/
 
 // ==============================================================================
 // 19. ACTION: EXCLUIR FINANCIAMENTO (FINAL: SEGURA + ADMIN MODE)
@@ -4240,6 +4284,9 @@ export async function searchPendenciasCliente(storeId: number, termo: string) {
             id,
             numero_parcela,
             valor_parcela,
+            valor_pago,
+            valor_transferido_entrada,
+            valor_transferido_saida,
             data_vencimento,
             financiamento_id,
             customer_id,
@@ -4248,6 +4295,7 @@ export async function searchPendenciasCliente(storeId: number, termo: string) {
                 venda_id,
                 vendas!financiamento_loja_venda_id_fkey (
                     created_at,
+                    status,
                     service_orders (
                         dependente_id,
                         dependentes ( full_name )
@@ -4279,16 +4327,26 @@ export async function searchPendenciasCliente(storeId: number, termo: string) {
       return []
     }
 
-    const parcelas = parcelasBrutas || []
+    const parcelas = (parcelasBrutas || []).filter((parcela: any) =>
+      String(parcela.financiamento_loja?.vendas?.status || '').toLowerCase() !== 'cancelada'
+    )
 
     const parcelasFiltradas = parcelas.filter((p: any) => {
         const clienteName = normalizeSearch(p.customers?.full_name || '')
         return searchTokens.every((token: string) => clienteName.includes(token))
     })
+    const parcelasComProxima = parcelasFiltradas.map((parcela: any) => ({
+        ...parcela,
+        has_next_installment: parcelas.some((candidate: any) => (
+            Number(candidate.financiamento_id) === Number(parcela.financiamento_id)
+            && Number(candidate.numero_parcela) > Number(parcela.numero_parcela)
+            && String(candidate.status || '').toLowerCase() !== 'pago'
+        )),
+    }))
 
     console.log(`[DEBUG] Parcelas pendentes encontradas:`, parcelasFiltradas.length)
 
-    const agrupado = parcelasFiltradas.reduce((acc: any, p: any) => {
+    const agrupado = parcelasComProxima.reduce((acc: any, p: any) => {
         const cliId = p.customer_id
         if (!acc[cliId]) {
             acc[cliId] = {
@@ -4307,6 +4365,10 @@ export async function searchPendenciasCliente(storeId: number, termo: string) {
             id: p.id,
             numero_parcela: p.numero_parcela,
             valor_parcela: p.valor_parcela,
+            valor_pago: p.valor_pago,
+            valor_transferido_entrada: p.valor_transferido_entrada,
+            valor_transferido_saida: p.valor_transferido_saida,
+            has_next_installment: p.has_next_installment,
             data_vencimento: p.data_vencimento,
             venda_id: p.financiamento_loja?.venda_id,
             data_venda: venda?.created_at,

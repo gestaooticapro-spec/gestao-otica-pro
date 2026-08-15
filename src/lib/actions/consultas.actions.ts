@@ -2,6 +2,7 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getInstallmentOutstanding } from '@/lib/installment-balance'
 import { phonesMatch } from '@/lib/whatsapp/phone'
 import {
     findPendingHandoffResolution,
@@ -402,8 +403,9 @@ export async function getVencimentosProximos(storeId: number): Promise<Venciment
     try {
         const { data, error } = await (supabaseAdmin.from('financiamento_parcelas') as any)
             .select(`
-                id, valor_parcela, data_vencimento, numero_parcela,
-                customers ( full_name, fone_movel )
+                id, valor_parcela, valor_pago, valor_transferido_entrada, valor_transferido_saida, data_vencimento, numero_parcela,
+                customers ( full_name, fone_movel ),
+                financiamento_loja ( vendas!financiamento_loja_venda_id_fkey ( status ) )
             `)
             .eq('store_id', storeId)
             .eq('status', 'Pendente')
@@ -414,14 +416,16 @@ export async function getVencimentosProximos(storeId: number): Promise<Venciment
 
         if (error) throw error
 
-        return (data || []).map((item: any) => ({
+        return (data || [])
+          .filter((item: any) => String(item.financiamento_loja?.vendas?.status || '').toLowerCase() !== 'cancelada')
+          .map((item: any) => ({
             id: item.id,
             customer_name: item.customers?.full_name || 'Desconhecido',
             fone_movel: item.customers?.fone_movel,
-            valor_parcela: item.valor_parcela,
+            valor_parcela: getInstallmentOutstanding(item),
             data_vencimento: item.data_vencimento,
             numero_parcela: item.numero_parcela
-        }))
+          }))
     } catch (e) {
         console.error("Erro ao buscar vencimentos:", e)
         return []
@@ -544,9 +548,15 @@ export async function findOpenInstallmentsByPhone(storeId: number, phone: string
                 id,
                 data_vencimento,
                 valor_parcela,
+                valor_pago,
+                valor_transferido_entrada,
+                valor_transferido_saida,
                 status,
                 customer_id,
-                financiamento_loja(venda_id)
+                financiamento_loja(
+                    venda_id,
+                    vendas!financiamento_loja_venda_id_fkey(status)
+                )
             `)
             .eq('store_id', storeId)
             .in('customer_id', matchedCustomerIds)
@@ -554,15 +564,19 @@ export async function findOpenInstallmentsByPhone(storeId: number, phone: string
             .neq('status', 'pago')
 
         if (!parcelas || parcelas.length === 0) return []
+        const parcelasDeVendasAtivas = parcelas.filter((parcela: any) =>
+            String(parcela.financiamento_loja?.vendas?.status || '').toLowerCase() !== 'cancelada'
+            && getInstallmentOutstanding(parcela) > 0
+        )
 
         // Map the results with customer names
-        return parcelas.map((p: any) => {
+        return parcelasDeVendasAtivas.map((p: any) => {
             const customer = customers.find((c: any) => c.id === p.customer_id)
             return {
                 installment_id: p.id,
                 customer_id: p.customer_id,
                 due_date: p.data_vencimento,
-                amount: p.valor_parcela,
+                amount: getInstallmentOutstanding(p),
                 customer_name: customer?.full_name || 'Desconhecido'
             }
         })

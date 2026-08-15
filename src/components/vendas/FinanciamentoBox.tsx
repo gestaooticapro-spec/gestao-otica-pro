@@ -24,14 +24,30 @@ import UpdateCpfModal from '@/components/modals/UpdateCpfModal'
 import CollapsibleBox from './CollapsibleBox'
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext'
 import { toast } from 'sonner'
+import { getInstallmentChargeTotal, getInstallmentOutstanding } from '@/lib/installment-balance'
 
 type Financiamento = Database['public']['Tables']['financiamento_loja']['Row']
 type FinanciamentoParcela = Database['public']['Tables']['financiamento_parcelas']['Row'] & {
     reversible_receipt_operation?: ReversibleReceiptOperation | null
+    valor_pago?: number | null
 }
 type Employee = Database['public']['Tables']['employees']['Row']
 type Customer = Database['public']['Tables']['customers']['Row']
 type ParcelaGridItem = Pick<FinanciamentoParcela, 'numero_parcela' | 'data_vencimento' | 'valor_parcela'>
+type ReceiptOperation = {
+    id: number
+    origin_installment_id: number
+    received_amount: number
+    payment_method: string
+    received_on: string
+    state: string
+    reversed_at?: string | null
+    strategy?: string | null
+    transferred_amount?: number | null
+    destination_installment_id?: number | null
+    installments_before?: Array<Record<string, unknown>> | null
+}
+type PaymentAllocation = { parcela_id?: number | null; valor_pago: number; receipt_operation_id?: number | null }
 
 type FinanciamentoBoxProps = {
     financiamento: (Financiamento & { financiamento_parcelas: FinanciamentoParcela[] }) | null
@@ -47,6 +63,8 @@ type FinanciamentoBoxProps = {
     isModal?: boolean
     whatsappReceiptEnabled?: boolean
     isHistoricalImport?: boolean
+    receiptOperations?: ReceiptOperation[]
+    pagamentos?: PaymentAllocation[]
 }
 
 // Helpers
@@ -104,14 +122,15 @@ function RecebimentoModal({
     onConfirm: (dados: any) => void,
     storeId: number
 }) {
-    const [valorPagoStr, setValorPagoStr] = useState(formatCurrency(parcela.valor_parcela))
+    const saldoParcela = getInstallmentOutstanding(parcela)
+    const [valorPagoStr, setValorPagoStr] = useState(formatCurrency(saldoParcela))
     const [forma, setForma] = useState('Dinheiro')
     const [dataPagto, setDataPagto] = useState(getToday())
-    const [estrategia, setEstrategia] = useState<'criar_pendencia' | 'somar_proxima'>('criar_pendencia')
+    const [estrategia, setEstrategia] = useState<'baixa_parcial' | 'somar_proxima'>('baixa_parcial')
     const [isAuthOpen, setIsAuthOpen] = useState(false)
     const [dadosParaEnviar, setDadosParaEnviar] = useState<any>(null)
 
-    const valorOriginal = parcela.valor_parcela
+    const valorOriginal = saldoParcela
     const valorPago = parseLocaleFloat(valorPagoStr)
     const diferenca = valorOriginal - valorPago
     const isParcial = diferenca > 0.01
@@ -120,7 +139,6 @@ function RecebimentoModal({
         e.preventDefault()
         setDadosParaEnviar({
             parcela_id: parcela.id,
-            valor_original: valorOriginal,
             valor_pago_total: valorPago,
             forma_pagamento: forma,
             data_pagamento: dataPagto,
@@ -167,12 +185,12 @@ function RecebimentoModal({
                             </div>
                             <div className="space-y-2">
                                 <label className="flex items-start gap-3 cursor-pointer p-2 rounded hover:bg-red-100/50 transition-colors">
-                                    <input type="radio" name="strat" checked={estrategia === 'criar_pendencia'} onChange={() => setEstrategia('criar_pendencia')} className="mt-1 text-red-600 focus:ring-red-500" />
-                                    <div><span className="block text-sm font-bold text-gray-800">Manter como Pendência</span><span className="block text-xs text-gray-500">Cria nova parcela.</span></div>
+                                    <input type="radio" name="strat" checked={estrategia === 'baixa_parcial'} onChange={() => setEstrategia('baixa_parcial')} className="mt-1 text-red-600 focus:ring-red-500" />
+                                    <div><span className="block text-sm font-bold text-gray-800">Baixa parcial</span><span className="block text-xs text-gray-500">Mantém o restante nesta parcela.</span></div>
                                 </label>
                                 <label className="flex items-start gap-3 cursor-pointer p-2 rounded hover:bg-red-100/50 transition-colors">
                                     <input type="radio" name="strat" checked={estrategia === 'somar_proxima'} onChange={() => setEstrategia('somar_proxima')} className="mt-1 text-red-600 focus:ring-red-500" />
-                                    <div><span className="block text-sm font-bold text-gray-800">Jogar para Próxima</span><span className="block text-xs text-gray-500">Soma na próxima parcela.</span></div>
+                                    <div><span className="block text-sm font-bold text-gray-800">Jogar para a próxima</span><span className="block text-xs text-gray-500">Transfere o restante para a próxima cobrança.</span></div>
                                 </label>
                             </div>
                         </div>
@@ -199,6 +217,8 @@ export default function FinanciamentoBox({
     isModal = false,
     whatsappReceiptEnabled = false,
     isHistoricalImport = false,
+    receiptOperations = [],
+    pagamentos = [],
 }: FinanciamentoBoxProps) {
 
     const modules = useStoreModules()
@@ -234,6 +254,34 @@ export default function FinanciamentoBox({
     const isFinanced = !!financiamento && !isDeletedLocally;
     const existeDivergencia = !isHistoricalImport && isFinanced && valorRestante > 0.01;
     const temParcelaPaga = financiamento?.financiamento_parcelas.some(p => p.status === 'Pago')
+    const recebimentosDoCarne = receiptOperations.filter((operation) => operation.state === 'completed' && !operation.reversed_at)
+    const parcelasPorId = new Map((financiamento?.financiamento_parcelas || []).map((parcela) => [parcela.id, parcela]))
+    const recebidoAntesPorParcela = new Map<number, number>()
+    const recebimentosPorParcela = new Map<number, Array<{ valor: number; saldoAntes: number; data: string; forma: string; transferido: number }>>()
+    for (const operation of [...recebimentosDoCarne].sort((a, b) => String(a.received_on).localeCompare(String(b.received_on)) || a.id - b.id)) {
+        const origem = parcelasPorId.get(operation.origin_installment_id)
+        if (!origem) continue
+        const pagoAntes = recebidoAntesPorParcela.get(origem.id) || 0
+        const snapshotOrigem = Array.isArray(operation.installments_before)
+            ? operation.installments_before.find((item) => Number(item.id) === Number(origem.id))
+            : undefined
+        const saldoAntes = snapshotOrigem
+            ? getInstallmentOutstanding(snapshotOrigem)
+            : Math.max(0, getInstallmentChargeTotal(origem) - pagoAntes - Number(origem.valor_transferido_saida || 0))
+        recebimentosPorParcela.set(origem.id, [...(recebimentosPorParcela.get(origem.id) || []), {
+            valor: Number(operation.received_amount || 0),
+            saldoAntes,
+            data: operation.received_on,
+            forma: operation.payment_method,
+            transferido: Number(operation.transferred_amount || 0),
+        }])
+        for (const pagamento of pagamentos.filter((item) => Number(item.receipt_operation_id) === operation.id && item.parcela_id)) {
+            const parcelaId = Number(pagamento.parcela_id)
+            recebidoAntesPorParcela.set(parcelaId, (recebidoAntesPorParcela.get(parcelaId) || 0) + Number(pagamento.valor_pago || 0))
+        }
+    }
+    const valorRecebidoCarne = (financiamento?.financiamento_parcelas || [])
+        .reduce((total, parcela) => total + Number(parcela.valor_pago || 0), 0)
 
     useEffect(() => {
         if (isDeletedLocally) return;
@@ -438,7 +486,10 @@ export default function FinanciamentoBox({
                         </div>
                     )}
 
-                    <div className="divide-y divide-white/5">
+                    <div className="divide-y divide-white/5 overflow-x-auto">
+                        <div className="grid min-w-[820px] grid-cols-[42px_minmax(160px,1fr)_145px_190px_230px] gap-2 bg-white/[0.02] px-3 py-2 text-[9px] font-bold uppercase tracking-wide text-slate-500">
+                            <span>Parc.</span><span>Valor parcela</span><span>A receber</span><span>Recebido</span><span></span>
+                        </div>
                         {[...(financiamento?.financiamento_parcelas || [])]
                             .sort((a, b) => {
                                 const dateOrder = String(a.data_vencimento || '').localeCompare(String(b.data_vencimento || ''))
@@ -446,10 +497,15 @@ export default function FinanciamentoBox({
                             })
                             .map((p) => {
                             const isPago = p.status === 'Pago';
+                            const valorPago = Number(p.valor_pago || 0)
+                            const valorRestante = getInstallmentOutstanding(p)
+                            const isParcialmentePaga = !isPago && valorPago > 0.01
+                            const recibosDaParcela = recebimentosPorParcela.get(p.id) || []
+                            const valorAReceber = recibosDaParcela[0]?.saldoAntes ?? valorRestante
                             const isAtrasado = !isPago && new Date(p.data_vencimento) < new Date(new Date().setHours(0, 0, 0, 0));
                             return (
-                                <div key={p.id} className={`flex items-center justify-between p-3 hover:bg-white/5 transition-colors ${isPago ? 'bg-green-500/5' : ''}`}>
-                                    <div className="flex items-center gap-3">
+                                <div key={p.id} className={`grid min-w-[820px] grid-cols-[42px_minmax(160px,1fr)_145px_190px_230px] items-center gap-2 p-3 hover:bg-white/5 transition-colors ${isPago ? 'bg-green-500/5' : ''}`}>
+                                    <div className="contents">
                                         <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border ${isPago ? 'bg-green-500/20 text-green-400 border-green-500/30' :
                                             isAtrasado ? 'bg-red-500/20 text-red-400 border-red-500/30' :
                                                 'bg-white/5 text-slate-400 border-white/10'
@@ -461,14 +517,29 @@ export default function FinanciamentoBox({
                                             <p className="text-[10px] text-slate-500 flex items-center gap-1">
                                                 <Calendar className="h-3 w-3" /> {formatDate(p.data_vencimento)}
                                             </p>
+                                            {isParcialmentePaga ? (
+                                                <p className="text-[10px] text-amber-300/90 mt-0.5">
+                                                    Pago {formatCurrency(valorPago)} · Falta {formatCurrency(valorRestante)}
+                                                </p>
+                                            ) : null}
                                         </div>
                                     </div>
-                                    <div>
+                                    <div className={`text-xs font-bold ${valorAReceber > 0.01 ? 'text-amber-300' : 'text-slate-500'}`}>
+                                        R$ {formatCurrency(valorAReceber)}
+                                        {isParcialmentePaga ? <p className="mt-0.5 text-[9px] font-medium text-slate-500">Atual: {formatCurrency(valorRestante)}</p> : null}
+                                    </div>
+                                    <div className="space-y-1">
+                                        {recibosDaParcela.length ? recibosDaParcela.map((recibo, index) => (
+                                            <div key={`${recibo.data}-${index}`}>
+                                                <p className="text-xs font-bold text-emerald-400">R$ {formatCurrency(recibo.valor)}</p>
+                                                <p className="text-[9px] text-slate-500">{formatDate(recibo.data)} · {recibo.forma}</p>
+                                                {recibo.transferido > 0.01 ? <p className="text-[9px] font-bold text-blue-300">R$ {formatCurrency(recibo.transferido)} transferidos para a próxima</p> : null}
+                                            </div>
+                                        )) : <span className="text-slate-600">—</span>}
+                                    </div>
+                                    <div className="flex justify-end">
                                         {isPago ? (
-                                            <div className="flex items-center gap-2">
-                                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-green-500/20 text-green-400 text-[10px] font-bold border border-green-500/30">
-                                                    <CheckCircle2 className="h-3 w-3" /> PAGO
-                                                </span>
+                                            <div className="flex items-center justify-end gap-2">
                                                 {whatsappReceiptEnabled ? (
                                                     <button
                                                         type="button"
@@ -743,7 +814,7 @@ export default function FinanciamentoBox({
                         setParcelaAtalho(null)
                     }}
                     storeId={storeId}
-                    initialParcela={parcelaAtalho ? { ...parcelaAtalho, venda_id: vendaId } : undefined}
+                    initialParcela={parcelaAtalho ? { ...parcelaAtalho, venda_id: vendaId, has_next_installment: (financiamento?.financiamento_parcelas || []).some((candidate) => candidate.numero_parcela > parcelaAtalho.numero_parcela && String(candidate.status).toLowerCase() === 'pendente') } : undefined}
                     onPaymentRecorded={onFinanceAdded}
                 />
 
@@ -785,8 +856,9 @@ export default function FinanciamentoBox({
                                     {(financiamento as any)?.employee?.full_name?.split(' ')[0] || ''}
                                 </div>
                                 {/* 2/12 (Valor) */}
-                                <div className="w-2/12 text-right font-bold text-xs text-amber-400">
-                                    {formatCurrency(financiamento?.valor_total_financiado)}
+                                <div className="w-2/12 flex flex-col items-end gap-1">
+                                    <span className="font-bold text-xs text-amber-400">{formatCurrency(financiamento?.valor_total_financiado)}</span>
+                                    {valorRecebidoCarne > 0.01 ? <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-bold text-emerald-300">Recebido {formatCurrency(valorRecebidoCarne)}</span> : null}
                                 </div>
                                 {/* 1/12 + 1/12 (Parc + Actions) */}
                                 <div className="w-2/12"></div>
@@ -818,7 +890,7 @@ export default function FinanciamentoBox({
                     setParcelaAtalho(null)
                 }}
                 storeId={storeId}
-                initialParcela={parcelaAtalho ? { ...parcelaAtalho, venda_id: vendaId } : undefined}
+                initialParcela={parcelaAtalho ? { ...parcelaAtalho, venda_id: vendaId, has_next_installment: (financiamento?.financiamento_parcelas || []).some((candidate) => candidate.numero_parcela > parcelaAtalho.numero_parcela && String(candidate.status).toLowerCase() === 'pendente') } : undefined}
                 onPaymentRecorded={onFinanceAdded}
             />
 

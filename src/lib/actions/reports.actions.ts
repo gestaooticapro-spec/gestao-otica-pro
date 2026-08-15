@@ -1,6 +1,7 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getInstallmentOutstanding } from '@/lib/installment-balance'
 import { format, parseISO, startOfDay, endOfDay, addDays, getDaysInMonth, startOfMonth, endOfMonth, isSameDay } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { isStoreModuleEnabledForStore } from '@/lib/store-modules.server'
@@ -256,7 +257,7 @@ export async function getRelatorioVendas(
 
   const vendaIds = vendas.map((v: any) => v.id)
 
-  const [itensRes, pagamentosRes, osRes] = await Promise.all([
+  const [itensRes, pagamentosRes, osRes, financiamentosRes] = await Promise.all([
     supabase
       .from('venda_itens')
       .select('venda_id, descricao, quantidade')
@@ -268,10 +269,14 @@ export async function getRelatorioVendas(
     (supabase.from('service_orders') as any)
       .select('venda_id, oftalmologista_id, oftalmologistas(nome_completo)')
       .in('venda_id', vendaIds),
+    (supabase.from('financiamento_loja') as any)
+      .select('venda_id, financiamento_parcelas(status, valor_parcela, valor_pago, valor_transferido_entrada, valor_transferido_saida)')
+      .in('venda_id', vendaIds),
   ])
 
   if (itensRes.error) throw new Error(itensRes.error.message)
   if (pagamentosRes.error) throw new Error(pagamentosRes.error.message)
+  if (financiamentosRes.error) throw new Error(financiamentosRes.error.message)
 
   const itensPorVenda = new Map<number, string[]>()
     ; (itensRes.data || []).forEach((item: any) => {
@@ -288,6 +293,14 @@ export async function getRelatorioVendas(
       pagoPorVenda.set(pag.venda_id, atual + Number(pag.valor_pago || 0))
     })
 
+  const saldoParcelasPorVenda = new Map<number, number>()
+    ; (financiamentosRes.data || []).forEach((financiamento: any) => {
+      const saldo = (financiamento.financiamento_parcelas || [])
+        .filter((parcela: any) => String(parcela.status || '').toLowerCase() === 'pendente')
+        .reduce((total: number, parcela: any) => total + getInstallmentOutstanding(parcela), 0)
+      saldoParcelasPorVenda.set(Number(financiamento.venda_id), saldo)
+    })
+
   // Mapa de médico por venda (pega o primeiro OS com oftalmologista)
   const medicoPorVenda = new Map<number, string>()
     ; (osRes.data || []).forEach((os: any) => {
@@ -298,9 +311,11 @@ export async function getRelatorioVendas(
 
   return vendas.map((v: any) => {
     const valorPago = pagoPorVenda.get(v.id) || 0
-    const saldoDevedor = v.is_historical_import === true
+    const saldoDevedor = String(v.status || '').toLowerCase() === 'cancelada'
       ? 0
-      : Math.max(0, Number(v.valor_restante ?? (v.valor_final || 0) - valorPago))
+      : v.is_historical_import === true
+        ? saldoParcelasPorVenda.get(Number(v.id)) || 0
+        : Math.max(0, Number(v.valor_restante ?? (v.valor_final || 0) - valorPago))
     return {
       id: v.id,
       data: v.created_at,
@@ -579,39 +594,45 @@ export async function getParcelamentoMetrics(storeId: number) {
 
   // Vincendas (A vencer: data_vencimento >= hoje)
   const { data: vincendasRaw, error: err1 } = await (supabase.from('financiamento_parcelas') as any)
-    .select('valor_parcela')
+    .select('valor_parcela, valor_pago, valor_transferido_entrada, valor_transferido_saida, financiamento_loja ( vendas!financiamento_loja_venda_id_fkey ( status ) )')
     .eq('store_id', storeId)
     .eq('status', 'Pendente')
     .gt('valor_parcela', 0.01)
     .gte('data_vencimento', todayStr);
 
-  const vincendas = (vincendasRaw || []) as any[];
-  const vincendasValor = vincendas.reduce((acc: number, p: any) => acc + Number(p.valor_parcela || 0), 0);
+  const vincendas = ((vincendasRaw || []) as any[]).filter((parcela) =>
+    String(parcela.financiamento_loja?.vendas?.status || '').toLowerCase() !== 'cancelada'
+  );
+  const vincendasValor = vincendas.reduce((acc: number, p: any) => acc + getInstallmentOutstanding(p), 0);
   const vincendasQtd = vincendas.length || 0;
 
   // Atrasadas (Vencidas, mas menos de 90 dias: hoje > data_vencimento >= hoje - 90 dias)
   const { data: atrasadasRaw, error: err2 } = await (supabase.from('financiamento_parcelas') as any)
-    .select('valor_parcela')
+    .select('valor_parcela, valor_pago, valor_transferido_entrada, valor_transferido_saida, financiamento_loja ( vendas!financiamento_loja_venda_id_fkey ( status ) )')
     .eq('store_id', storeId)
     .eq('status', 'Pendente')
     .gt('valor_parcela', 0.01)
     .lt('data_vencimento', todayStr)
     .gte('data_vencimento', ninetyDaysAgoStr);
 
-  const atrasadas = (atrasadasRaw || []) as any[];
-  const atrasadasValor = atrasadas.reduce((acc: number, p: any) => acc + Number(p.valor_parcela || 0), 0);
+  const atrasadas = ((atrasadasRaw || []) as any[]).filter((parcela) =>
+    String(parcela.financiamento_loja?.vendas?.status || '').toLowerCase() !== 'cancelada'
+  );
+  const atrasadasValor = atrasadas.reduce((acc: number, p: any) => acc + getInstallmentOutstanding(p), 0);
   const atrasadasQtd = atrasadas.length || 0;
 
   // Perdidas (Vencidas há mais de 90 dias)
   const { data: perdidasRaw, error: err3 } = await (supabase.from('financiamento_parcelas') as any)
-    .select('valor_parcela')
+    .select('valor_parcela, valor_pago, valor_transferido_entrada, valor_transferido_saida, financiamento_loja ( vendas!financiamento_loja_venda_id_fkey ( status ) )')
     .eq('store_id', storeId)
     .eq('status', 'Pendente')
     .gt('valor_parcela', 0.01)
     .lt('data_vencimento', ninetyDaysAgoStr);
 
-  const perdidas = (perdidasRaw || []) as any[];
-  const perdidasValor = perdidas.reduce((acc: number, p: any) => acc + Number(p.valor_parcela || 0), 0);
+  const perdidas = ((perdidasRaw || []) as any[]).filter((parcela) =>
+    String(parcela.financiamento_loja?.vendas?.status || '').toLowerCase() !== 'cancelada'
+  );
+  const perdidasValor = perdidas.reduce((acc: number, p: any) => acc + getInstallmentOutstanding(p), 0);
   const perdidasQtd = perdidas.length || 0;
 
   // Clientes no SPC
@@ -660,10 +681,13 @@ export async function getParcelasAtrasadas(storeId: number): Promise<ParcelaAtra
       id,
       numero_parcela,
       valor_parcela,
+      valor_pago,
+      valor_transferido_entrada,
+      valor_transferido_saida,
       data_vencimento,
       customer_id,
       customers ( full_name ),
-      financiamento_loja ( venda_id )
+      financiamento_loja ( venda_id, vendas!financiamento_loja_venda_id_fkey ( status ) )
     `)
     .eq('store_id', storeId)
     .eq('status', 'Pendente')
@@ -674,7 +698,9 @@ export async function getParcelasAtrasadas(storeId: number): Promise<ParcelaAtra
 
   if (error) throw new Error(error.message)
 
-  return ((data || []) as any[]).map((item: any) => {
+  return ((data || []) as any[])
+    .filter((item: any) => String(item.financiamento_loja?.vendas?.status || '').toLowerCase() !== 'cancelada')
+    .map((item: any) => {
     const dueDate = startOfDay(new Date(item.data_vencimento))
     const diffMs = today.getTime() - dueDate.getTime()
     const daysLate = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)))
@@ -682,14 +708,14 @@ export async function getParcelasAtrasadas(storeId: number): Promise<ParcelaAtra
     return {
       id: Number(item.id),
       numero_parcela: Number(item.numero_parcela || 0),
-      valor_parcela: Number(item.valor_parcela || 0),
+      valor_parcela: getInstallmentOutstanding(item),
       data_vencimento: item.data_vencimento,
       customer_id: item.customer_id ?? null,
       customer_name: item.customers?.full_name || 'Cliente nao identificado',
       venda_id: item.financiamento_loja?.venda_id ?? null,
       dias_atraso: daysLate
     }
-  })
+    })
 }
 
 export interface FinanceiroExpenseItem {

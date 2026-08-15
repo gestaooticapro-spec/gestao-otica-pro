@@ -4,6 +4,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getInstallmentOutstanding } from '@/lib/installment-balance'
 
 // =============================================
 // TIPOS
@@ -133,8 +134,13 @@ export async function getCustomerFinancialSummary(
 
     const { data: financiamentos, error } = await (supabaseAdmin
         .from('financiamento_loja') as any)
-        .select(`*, financiamento_parcelas (*)`)
+        .select(`
+            *,
+            vendas!financiamento_loja_venda_id_fkey ( status ),
+            financiamento_parcelas (*)
+        `)
         .eq('customer_id', customerId)
+        .eq('store_id', storeId)
         .order('created_at', { ascending: false })
 
     if (error) {
@@ -153,7 +159,11 @@ export async function getCustomerFinancialSummary(
         }
     }
 
-    const vendaIds = (financiamentos || [])
+    const financiamentosAtivos = (financiamentos || []).filter((financiamento: any) =>
+        String(financiamento.vendas?.status || '').toLowerCase() !== 'cancelada'
+    )
+
+    const vendaIds = financiamentosAtivos
         .map((f: any) => Number(f.venda_id))
         .filter((id: number) => Number.isFinite(id) && id > 0)
 
@@ -186,16 +196,16 @@ export async function getCustomerFinancialSummary(
     let valorTotalFinanciado = 0
     let proximoVencimento: FinancialSummary['proximoVencimento'] = null
 
-    const financiamentosFormatados = (financiamentos || []).map((f: any) => {
+    const financiamentosFormatados = financiamentosAtivos.map((f: any) => {
         const parcelas = (f.financiamento_parcelas || [])
             .sort((a: any, b: any) => a.numero_parcela - b.numero_parcela)
-        const pagas = parcelas.filter((p: any) => p.status === 'Pago')
-        const pendentes = parcelas.filter((p: any) => p.status !== 'Pago')
+        const pagas = parcelas.filter((p: any) => String(p.status || '').toLowerCase() === 'pago')
+        const pendentes = parcelas.filter((p: any) => String(p.status || '').toLowerCase() !== 'pago')
 
         parcelasPagas += pagas.length
         parcelasPendentes += pendentes.length
-        valorPago += pagas.reduce((sum: number, p: any) => sum + (p.valor_parcela || 0), 0)
-        valorRestante += pendentes.reduce((sum: number, p: any) => sum + (p.valor_parcela || 0), 0)
+        valorPago += parcelas.reduce((sum: number, p: any) => sum + Number(p.valor_pago || 0), 0)
+        valorRestante += pendentes.reduce((sum: number, p: any) => sum + getInstallmentOutstanding(p), 0)
         valorTotalFinanciado += f.valor_total_financiado || 0
 
         const proximaPendente = pendentes
@@ -205,7 +215,7 @@ export async function getCustomerFinancialSummary(
         if (proximaPendente && proximaPendente.data_vencimento && (!proximoVencimento || new Date(proximaPendente.data_vencimento) < new Date(proximoVencimento.data!))) {
             proximoVencimento = {
                 data: proximaPendente.data_vencimento,
-                valor: proximaPendente.valor_parcela,
+                valor: getInstallmentOutstanding(proximaPendente),
                 numeroParcela: proximaPendente.numero_parcela
             }
         }

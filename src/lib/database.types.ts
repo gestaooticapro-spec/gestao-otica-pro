@@ -1934,28 +1934,127 @@ export interface Database {
         }
       }
 
+      installment_receipt_operations: {
+        Row: {
+          id: number
+          tenant_id: string
+          store_id: number
+          financiamento_id: number
+          venda_id: number
+          customer_id: number | null
+          origin_installment_id: number
+          received_amount: number
+          interest_amount: number
+          payment_method: string
+          strategy: string
+          received_on: string
+          received_by_employee_id: number | null
+          created_by_user_id: string | null
+          installments_before: Json
+          installments_after: Json | null
+          sale_before: Json
+          sale_after: Json | null
+          payments_created: Json
+          affected_installment_count: number
+          state: string
+          failure_message: string | null
+          transferred_amount: number
+          destination_installment_id: number | null
+          idempotency_key: string | null
+          reversed_at: string | null
+          reversed_by_employee_id: number | null
+          reversed_by_user_id: string | null
+          reversal_reason: string | null
+          created_at: string
+          completed_at: string | null
+        }
+        Insert: {
+          tenant_id: string
+          store_id: number
+          financiamento_id: number
+          venda_id: number
+          customer_id?: number | null
+          origin_installment_id: number
+          received_amount: number
+          interest_amount?: number
+          payment_method: string
+          strategy: string
+          received_on: string
+          received_by_employee_id?: number | null
+          created_by_user_id?: string | null
+          installments_before: Json
+          installments_after?: Json | null
+          sale_before: Json
+          sale_after?: Json | null
+          payments_created?: Json
+          affected_installment_count?: number
+          state?: string
+          transferred_amount?: number
+          destination_installment_id?: number | null
+          idempotency_key?: string | null
+        }
+        Update: {
+          [key: string]: any
+        }
+      }
+
+      installment_receipt_idempotency: {
+        Row: {
+          idempotency_key: string
+          tenant_id: string
+          store_id: number
+          installment_id: number
+          request_payload: Json
+          operation_id: number | null
+          result_payload: Json | null
+          created_at: string
+          completed_at: string | null
+        }
+        Insert: {
+          idempotency_key: string
+          tenant_id: string
+          store_id: number
+          installment_id: number
+          request_payload: Json
+          operation_id?: number | null
+          result_payload?: Json | null
+        }
+        Update: {
+          [key: string]: any
+        }
+      }
+
       financiamento_parcelas: {
         Row: {
           id: number
+          tenant_id: string | null
+          store_id: number
           financiamento_id: number
           numero_parcela: number
           data_vencimento: string
           valor_parcela: number
+          valor_pago: number | null
+          valor_transferido_entrada: number
+          valor_transferido_saida: number
           status: string
-          venda_id: number
-          customer_id: number
-          store_id: number
+          customer_id: number | null
           data_pagamento: string | null
+          obs: string | null
         }
         Insert: {
+          tenant_id?: string | null
+          store_id: number
           financiamento_id: number
           numero_parcela: number
           data_vencimento: string
           valor_parcela: number
+          valor_pago?: number | null
+          valor_transferido_entrada?: number
+          valor_transferido_saida?: number
           status?: string
-          tenant_id?: string
-          store_id?: number
-          customer_id?: number
+          customer_id?: number | null
+          data_pagamento?: string | null
+          obs?: string | null
         }
         Update: {
           [key: string]: any
@@ -2170,6 +2269,31 @@ export interface Database {
       [_ in never]: never
     }
     Functions: {
+      receive_installment_payment: {
+        Args: {
+          p_installment_id: number
+          p_sale_id: number
+          p_store_id: number
+          p_employee_id: number
+          p_user_id: string
+          p_tenant_id: string
+          p_received_amount: number
+          p_interest_amount: number
+          p_received_on: string
+          p_strategy: string
+          p_receipts: Json
+        }
+        Returns: Json
+      }
+      reverse_installment_receipt_operation: {
+        Args: {
+          p_operation_id: number
+          p_authorizing_employee_id: number
+          p_user_id: string
+          p_reason: string
+        }
+        Returns: Json
+      }
       create_tower_store_onboarding: {
         Args: {
           p_existing_tenant_id: string | null
