@@ -35,7 +35,7 @@ export async function getReceiptReversalMetadata(
   const result = new Map<number, ReceiptReversalMetadata>()
   if (financingIds.length === 0) return result
 
-  const [{ data: installments }, { data: operations }] = await Promise.all([
+  const [{ data: installments }, { data: operations }, { data: renegotiations }] = await Promise.all([
     (supabaseAdmin.from('financiamento_parcelas') as any)
       .select(`
         id,
@@ -57,7 +57,19 @@ export async function getReceiptReversalMetadata(
       .is('reversed_at', null)
       .order('created_at', { ascending: false })
       .order('id', { ascending: false }),
+    (supabaseAdmin.from('installment_renegotiations') as any)
+      .select('financiamento_id, created_at')
+      .in('financiamento_id', financingIds),
   ])
+
+  const latestRenegotiationByFinancing = new Map<number, string>()
+  for (const renegotiation of renegotiations || []) {
+    const financingId = Number(renegotiation.financiamento_id)
+    const createdAt = String(renegotiation.created_at || '')
+    if (!latestRenegotiationByFinancing.has(financingId) || createdAt > String(latestRenegotiationByFinancing.get(financingId))) {
+      latestRenegotiationByFinancing.set(financingId, createdAt)
+    }
+  }
 
   const latestTrackedByFinancing = new Map<number, any>()
   const financingWithLatestOperation = new Set<number>()
@@ -65,7 +77,8 @@ export async function getReceiptReversalMetadata(
     const financingId = Number(operation.financiamento_id)
     if (financingWithLatestOperation.has(financingId)) continue
     financingWithLatestOperation.add(financingId)
-    if (operation.strategy !== 'legacy_reconciliation') {
+    const renegotiatedAfterOperation = String(latestRenegotiationByFinancing.get(financingId) || '') > String(operation.created_at || '')
+    if (operation.strategy !== 'legacy_reconciliation' && !renegotiatedAfterOperation) {
       latestTrackedByFinancing.set(financingId, operation)
     }
   }
@@ -82,7 +95,11 @@ export async function getReceiptReversalMetadata(
     })
   }
 
-  const financingWithoutTrackedOperation = financingIds.filter((id) => !financingWithLatestOperation.has(id))
+  // O estorno de pagamentos legados nao esta habilitado: estes recebimentos
+  // nao possuem snapshot atomico e alguns bancos nem contem a RPC historica.
+  // Mantemos a rotina de leitura abaixo apenas como referencia para uma futura
+  // reativacao segura, sem expor o botao ao operador.
+  const financingWithoutTrackedOperation: number[] = [] // financingIds.filter((id) => !financingWithLatestOperation.has(id))
   if (financingWithoutTrackedOperation.length === 0) return result
 
   const allInstallments = (installments || []) as any[]
@@ -113,7 +130,10 @@ export async function getReceiptReversalMetadata(
   }
 
   for (const financingId of financingWithoutTrackedOperation) {
-    const financingPayments = paymentsByFinancing.get(financingId) || []
+    const latestRenegotiation = String(latestRenegotiationByFinancing.get(financingId) || '')
+    const financingPayments = (paymentsByFinancing.get(financingId) || []).filter((payment) => (
+      !latestRenegotiation || datePart(payment.data_pagamento || payment.created_at) > datePart(latestRenegotiation)
+    ))
     if (financingPayments.length === 0) continue
 
     const latestPayment = [...financingPayments].sort((left, right) => {

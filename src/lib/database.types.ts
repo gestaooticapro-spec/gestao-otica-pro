@@ -2036,6 +2036,7 @@ export interface Database {
           valor_pago: number | null
           valor_transferido_entrada: number
           valor_transferido_saida: number
+          valor_renegociado_saida: number
           status: string
           customer_id: number | null
           data_pagamento: string | null
@@ -2051,6 +2052,7 @@ export interface Database {
           valor_pago?: number | null
           valor_transferido_entrada?: number
           valor_transferido_saida?: number
+          valor_renegociado_saida?: number
           status?: string
           customer_id?: number | null
           data_pagamento?: string | null
@@ -2269,6 +2271,18 @@ export interface Database {
       [_ in never]: never
     }
     Functions: {
+      renegotiate_store_financing: {
+        Args: {
+          p_financing_id: number
+          p_sale_id: number
+          p_store_id: number
+          p_employee_id: number
+          p_user_id: string
+          p_tenant_id: string
+          p_installments: Json
+        }
+        Returns: Json
+      }
       receive_installment_payment: {
         Args: {
           p_installment_id: number

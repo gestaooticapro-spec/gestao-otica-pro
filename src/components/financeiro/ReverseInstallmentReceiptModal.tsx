@@ -120,7 +120,7 @@ export default function ReverseInstallmentReceiptModal({
             {operation.kind === 'tracked' ? (
               <div className="flex gap-3 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-xs font-semibold leading-relaxed text-amber-200">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                <p>Todos os efeitos deste recebimento serão desfeitos juntos, incluindo baixas, abatimentos e pendências criadas nas parcelas seguintes.</p>
+                <p>Todos os efeitos deste recebimento serão desfeitos juntos, incluindo baixas, abatimentos e transferências de saldo entre parcelas.</p>
               </div>
             ) : null}
 

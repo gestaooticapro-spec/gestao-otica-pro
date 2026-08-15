@@ -10,7 +10,7 @@ import { useFormState } from 'react-dom'
 import {
     saveFinanciamentoLoja,
     receberParcela,
-    deleteFinanciamentoLoja,
+    renegociarFinanciamentoLoja,
     type CreateFinanciamentoResult,
 } from '@/lib/actions/vendas.actions'
 import { sendInstallmentReceiptWhatsApp } from '@/lib/actions/manual-whatsapp.actions'
@@ -113,11 +113,13 @@ const ParcelaInput = ({ valor, index, onChange }: { valor: number, index: number
 
 function RecebimentoModal({
     parcela,
+    hasNextInstallment,
     onClose,
     onConfirm,
     storeId
 }: {
     parcela: FinanciamentoParcela,
+    hasNextInstallment: boolean,
     onClose: () => void,
     onConfirm: (dados: any) => void,
     storeId: number
@@ -126,7 +128,7 @@ function RecebimentoModal({
     const [valorPagoStr, setValorPagoStr] = useState(formatCurrency(saldoParcela))
     const [forma, setForma] = useState('Dinheiro')
     const [dataPagto, setDataPagto] = useState(getToday())
-    const [estrategia, setEstrategia] = useState<'baixa_parcial' | 'somar_proxima'>('baixa_parcial')
+    const [estrategia, setEstrategia] = useState<'baixa_parcial' | 'somar_proxima'>(hasNextInstallment ? 'somar_proxima' : 'baixa_parcial')
     const [isAuthOpen, setIsAuthOpen] = useState(false)
     const [dadosParaEnviar, setDadosParaEnviar] = useState<any>(null)
 
@@ -188,8 +190,8 @@ function RecebimentoModal({
                                     <input type="radio" name="strat" checked={estrategia === 'baixa_parcial'} onChange={() => setEstrategia('baixa_parcial')} className="mt-1 text-red-600 focus:ring-red-500" />
                                     <div><span className="block text-sm font-bold text-gray-800">Baixa parcial</span><span className="block text-xs text-gray-500">Mantém o restante nesta parcela.</span></div>
                                 </label>
-                                <label className="flex items-start gap-3 cursor-pointer p-2 rounded hover:bg-red-100/50 transition-colors">
-                                    <input type="radio" name="strat" checked={estrategia === 'somar_proxima'} onChange={() => setEstrategia('somar_proxima')} className="mt-1 text-red-600 focus:ring-red-500" />
+                                <label className={`flex items-start gap-3 p-2 rounded transition-colors ${hasNextInstallment ? 'cursor-pointer hover:bg-red-100/50' : 'cursor-not-allowed opacity-50'}`}>
+                                    <input type="radio" name="strat" disabled={!hasNextInstallment} checked={estrategia === 'somar_proxima'} onChange={() => setEstrategia('somar_proxima')} className="mt-1 text-red-600 focus:ring-red-500" />
                                     <div><span className="block text-sm font-bold text-gray-800">Jogar para a próxima</span><span className="block text-xs text-gray-500">Transfere o restante para a próxima cobrança.</span></div>
                                 </label>
                             </div>
@@ -230,7 +232,6 @@ export default function FinanciamentoBox({
     const [selectedParcela, setSelectedParcela] = useState<FinanciamentoParcela | null>(null)
     const [parcelaAtalho, setParcelaAtalho] = useState<FinanciamentoParcela | null>(null)
     const [isParcelaSearchModalOpen, setIsParcelaSearchModalOpen] = useState(false)
-    const [isResetting, startResetTransition] = useState(false)
     const [sendingReceiptInstallmentId, setSendingReceiptInstallmentId] = useState<number | null>(null)
     const [sentReceiptInstallmentIds, setSentReceiptInstallmentIds] = useState<number[]>([])
     const [receiptToReverse, setReceiptToReverse] = useState<{
@@ -239,6 +240,7 @@ export default function FinanciamentoBox({
     } | null>(null)
 
     const [isDeletedLocally, setIsDeletedLocally] = useState(false)
+    const [isRenegotiating, setIsRenegotiating] = useState(false)
 
     const [valorFinanciadoStr, setValorFinanciadoStr] = useState('')
     const [qtdeParcelas, setQtdeParcelas] = useState(1)
@@ -254,6 +256,10 @@ export default function FinanciamentoBox({
     const isFinanced = !!financiamento && !isDeletedLocally;
     const existeDivergencia = !isHistoricalImport && isFinanced && valorRestante > 0.01;
     const temParcelaPaga = financiamento?.financiamento_parcelas.some(p => p.status === 'Pago')
+    const hasNextPendingInstallment = (parcela: FinanciamentoParcela) =>
+        (financiamento?.financiamento_parcelas || []).some((candidate) =>
+            candidate.numero_parcela > parcela.numero_parcela && String(candidate.status).toLowerCase() === 'pendente'
+        )
     const recebimentosDoCarne = receiptOperations.filter((operation) => operation.state === 'completed' && !operation.reversed_at)
     const parcelasPorId = new Map((financiamento?.financiamento_parcelas || []).map((parcela) => [parcela.id, parcela]))
     const recebidoAntesPorParcela = new Map<number, number>()
@@ -333,33 +339,20 @@ export default function FinanciamentoBox({
         setParcelasGrid(gridAtualizado);
     };
 
-    const handleResetCarne = async () => {
-        if (!confirm(temParcelaPaga ? "Isso apagará as parcelas pendentes para renegociar o saldo. Confirmar?" : "Isso cancelará o carnê inteiro. Confirmar?")) return;
+    const handleResetCarne = () => {
+        if (!financiamento) return
 
-        const valorParaRestaurar = financiamento?.valor_total_financiado || 0;
+        const saldoParaRenegociar = financiamento.financiamento_parcelas
+            .reduce((total, parcela) => total + getInstallmentOutstanding(parcela), 0)
 
-        startResetTransition(true);
-
-        try {
-            const res = await deleteFinanciamentoLoja(vendaId, storeId);
-
-            // Verifica se deu sucesso OU se o erro é "já não existe mais" (que na prática é sucesso)
-            const msg = res?.message ? res.message.toLowerCase() : '';
-            const isSuccess = res?.success || msg.includes('not found') || msg.includes('excluído');
-
-            if (isSuccess) {
-                setIsDeletedLocally(true);
-                resetFormularioCriacao(valorParaRestaurar);
-                await onFinanceAdded();
-            } else {
-                alert(res?.message || 'Erro desconhecido');
-            }
-        } catch (error: any) {
-            console.error(error);
-            alert('Ocorreu um erro ao excluir. Tente recarregar a página.');
-        } finally {
-            startResetTransition(false);
+        if (saldoParaRenegociar <= 0.01) {
+            alert('Este carnê não possui saldo em aberto para renegociar.')
+            return
         }
+        if (!confirm(`Renegociar o saldo de R$ ${formatCurrency(saldoParaRenegociar)}? Os recebimentos já feitos serão preservados.`)) return
+
+        resetFormularioCriacao(saldoParaRenegociar)
+        setIsRenegotiating(true)
     }
 
     const resetFormularioCriacao = (valorSugerido?: number) => {
@@ -438,7 +431,7 @@ export default function FinanciamentoBox({
 
     const renderContent = () => (
         <>
-            {isFinanced ? (
+            {isFinanced && !isRenegotiating ? (
                 /* MODO VISUALIZAÇÃO */
                 <div className="bg-white/5 rounded-xl border border-white/10 overflow-hidden shadow-lg backdrop-blur-sm">
                     <div className="bg-amber-500/5 px-4 py-3 border-b border-amber-500/10 flex justify-between items-center">
@@ -468,10 +461,9 @@ export default function FinanciamentoBox({
                                 </button>
                                 <button
                                     onClick={handleResetCarne}
-                                    disabled={isResetting}
                                     className="text-[10px] font-bold text-red-400 hover:bg-red-500/10 px-2 py-1 rounded border border-transparent hover:border-red-500/20 transition-all flex items-center gap-1"
                                 >
-                                    {isResetting ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                                    <RefreshCw className="h-3 w-3" />
                                     RENEGOCIAR
                                 </button>
                             </div>
@@ -498,6 +490,7 @@ export default function FinanciamentoBox({
                             .map((p) => {
                             const isPago = p.status === 'Pago';
                             const valorPago = Number(p.valor_pago || 0)
+                            const valorRenegociado = Number(p.valor_renegociado_saida || 0)
                             const valorRestante = getInstallmentOutstanding(p)
                             const isParcialmentePaga = !isPago && valorPago > 0.01
                             const recibosDaParcela = recebimentosPorParcela.get(p.id) || []
@@ -522,6 +515,11 @@ export default function FinanciamentoBox({
                                                     Pago {formatCurrency(valorPago)} · Falta {formatCurrency(valorRestante)}
                                                 </p>
                                             ) : null}
+                                            {valorRenegociado > 0.01 ? (
+                                                <p className="text-[10px] text-amber-300/90 mt-0.5">
+                                                    R$ {formatCurrency(valorRenegociado)} transferidos para renegociação
+                                                </p>
+                                            ) : null}
                                         </div>
                                     </div>
                                     <div className={`text-xs font-bold ${valorAReceber > 0.01 ? 'text-amber-300' : 'text-slate-500'}`}>
@@ -533,7 +531,7 @@ export default function FinanciamentoBox({
                                             <div key={`${recibo.data}-${index}`}>
                                                 <p className="text-xs font-bold text-emerald-400">R$ {formatCurrency(recibo.valor)}</p>
                                                 <p className="text-[9px] text-slate-500">{formatDate(recibo.data)} · {recibo.forma}</p>
-                                                {recibo.transferido > 0.01 ? <p className="text-[9px] font-bold text-blue-300">R$ {formatCurrency(recibo.transferido)} transferidos para a próxima</p> : null}
+                                                {recibo.transferido > 0.01 ? <p className="text-[9px] font-bold text-amber-300">R$ {formatCurrency(recibo.transferido)} transferidos para a próxima</p> : null}
                                             </div>
                                         )) : <span className="text-slate-600">—</span>}
                                     </div>
@@ -592,6 +590,14 @@ export default function FinanciamentoBox({
             ) : (
                 /* MODO CRIAÇÃO */
                 <div className={isModal ? "bg-transparent p-3 h-full flex flex-col" : "relative bg-gradient-to-br from-amber-600/20 to-orange-700/20 backdrop-blur-md p-3 rounded-xl shadow-lg border border-amber-500/20"}>
+                    {isRenegotiating ? (
+                        <div className="mb-2 flex items-center justify-between border-b border-amber-500/20 pb-2 text-xs font-bold text-amber-300">
+                            <span>Renegociar carnê</span>
+                            <button type="button" onClick={() => setIsRenegotiating(false)} className="text-[10px] text-slate-400 hover:text-slate-200">
+                                CANCELAR
+                            </button>
+                        </div>
+                    ) : null}
                     {!isModal && (
                         <div className="flex items-center gap-1.5 mb-2 border-b border-amber-500/20 pb-2">
                             <div className="p-1 bg-amber-500/20 rounded-md text-amber-400">
@@ -650,7 +656,15 @@ export default function FinanciamentoBox({
                             setIsCreatingCarne(true);
 
                             try {
-                                const resultado = await saveFinanciamentoLoja(null, payload);
+                                const resultado = isRenegotiating && financiamento
+                                    ? await renegociarFinanciamentoLoja({
+                                        financiamento_id: financiamento.id,
+                                        venda_id: vendaId,
+                                        store_id: storeId,
+                                        employee_id: payload.employee_id,
+                                        parcelas: parcelasCustomizadas,
+                                    })
+                                    : await saveFinanciamentoLoja(null, payload);
 
                                 if (!resultado.success) {
                                     alert(resultado.message || "Erro desconhecido ao criar carnê.");
@@ -659,12 +673,13 @@ export default function FinanciamentoBox({
 
                                 setParcelasGrid([]);
                                 setIsDeletedLocally(false);
+                                setIsRenegotiating(false);
 
                                 // Atualiza e fecha o modal antes de abrir a impressão em outra aba.
                                 // Assim, a venda já estará consistente se o saldo for zerado.
                                 await onFinanceAdded();
 
-                                if (resultado.data?.id) {
+                                if (!isRenegotiating && resultado.data?.id) {
                                     window.open(`/print/promissoria/${resultado.data.id}`, '_blank');
                                 }
                             } catch (error) {
@@ -805,7 +820,7 @@ export default function FinanciamentoBox({
             <div className="h-full overflow-y-auto custom-scrollbar pr-1 pt-2">
                 {renderContent()}
 
-                {selectedParcela && <RecebimentoModal parcela={selectedParcela} storeId={storeId} onClose={() => setSelectedParcela(null)} onConfirm={handleConfirmRecebimento} />}
+                {selectedParcela && <RecebimentoModal parcela={selectedParcela} hasNextInstallment={hasNextPendingInstallment(selectedParcela)} storeId={storeId} onClose={() => setSelectedParcela(null)} onConfirm={handleConfirmRecebimento} />}
 
                 <ParcelaSearchModal
                     isOpen={isParcelaSearchModalOpen}
@@ -838,7 +853,7 @@ export default function FinanciamentoBox({
 
     return (
         <>
-            {isFinanced ? (
+            {isFinanced && !isRenegotiating ? (
                 <CollapsibleBox
                     title="Carnê da Loja"
                     icon={<Wallet className="h-5 w-5 text-amber-400" />}
@@ -871,7 +886,7 @@ export default function FinanciamentoBox({
             ) : renderContent()}
 
 
-            {selectedParcela && <RecebimentoModal parcela={selectedParcela} storeId={storeId} onClose={() => setSelectedParcela(null)} onConfirm={handleConfirmRecebimento} />}
+            {selectedParcela && <RecebimentoModal parcela={selectedParcela} hasNextInstallment={hasNextPendingInstallment(selectedParcela)} storeId={storeId} onClose={() => setSelectedParcela(null)} onConfirm={handleConfirmRecebimento} />}
 
             {receiptToReverse && (
                 <ReverseInstallmentReceiptModal

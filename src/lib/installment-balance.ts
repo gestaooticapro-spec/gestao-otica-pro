@@ -4,6 +4,7 @@ export type InstallmentBalanceInput = {
   valor_pago?: number | string | null
   valor_transferido_entrada?: number | string | null
   valor_transferido_saida?: number | string | null
+  valor_renegociado_saida?: number | string | null
 }
 
 const money = (value: unknown) => Number(Number(value || 0).toFixed(2))
@@ -21,5 +22,6 @@ export function getInstallmentOutstanding(installment: InstallmentBalanceInput) 
     getInstallmentChargeTotal(installment)
     - Number(installment.valor_pago || 0)
     - Number(installment.valor_transferido_saida || 0)
+    - Number(installment.valor_renegociado_saida || 0)
   ))
 }

@@ -1947,6 +1947,20 @@ export async function deletePagamento(
   vendaId: number,
   storeId: number
 ): Promise<DeletePagamentoResult> {
+  if (![pagamentoId, vendaId, storeId].every((value) => Number.isSafeInteger(value) && value > 0)) {
+    return { success: false, message: 'Identificadores de pagamento invalidos.' }
+  }
+
+  const supabaseAuth = createClient()
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) return { success: false, message: 'Usuario nao autenticado.' }
+
+  const profile = await getProfileByAdmin(user.id) as any
+  if (!profile?.tenant_id) return { success: false, message: 'Perfil sem empresa vinculada.' }
+  if (profile.role !== 'admin' && Number(profile.store_id) !== storeId) {
+    return { success: false, message: 'Usuario sem acesso a esta loja.' }
+  }
+
   // CORREÃ‡ÃƒO: Usamos AdminClient para evitar Loop de RLS
   const supabaseAdmin = createAdminClient()
 
@@ -1962,6 +1976,22 @@ export async function deletePagamento(
     }
 
     // 1. NOVO: Antes de apagar o pagamento, apaga os recebíveis (Cartão/Cheque) vinculados a ele
+    const { data: pagamento, error: paymentError } = await (supabaseAdmin
+      .from('pagamentos') as any)
+      .select('id, venda_id, store_id, tenant_id, parcela_id')
+      .eq('id', pagamentoId)
+      .eq('venda_id', vendaId)
+      .eq('store_id', storeId)
+      .eq('tenant_id', profile.tenant_id)
+      .maybeSingle()
+
+    if (paymentError || !pagamento) {
+      return { success: false, message: 'Pagamento nao encontrado para esta venda.' }
+    }
+    if (pagamento.parcela_id != null) {
+      return { success: false, message: 'Pagamento de parcela deve ser estornado pelo fluxo de recebimento do carne.' }
+    }
+
     const { error: deleteReceivablesError } = await supabaseAdmin
       .from('accounts_receivable')
       .delete()
@@ -1976,6 +2006,10 @@ export async function deletePagamento(
       .from('pagamentos')
       .delete()
       .eq('id', pagamentoId)
+      .eq('venda_id', vendaId)
+      .eq('store_id', storeId)
+      .eq('tenant_id', profile.tenant_id)
+      .is('parcela_id', null)
 
     if (deleteError) throw deleteError
 
@@ -3572,8 +3606,72 @@ async function receberParcelaLegacy(prevState: any, formData: FormData) {
 }
 */
 
+const RenegociarFinanciamentoSchema = z.object({
+  financiamento_id: z.coerce.number().int().positive(),
+  venda_id: z.coerce.number().int().positive(),
+  store_id: z.coerce.number().int().positive(),
+  employee_id: z.coerce.number().int().positive(),
+  parcelas: z.array(z.object({
+    data_vencimento: z.string().min(10),
+    valor_parcela: z.coerce.number().positive(),
+  })).min(1),
+})
+
+// ============================================================================
+// 19. ACTION: RENEGOCIAR FINANCIAMENTO (ATÔMICA, PRESERVA RECEBIMENTOS)
+// ============================================================================
+export async function renegociarFinanciamentoLoja(input: unknown) {
+  const parsed = RenegociarFinanciamentoSchema.safeParse(input)
+  if (!parsed.success) return { success: false, message: 'Dados da renegociação inválidos.' }
+
+  const data = parsed.data
+  const supabaseAuth = createClient()
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user) return { success: false, message: 'Sessão inválida.' }
+
+  const profile = await getProfileByAdmin(user.id) as any
+  if (!profile?.tenant_id) return { success: false, message: 'Perfil não encontrado.' }
+  if (!(await isStoreModuleEnabledForStore(data.store_id, 'installments'))) {
+    return { success: false, message: 'Módulo de parcelamento desativado para esta loja.' }
+  }
+  if (profile.role !== 'admin' && profile.store_id !== data.store_id) {
+    return { success: false, message: 'Acesso negado: loja inválida.' }
+  }
+
+  const supabaseAdmin = createAdminClient()
+  const { data: financing, error: financingError } = await (supabaseAdmin
+    .from('financiamento_loja') as any)
+    .select('id, venda_id, store_id, tenant_id')
+    .eq('id', data.financiamento_id)
+    .maybeSingle()
+
+  if (financingError || !financing || Number(financing.venda_id) !== data.venda_id || Number(financing.store_id) !== data.store_id) {
+    return { success: false, message: 'Carnê não encontrado para esta venda.' }
+  }
+
+  const { data: result, error } = await (supabaseAdmin.rpc as any)('renegotiate_store_financing', {
+    p_financing_id: data.financiamento_id,
+    p_sale_id: data.venda_id,
+    p_store_id: data.store_id,
+    p_employee_id: data.employee_id,
+    p_user_id: user.id,
+    p_tenant_id: profile.tenant_id,
+    p_installments: data.parcelas,
+  })
+
+  if (error) return { success: false, message: error.message }
+
+  revalidatePath(`/dashboard/loja/${data.store_id}/vendas/${data.venda_id}`)
+  revalidatePath(`/dashboard/loja/${data.store_id}/vendas/${data.venda_id}/experimental`)
+  revalidatePath(`/dashboard/loja/${data.store_id}/financeiro/parcelas`)
+  revalidatePath(`/dashboard/loja/${data.store_id}/reports/parcelamento`)
+  revalidatePath(`/dashboard/loja/${data.store_id}`)
+
+  return { success: true, message: 'Carnê renegociado com sucesso.', data: result }
+}
+
 // ==============================================================================
-// 19. ACTION: EXCLUIR FINANCIAMENTO (FINAL: SEGURA + ADMIN MODE)
+// 20. ACTION: EXCLUIR FINANCIAMENTO (FINAL: SEGURA + ADMIN MODE)
 // ==============================================================================
 export async function deleteFinanciamentoLoja(vendaId: number, storeId: number) {
   const supabaseAuth = createClient();
