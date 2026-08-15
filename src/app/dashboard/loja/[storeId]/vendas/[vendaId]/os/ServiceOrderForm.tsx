@@ -82,10 +82,11 @@ const baseButtonStyle = 'px-3 py-1.5 text-xs rounded-lg shadow-sm disabled:opaci
 // --- COMPONENTE: INPUT DE GRAU ---
 function DegreeInput({ name, value, onChange, placeholder, className }: { name: string, value: string, onChange: (val: string) => void, placeholder?: string, className?: string }) {
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        let raw = e.target.value.replace(/\D/g, '')
-        if (!raw) { onChange(''); return }
+        const inputValue = e.target.value
+        let raw = inputValue.replace(/\D/g, '')
+        if (!raw) { onChange(inputValue.includes('-') ? '-' : ''); return }
         const val = parseInt(raw, 10) / 100
-        const isNegative = value.includes('-')
+        const isNegative = inputValue.includes('-') || (value.includes('-') && !inputValue.includes('+'))
         const formatted = val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
         const finalValue = isNegative ? `-${formatted}` : `+${formatted}`
         onChange(finalValue)
@@ -110,6 +111,8 @@ function DegreeInput({ name, value, onChange, placeholder, className }: { name: 
     return (
         <input
             name={name}
+            type="text"
+            inputMode="text"
             value={value}
             onChange={handleChange}
             onFocus={() => {

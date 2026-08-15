@@ -19,7 +19,16 @@ const PENDING_REPLY_RECOVERY_DELAY_MS = 1500
 const MAX_ADMIN_BODY_BYTES = 15 * 1024 * 1024
 const MAX_MEDIA_BYTES = 10 * 1024 * 1024
 const MAX_INBOUND_VISION_BYTES = 3 * 1024 * 1024
+// A Loja 1 e o canal piloto do atendimento automatico. O watchdog fica
+// propositalmente restrito a esta instancia para nao reiniciar os demais
+// WhatsApps sem uma decisao operacional explicita.
+const STORE_ONE_WATCHDOG_ENABLED = process.env.WHATSAPP_STORE_ONE_WATCHDOG_ENABLED !== 'false'
+const STORE_ONE_WATCHDOG_INSTANCE_KEY = process.env.WHATSAPP_STORE_ONE_WATCHDOG_INSTANCE_KEY || 'loja-1-otica-prisma-guaira'
+const STORE_ONE_WATCHDOG_INTERVAL_MS = Math.max(30000, Number(process.env.WHATSAPP_STORE_ONE_WATCHDOG_INTERVAL_MS || 60000))
+const STORE_ONE_WATCHDOG_RESTART_COOLDOWN_MS = Math.max(60000, Number(process.env.WHATSAPP_STORE_ONE_WATCHDOG_RESTART_COOLDOWN_MS || 300000))
 const inboundBuffers = new Map()
+let storeOneWatchdogRunning = false
+let storeOneWatchdogLastRestartAt = 0
 
 function requiredEnv(name) {
   const value = process.env[name]?.trim()
@@ -614,6 +623,38 @@ async function getEvolutionConnectionState(instanceKey) {
   return evolutionRequest(`/instance/connectionState/${encodeURIComponent(instanceKey)}`)
 }
 
+function isEvolutionConnectedState(state) {
+  return state === 'open' || state === 'connected'
+}
+
+async function runStoreOneConnectionWatchdog() {
+  if (!STORE_ONE_WATCHDOG_ENABLED || storeOneWatchdogRunning) return
+  storeOneWatchdogRunning = true
+
+  try {
+    const statePayload = await getEvolutionConnectionState(STORE_ONE_WATCHDOG_INSTANCE_KEY)
+    const state = extractConnectionState(statePayload)
+    if (isEvolutionConnectedState(state)) return
+
+    const now = Date.now()
+    const elapsedSinceRestart = now - storeOneWatchdogLastRestartAt
+    if (elapsedSinceRestart < STORE_ONE_WATCHDOG_RESTART_COOLDOWN_MS) {
+      console.warn(`[watchdog] store=1 instance=${STORE_ONE_WATCHDOG_INSTANCE_KEY} state=${state}; restart skipped during cooldown.`)
+      return
+    }
+
+    storeOneWatchdogLastRestartAt = now
+    console.warn(`[watchdog] store=1 instance=${STORE_ONE_WATCHDOG_INSTANCE_KEY} state=${state}; restarting Evolution instance.`)
+    await restartEvolutionInstance(STORE_ONE_WATCHDOG_INSTANCE_KEY)
+  } catch (error) {
+    // A falha da propria consulta nao deve reiniciar cegamente a instancia:
+    // ela pode ser uma indisponibilidade temporaria da API Evolution.
+    console.error(`[watchdog] store=1 instance=${STORE_ONE_WATCHDOG_INSTANCE_KEY} health check failed:`, error)
+  } finally {
+    storeOneWatchdogRunning = false
+  }
+}
+
 async function configureEvolutionWebhook(instanceKey) {
   const webhookUrl = `http://whatsapp-automation:8080/webhooks/evolution/${encodeURIComponent(instanceKey)}?token=${encodeURIComponent(config.webhookSecret)}`
 
@@ -1034,3 +1075,14 @@ const server = createServer(async (request, response) => {
 server.listen(config.port, '0.0.0.0', () => {
   console.log(`[whatsapp-automation] Listening on port ${config.port}`)
 })
+
+if (STORE_ONE_WATCHDOG_ENABLED) {
+  // Executa uma vez ao iniciar e depois permanece independente do dashboard.
+  // O intervalo curto limita a janela de uma desconexao real, enquanto o
+  // cooldown impede ciclos de restart caso a Evolution esteja instavel.
+  void runStoreOneConnectionWatchdog()
+  setInterval(() => {
+    void runStoreOneConnectionWatchdog()
+  }, STORE_ONE_WATCHDOG_INTERVAL_MS)
+  console.log(`[watchdog] store=1 enabled instance=${STORE_ONE_WATCHDOG_INSTANCE_KEY} interval_ms=${STORE_ONE_WATCHDOG_INTERVAL_MS}`)
+}
