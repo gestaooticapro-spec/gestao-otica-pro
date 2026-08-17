@@ -798,9 +798,13 @@ export async function sendCustomerFinancialSummaryWhatsApp(
     }
 
     const storeProfile = await getStoreDocumentProfile(supabaseAdmin, storeId)
+    const isPartialSelection = selectedFinancialData.financiamentos.length < financialData.financiamentos.length
     const imageBuffers = await generateCustomerFinancialSummaryImages({
       customerName: customer.full_name || 'Cliente',
       store: storeProfile,
+      selectionNote: isPartialSelection
+        ? `Resumo parcial: ${selectedFinancialData.financiamentos.length} de ${financialData.financiamentos.length} vendas selecionadas.`
+        : undefined,
       totals: selectedFinancialData.totais,
       nextDue: selectedFinancialData.proximoVencimento,
       financiamentos: selectedFinancialData.financiamentos,
