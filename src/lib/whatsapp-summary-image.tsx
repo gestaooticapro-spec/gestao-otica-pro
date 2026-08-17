@@ -168,7 +168,10 @@ export async function generateCustomerFinancialSummaryImages(data: CustomerFinan
   const generatedAt = new Date().toLocaleDateString('pt-BR')
   const logoDataUrl = await loadStoreLogoDataUrl(data.store.logoFile)
   const width = 1400
-  const maxRowsPerPage = 4
+  // A imagem cresce para acomodar os carnês mais comuns sem fragmentar a
+  // conversa no WhatsApp. Acima de seis parcelas mantemos a paginação para
+  // não produzir imagens excessivamente altas.
+  const maxRowsPerPage = 6
   const chunks = data.financiamentos.flatMap((financiamento) => {
     const pages = []
     for (let index = 0; index < financiamento.parcelas.length; index += maxRowsPerPage) {
