@@ -671,6 +671,10 @@ function isEvolutionConnectedState(state) {
   return state === 'open' || state === 'connected'
 }
 
+function isEvolutionDisconnectedState(state) {
+  return ['close', 'closed', 'disconnected', 'offline', 'refused'].includes(state)
+}
+
 async function runStoreOneConnectionWatchdog() {
   if (!STORE_ONE_WATCHDOG_ENABLED || storeOneWatchdogRunning) return
   storeOneWatchdogRunning = true
@@ -679,6 +683,15 @@ async function runStoreOneConnectionWatchdog() {
     const statePayload = await getEvolutionConnectionState(STORE_ONE_WATCHDOG_INSTANCE_KEY)
     const state = extractConnectionState(statePayload)
     if (isEvolutionConnectedState(state)) return
+
+    // Durante o QR e a reconexao inicial a Evolution informa "connecting".
+    // Reiniciar nesse momento invalida a tentativa em andamento e pode deixar
+    // a instancia em ciclo de reconexao. Estados desconhecidos tambem nao
+    // devem disparar um restart sem confirmacao explicita de desconexao.
+    if (!isEvolutionDisconnectedState(state)) {
+      console.warn(`[watchdog] store=1 instance=${STORE_ONE_WATCHDOG_INSTANCE_KEY} state=${state}; waiting without restart.`)
+      return
+    }
 
     const now = Date.now()
     const elapsedSinceRestart = now - storeOneWatchdogLastRestartAt
