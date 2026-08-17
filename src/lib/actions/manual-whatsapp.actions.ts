@@ -19,6 +19,7 @@ import {
 import {
   getCustomerFinancialSummary,
   getCustomerPrescriptionSummary,
+  type FinancialSummary,
 } from '@/lib/actions/customer-history.actions'
 
 const ALLOWED_ROLES = ['admin', 'manager', 'store_operator', 'vendedor', 'tecnico']
@@ -82,6 +83,7 @@ export type SendSalePaymentReceiptWhatsAppInput = {
 export type SendCustomerFinancialSummaryWhatsAppInput = {
   storeId: number
   customerId: number
+  financingIds?: number[]
 }
 
 export type SendCustomerPrescriptionSummaryWhatsAppInput = {
@@ -93,6 +95,49 @@ export type SendCustomerPrescriptionSummaryWhatsAppInput = {
 type AccessProfile = {
   role: string
   store_id: number | null
+}
+
+function getSelectedFinancialSummary(
+  summary: FinancialSummary,
+  requestedFinancingIds: number[] | undefined
+): FinancialSummary | null {
+  if (requestedFinancingIds === undefined) return summary
+
+  const selectedIds = new Set(
+    requestedFinancingIds
+      .map((id) => Number(id))
+      .filter((id) => Number.isSafeInteger(id) && id > 0)
+  )
+  if (selectedIds.size === 0) return null
+
+  const financiamentos = summary.financiamentos.filter((financiamento) => selectedIds.has(financiamento.id))
+  if (financiamentos.length === 0) return null
+
+  const parcelas = financiamentos.flatMap((financiamento) => financiamento.parcelas)
+  const parcelasPagas = parcelas.filter((parcela) => String(parcela.status || '').toLowerCase() === 'pago')
+  const parcelasPendentes = parcelas.filter((parcela) => String(parcela.status || '').toLowerCase() !== 'pago')
+  const proximaPendente = parcelasPendentes
+    .filter((parcela) => parcela.dataVencimento)
+    .sort((a, b) => new Date(a.dataVencimento).getTime() - new Date(b.dataVencimento).getTime())[0]
+
+  return {
+    financiamentos,
+    totais: {
+      parcelasPagas: parcelasPagas.length,
+      parcelasPendentes: parcelasPendentes.length,
+      totalParcelas: parcelas.length,
+      valorPago: parcelas.reduce((total, parcela) => total + Number(parcela.valorPago || 0), 0),
+      valorRestante: parcelasPendentes.reduce((total, parcela) => total + Number(parcela.valor || 0), 0),
+      valorTotalFinanciado: financiamentos.reduce((total, financiamento) => total + Number(financiamento.valorFinanciado || 0), 0),
+    },
+    proximoVencimento: proximaPendente
+      ? {
+          data: proximaPendente.dataVencimento,
+          valor: proximaPendente.valor,
+          numeroParcela: proximaPendente.numeroParcela,
+        }
+      : null,
+  }
 }
 
 function formatActionError(error: unknown, fallback: string) {
@@ -740,11 +785,14 @@ export async function sendCustomerFinancialSummaryWhatsApp(
     }
 
     const financialData = await getCustomerFinancialSummary(customerId, storeId)
-    if (!financialData || financialData.totais.totalParcelas === 0) {
+    const selectedFinancialData = getSelectedFinancialSummary(financialData, input.financingIds)
+    if (!selectedFinancialData || selectedFinancialData.totais.totalParcelas === 0) {
       return {
         success: false,
         routeUsed: 'external_fallback',
-        message: 'Nenhum financiamento encontrado para este cliente.',
+        message: input.financingIds === undefined
+          ? 'Nenhum financiamento encontrado para este cliente.'
+          : 'Selecione ao menos uma venda para enviar.',
         shouldOpenExternal: false,
       }
     }
@@ -753,9 +801,9 @@ export async function sendCustomerFinancialSummaryWhatsApp(
     const imageBuffers = await generateCustomerFinancialSummaryImages({
       customerName: customer.full_name || 'Cliente',
       store: storeProfile,
-      totals: financialData.totais,
-      nextDue: financialData.proximoVencimento,
-      financiamentos: financialData.financiamentos,
+      totals: selectedFinancialData.totais,
+      nextDue: selectedFinancialData.proximoVencimento,
+      financiamentos: selectedFinancialData.financiamentos,
     })
     const firstName = String(customer.full_name || '').trim().split(/\s+/)[0] || 'cliente'
     let lastResult: SendManualWhatsAppResult | null = null
@@ -775,6 +823,7 @@ export async function sendCustomerFinancialSummaryWhatsApp(
         source: 'customer_history.financial_image_button',
         metadata: {
           customerId,
+          financingIds: selectedFinancialData.financiamentos.map((financiamento) => financiamento.id),
           documentType: 'customer_financial_summary',
           mediaFormat: 'png',
           pageIndex: index + 1,
