@@ -2108,6 +2108,8 @@ export interface Database {
           dt_pedido_em: string | null
           dt_lente_chegou: string | null
           dt_montado_em: string | null
+          dt_montado_no_lab: string | null
+          dt_recebido_na_loja: string | null
           dt_entregue_em: string | null
           dt_prometido_para: string | null
           obs_os: string | null

@@ -180,7 +180,9 @@ export function NfcTrayClient({
     return (
       <div className="flex-1 flex flex-col items-center justify-center space-y-8">
         <h2 className="text-2xl font-bold text-center text-gray-800 leading-snug">
-          OS {osContext?.id} - Confirma que a lente chegou do laboratório?
+          OS {osContext?.id} - {osContext?.os_enviada_ao_lab
+            ? 'Confirma que as lentes chegaram ao laboratório para montagem?'
+            : 'Confirma que a lente chegou do laboratório?'}
         </h2>
 
         {errorMsg && <p className="text-red-500 font-medium text-center">{errorMsg}</p>}
@@ -191,7 +193,77 @@ export function NfcTrayClient({
             onClick={() =>
               handleAction(
                 () => advanceOsStatus(trayId, storeId, 'LENTE_CHEGOU'),
-                `OS ${osContext?.id} - Lente chegou`
+                osContext?.os_enviada_ao_lab
+                  ? `OS ${osContext?.id} - lentes chegaram ao laboratório`
+                  : `OS ${osContext?.id} - lente chegou`
+              )
+            }
+            className="bg-green-600 text-white font-bold text-xl py-6 rounded-2xl shadow-lg active:scale-95 transition-transform disabled:opacity-50 flex items-center justify-center"
+          >
+            {loading ? <Loader2 className="animate-spin" /> : 'SIM'}
+          </button>
+          <button
+            disabled={loading}
+            onClick={() => setErrorMsg('Operação cancelada. Pode fechar a tela.')}
+            className="bg-gray-200 text-gray-800 font-bold text-xl py-6 rounded-2xl shadow active:scale-95 transition-transform disabled:opacity-50"
+          >
+            NÃO
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (initialResult.nextAction === 'MONTAGEM_LAB_CONCLUIDA') {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center space-y-8">
+        <h2 className="text-2xl font-bold text-center text-gray-800 leading-snug">
+          OS {osContext?.id} - Confirma que o óculos foi montado no laboratório?
+        </h2>
+
+        {errorMsg && <p className="text-red-500 font-medium text-center">{errorMsg}</p>}
+
+        <div className="grid grid-cols-2 gap-4 w-full">
+          <button
+            disabled={loading}
+            onClick={() =>
+              handleAction(
+                () => advanceOsStatus(trayId, storeId, 'MONTAGEM_CONCLUIDA'),
+                `OS ${osContext?.id} - montagem no laboratório confirmada`
+              )
+            }
+            className="bg-green-600 text-white font-bold text-xl py-6 rounded-2xl shadow-lg active:scale-95 transition-transform disabled:opacity-50 flex items-center justify-center"
+          >
+            {loading ? <Loader2 className="animate-spin" /> : 'SIM'}
+          </button>
+          <button
+            disabled={loading}
+            onClick={() => setErrorMsg('Operação cancelada. Pode fechar a tela.')}
+            className="bg-gray-200 text-gray-800 font-bold text-xl py-6 rounded-2xl shadow active:scale-95 transition-transform disabled:opacity-50"
+          >
+            NÃO
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (initialResult.nextAction === 'RECEBIMENTO_NA_LOJA') {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center space-y-8">
+        <h2 className="text-2xl font-bold text-center text-gray-800 leading-snug">
+          OS {osContext?.id} - Confirma que o óculos chegou à loja?
+        </h2>
+
+        {errorMsg && <p className="text-red-500 font-medium text-center">{errorMsg}</p>}
+
+        <div className="grid grid-cols-2 gap-4 w-full">
+          <button
+            disabled={loading}
+            onClick={() =>
+              handleAction(
+                () => advanceOsStatus(trayId, storeId, 'MONTAGEM_CONCLUIDA'),
+                `OS ${osContext?.id} - pronto para entrega`
               )
             }
             className="bg-green-600 text-white font-bold text-xl py-6 rounded-2xl shadow-lg active:scale-95 transition-transform disabled:opacity-50 flex items-center justify-center"

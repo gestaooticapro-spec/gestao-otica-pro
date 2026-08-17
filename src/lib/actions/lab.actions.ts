@@ -19,6 +19,8 @@ export type LabOSResult = {
     dt_pedido_em: string | null
     dt_lente_chegou: string | null
     dt_montado_em: string | null
+    dt_montado_no_lab: string | null
+    dt_recebido_na_loja: string | null
     dt_entregue_em: string | null
     lab_nome: string | null
     lab_pedido_por_id: number | null
@@ -82,7 +84,7 @@ export async function searchOSForLab(storeId: number, query: string): Promise<La
             .from('service_orders')
             .select(`
                 id, venda_id, customer_id, created_at, protocolo_fisico,
-                dt_pedido_em, dt_lente_chegou, dt_montado_em, dt_entregue_em, lab_nome, lab_pedido_por_id,
+                dt_pedido_em, dt_lente_chegou, dt_montado_em, dt_montado_no_lab, dt_recebido_na_loja, dt_entregue_em, lab_nome, lab_pedido_por_id,
                 armacao_com_cliente, os_enviada_ao_lab,
                 customers ( full_name, fone_movel, phone ),
                 dependentes ( full_name ),
@@ -100,7 +102,7 @@ export async function searchOSForLab(storeId: number, query: string): Promise<La
             .from('service_orders')
             .select(`
                 id, venda_id, customer_id, created_at, protocolo_fisico,
-                dt_pedido_em, dt_lente_chegou, dt_montado_em, dt_entregue_em, lab_nome, lab_pedido_por_id,
+                dt_pedido_em, dt_lente_chegou, dt_montado_em, dt_montado_no_lab, dt_recebido_na_loja, dt_entregue_em, lab_nome, lab_pedido_por_id,
                 armacao_com_cliente, os_enviada_ao_lab,
                 customers ( full_name, fone_movel, phone ),
                 dependentes ( full_name ),
@@ -119,7 +121,7 @@ export async function searchOSForLab(storeId: number, query: string): Promise<La
         .from('service_orders')
         .select(`
             id, venda_id, customer_id, created_at,
-            dt_pedido_em, dt_lente_chegou, dt_montado_em, dt_entregue_em, lab_nome, lab_pedido_por_id,
+            dt_pedido_em, dt_lente_chegou, dt_montado_em, dt_montado_no_lab, dt_recebido_na_loja, dt_entregue_em, lab_nome, lab_pedido_por_id,
             armacao_com_cliente, os_enviada_ao_lab,
             customers!inner ( full_name, fone_movel, phone ),
             dependentes ( full_name ),
@@ -138,7 +140,7 @@ export async function searchOSForLab(storeId: number, query: string): Promise<La
             .from('service_orders')
             .select(`
                 id, venda_id, customer_id, created_at,
-                dt_pedido_em, dt_lente_chegou, dt_montado_em, dt_entregue_em, lab_nome, lab_pedido_por_id,
+                dt_pedido_em, dt_lente_chegou, dt_montado_em, dt_montado_no_lab, dt_recebido_na_loja, dt_entregue_em, lab_nome, lab_pedido_por_id,
                 armacao_com_cliente, os_enviada_ao_lab,
                 customers ( full_name, fone_movel, phone ),
                 dependentes!inner ( full_name ),
@@ -172,6 +174,8 @@ export async function searchOSForLab(storeId: number, query: string): Promise<La
         dt_pedido_em: os.dt_pedido_em,
         dt_lente_chegou: os.dt_lente_chegou,
         dt_montado_em: os.dt_montado_em,
+        dt_montado_no_lab: os.dt_montado_no_lab,
+        dt_recebido_na_loja: os.dt_recebido_na_loja,
         dt_entregue_em: os.dt_entregue_em,
         lab_nome: os.lab_nome,
         lab_pedido_por_id: os.lab_pedido_por_id,
@@ -194,6 +198,8 @@ export async function getReadyOSForDelivery(storeId: number): Promise<LabOSResul
             dt_pedido_em,
             dt_lente_chegou,
             dt_montado_em,
+            dt_montado_no_lab,
+            dt_recebido_na_loja,
             dt_entregue_em,
             lab_nome,
             lab_pedido_por_id,
@@ -226,6 +232,8 @@ export async function getReadyOSForDelivery(storeId: number): Promise<LabOSResul
         dt_pedido_em: os.dt_pedido_em,
         dt_lente_chegou: os.dt_lente_chegou,
         dt_montado_em: os.dt_montado_em,
+        dt_montado_no_lab: os.dt_montado_no_lab,
+        dt_recebido_na_loja: os.dt_recebido_na_loja,
         dt_entregue_em: os.dt_entregue_em,
         lab_nome: os.lab_nome,
         lab_pedido_por_id: os.lab_pedido_por_id
@@ -246,6 +254,8 @@ export async function getOpenLabOS(storeId: number): Promise<LabOSResult[]> {
             dt_pedido_em,
             dt_lente_chegou,
             dt_montado_em,
+            dt_montado_no_lab,
+            dt_recebido_na_loja,
             dt_entregue_em,
             lab_nome,
             lab_pedido_por_id,
@@ -279,6 +289,8 @@ export async function getOpenLabOS(storeId: number): Promise<LabOSResult[]> {
         dt_pedido_em: os.dt_pedido_em,
         dt_lente_chegou: os.dt_lente_chegou,
         dt_montado_em: os.dt_montado_em,
+        dt_montado_no_lab: os.dt_montado_no_lab,
+        dt_recebido_na_loja: os.dt_recebido_na_loja,
         dt_entregue_em: os.dt_entregue_em,
         lab_nome: os.lab_nome,
         lab_pedido_por_id: os.lab_pedido_por_id,
@@ -304,7 +316,7 @@ export async function toggleLabBoolean(
 export async function advanceLabStage(
     osId: number,
     storeId: number,
-    stage: 'dt_pedido_em' | 'dt_lente_chegou' | 'dt_montado_em'
+    stage: 'dt_pedido_em' | 'dt_lente_chegou' | 'dt_montado_em' | 'dt_montado_no_lab'
 ) {
     const supabase = createAdminClient()
     const now = new Date().toISOString()
@@ -329,7 +341,7 @@ export async function advanceLabStage(
 export async function regressLabStage(
     osId: number,
     storeId: number,
-    field: 'dt_pedido_em' | 'dt_lente_chegou' | 'dt_montado_em'
+    field: 'dt_pedido_em' | 'dt_lente_chegou' | 'dt_montado_em' | 'dt_montado_no_lab'
 ) {
     const supabase = createAdminClient()
 
@@ -422,6 +434,8 @@ export async function updateLabTracking(osId: number, storeId: number, formData:
         lab_nome: formData.get('lab_nome')?.toString() || null,
         dt_lente_chegou: toIsoOrNull('dt_lente_chegou'),
         dt_montado_em: toIsoOrNull('dt_montado_em'),
+        dt_montado_no_lab: toIsoOrNull('dt_montado_no_lab'),
+        dt_recebido_na_loja: toIsoOrNull('dt_recebido_na_loja'),
         dt_entregue_em: toIsoOrNull('dt_entregue_em'),
         lab_pedido_por_id: formData.get('lab_pedido_por_id') ? Number(formData.get('lab_pedido_por_id')) : null
     }
