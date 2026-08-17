@@ -14,6 +14,7 @@ const RequestSchema = z.object({
   messageText: z.string().max(5000).optional(),
   statusReferenceId: z.string().trim().min(1).max(255).nullable().optional(),
   statusInteractionType: z.enum(['reply', 'reaction']).nullable().optional(),
+  providerCreatedAt: z.string().datetime().nullable().optional(),
   payload: z.unknown().optional(),
 })
 

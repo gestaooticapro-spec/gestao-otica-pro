@@ -619,6 +619,7 @@ export interface Database {
           message_text: string | null
           payload: Json | null
           status: 'received' | 'ignored' | 'processed' | 'failed'
+          provider_created_at: string | null
           created_at: string
         }
         Insert: {
@@ -631,11 +632,13 @@ export interface Database {
           message_text?: string | null
           payload?: Json | null
           status?: 'received' | 'ignored' | 'processed' | 'failed'
+          provider_created_at?: string | null
           created_at?: string
         }
         Update: {
           status?: 'received' | 'ignored' | 'processed' | 'failed'
           payload?: Json | null
+          provider_created_at?: string | null
         }
       }
 

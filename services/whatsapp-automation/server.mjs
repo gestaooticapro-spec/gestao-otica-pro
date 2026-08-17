@@ -255,6 +255,7 @@ function extractInbound(payload) {
     phone,
     providerMessageId,
     messageText: extractText(message),
+    providerCreatedAt: messageTimestampIso(payload),
     attachmentKind: detectAttachmentKind(message),
     statusReferenceId: statusReference?.providerMessageId || null,
     statusInteractionType: statusReference?.interactionType || null,
@@ -839,6 +840,7 @@ async function flushBufferedInbound(key, reason = 'timeout') {
     phone: entry.phone,
     providerMessageId: lastMessage.providerMessageId,
     messageText: aggregatedText,
+    providerCreatedAt: lastMessage.providerCreatedAt,
   }, buildAggregatedInboundPayload(messages))
 }
 
@@ -871,6 +873,7 @@ function enqueueBufferedInbound(instanceKey, inbound) {
     providerMessageId: inbound.providerMessageId,
     messageText: inbound.messageText,
     attachmentKind: inbound.attachmentKind,
+    providerCreatedAt: inbound.providerCreatedAt,
     receivedAt: new Date().toISOString(),
   })
   entry.providerMessageIds.add(inbound.providerMessageId)

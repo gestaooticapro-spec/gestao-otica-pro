@@ -6,6 +6,8 @@ import { getAlertasOperacionais, getAniversariantes, getVencimentosProximos, get
 import { getRetornosDeHoje } from '@/lib/actions/collection.actions';
 import { getClientesMetrics } from '@/lib/actions/reports.actions';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getProfileByAdmin } from '@/lib/supabase/admin';
+import { createClient } from '@/lib/supabase/server';
 import type { StoreSettings } from '@/lib/store-modules';
 import { countPendingWhatsAppStatusContexts } from '@/lib/whatsapp/status-publications';
 
@@ -24,6 +26,15 @@ export async function GET(request: NextRequest) {
 
     if (!storeId) {
         return NextResponse.json({ error: 'storeId is required' }, { status: 400 });
+    }
+
+    const auth = createClient();
+    const { data: { user } } = await auth.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Nao autenticado.' }, { status: 401 });
+
+    const profile = await getProfileByAdmin(user.id) as { role?: string | null, store_id?: number | null } | null;
+    if (!profile || (profile.role !== 'admin' && Number(profile.store_id) !== storeId)) {
+        return NextResponse.json({ error: 'Acesso negado para esta loja.' }, { status: 403 });
     }
 
     try {

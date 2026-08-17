@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getProfileByAdmin } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { verifyFiscalPublicLinkToken } from "@/lib/fiscal-public-link";
 import { getNuvemLocalToken } from "@/lib/nuvem-local";
 
 async function fetchFileBuffer(url: string, headers?: HeadersInit) {
@@ -48,6 +51,18 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
         if (error || !invoice) {
             console.error("[Fiscal Print] Nota nao encontrada:", error);
             return NextResponse.json({ error: "Nota nao encontrada" }, { status: 404 });
+        }
+
+        const hasPublicAccess = verifyFiscalPublicLinkToken(invoiceId, request.nextUrl.searchParams.get('access'));
+        if (!hasPublicAccess) {
+            const auth = createClient();
+            const { data: { user } } = await auth.auth.getUser();
+            if (!user) return NextResponse.json({ error: 'Nao autenticado.' }, { status: 401 });
+
+            const profile = await getProfileByAdmin(user.id) as { role?: string | null; store_id?: number | null } | null;
+            if (!profile || (profile.role !== 'admin' && Number(profile.store_id) !== Number(invoice.store_id))) {
+                return NextResponse.json({ error: 'Acesso negado para esta nota.' }, { status: 403 });
+            }
         }
 
         const download = request.nextUrl.searchParams.get("download") === "true";

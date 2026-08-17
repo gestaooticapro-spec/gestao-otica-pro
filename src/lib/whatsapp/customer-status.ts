@@ -178,6 +178,7 @@ export type CustomerStatusRequest = {
   messageText?: string
   statusReferenceId?: string | null
   statusInteractionType?: 'reply' | 'reaction' | null
+  providerCreatedAt?: string | null
   payload?: Json
 }
 
@@ -2181,6 +2182,7 @@ export async function resolveCustomerStatus(
       remote_phone: normalizedPhone,
       message_text: effectiveMessageText,
       payload: stripWhatsAppInboundMediaContent(input.payload),
+      provider_created_at: input.providerCreatedAt || null,
       status: 'received',
     })
     .select('id')
