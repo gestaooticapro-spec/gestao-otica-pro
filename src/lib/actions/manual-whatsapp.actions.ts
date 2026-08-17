@@ -127,7 +127,7 @@ function formatMediaSendFailure(errorMessage: string) {
   }
 
   if (normalized.includes('connection closed')) {
-    return 'Falha temporaria no canal de arquivos do WhatsApp da loja. Nao e um problema no numero do cliente. O caso foi registrado e sera corrigido na manutencao fora do horario comercial. Nenhum arquivo foi enviado.'
+    return 'O WhatsApp da loja esta temporariamente indisponivel para envio de arquivos. Nenhum arquivo foi enviado. Tente novamente em alguns instantes.'
   }
 
   if (normalized.includes('evolution media send failed')) {
@@ -586,6 +586,17 @@ async function sendManualWhatsAppMediaWithContext(
       },
       outboundMessageId: outbound.id,
     })
+
+    if (automationResult.retryScheduled) {
+      return {
+        success: false,
+        routeUsed: 'vps',
+        message: 'A primeira tentativa falhou. Se o arquivo não for enviado em 20 segundos, tente novamente.',
+        outboundMessageId: outbound.id,
+        fallbackReason: 'send_failed',
+        shouldOpenExternal: false,
+      }
+    }
 
     await (supabaseAdmin.from('whatsapp_outbound_messages') as any)
       .update({ status: 'sent', sent_at: new Date().toISOString() })

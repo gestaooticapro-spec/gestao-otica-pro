@@ -471,6 +471,17 @@ async function restartEvolutionInstance(instanceKey) {
   })
 }
 
+async function waitForEvolutionConnected(instanceKey, timeoutMs = 20000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const statePayload = await getEvolutionConnectionState(instanceKey).catch(() => null)
+    const state = extractConnectionState(statePayload)
+    if (isEvolutionConnectedState(state)) return true
+    await wait(1000)
+  }
+  return false
+}
+
 async function sendEvolutionMediaWithRecovery(instanceKey, phone, media) {
   try {
     return await sendEvolutionMedia(instanceKey, phone, media)
@@ -482,7 +493,10 @@ async function sendEvolutionMediaWithRecovery(instanceKey, phone, media) {
     // comecou, portanto reiniciar a instancia e repetir uma vez e seguro.
     console.warn(`[whatsapp-automation] Media socket closed for instance=${instanceKey}; restarting the instance before one retry.`)
     await restartEvolutionInstance(instanceKey)
-    await wait(3000)
+    const connected = await waitForEvolutionConnected(instanceKey)
+    if (!connected) {
+      throw new Error(`Evolution media send recovery timed out for instance=${instanceKey}`)
+    }
     return sendEvolutionMedia(instanceKey, phone, media)
   }
 }
@@ -586,6 +600,35 @@ async function logoutEvolutionInstance(instanceKey) {
   return evolutionRequest(`/instance/logout/${encodeURIComponent(instanceKey)}`, {
     method: 'DELETE',
   })
+}
+
+async function recoverAndRetryEvolutionMedia(instanceKey, phone, media, outboundMessageId) {
+  try {
+    console.warn(`[whatsapp-automation] Media socket closed for instance=${instanceKey}; recovery retry started in background.`)
+    await restartEvolutionInstance(instanceKey)
+    const connected = await waitForEvolutionConnected(instanceKey)
+    if (!connected) {
+      throw new Error(`Evolution media send recovery timed out for instance=${instanceKey}`)
+    }
+
+    const result = await sendEvolutionMedia(instanceKey, phone, media)
+    const providerMessageId = result.key?.id || result.messageId || result.id
+    const deliverySynced = await updateDelivery(outboundMessageId, 'sent', {
+      providerMessageId,
+      payload: result,
+    })
+    if (!deliverySynced) console.error('[whatsapp-automation] Background media retry sent, but delivery sync failed.')
+  } catch (error) {
+    if (isTimeoutError(error)) {
+      console.error('[whatsapp-automation] Background media retry timed out; leaving outbound pending for reconciliation.')
+      return
+    }
+
+    const failedSynced = await updateDelivery(outboundMessageId, 'failed', {
+      errorMessage: error instanceof Error ? error.message : String(error),
+    })
+    if (!failedSynced) console.error('[whatsapp-automation] Failed to persist background media retry failure.')
+  }
 }
 
 async function deleteEvolutionInstance(instanceKey) {
@@ -695,9 +738,14 @@ async function handleAdminMessageSend(payload) {
   let result
   try {
     result = media
-      ? await sendEvolutionMediaWithRecovery(instanceKey, phone, media)
+      ? await sendEvolutionMedia(instanceKey, phone, media)
       : await sendEvolutionText(instanceKey, phone, text)
   } catch (error) {
+    if (media && isEvolutionConnectionClosed(error)) {
+      void recoverAndRetryEvolutionMedia(instanceKey, phone, media, outboundMessageId)
+      return { sent: false, retryScheduled: true, deliverySynced: false }
+    }
+
     if (!isTimeoutError(error)) {
       const failedSynced = await updateDelivery(outboundMessageId, 'failed', {
         errorMessage: error instanceof Error ? error.message : String(error),
