@@ -16,10 +16,11 @@ import {
 import { sendInstallmentReceiptWhatsApp } from '@/lib/actions/manual-whatsapp.actions'
 import ParcelaSearchModal from '@/components/modals/ParcelaSearchModal'
 import ReverseInstallmentReceiptModal, { type ReversibleReceiptOperation } from '@/components/financeiro/ReverseInstallmentReceiptModal'
-import { getPixChargesForInstallments, type PixInstallmentCharge } from '@/lib/actions/pix-installment.actions'
+import { getPixChargesForInstallments, getPixProviderForStore, type PixInstallmentCharge } from '@/lib/actions/pix-installment.actions'
+import PixInstallmentChargeModal from '@/components/modals/PixInstallmentChargeModal'
 
 import { Database } from '@/lib/database.types'
-import { Calendar, ClipboardList, AlertTriangle, CheckCircle2, Wallet, DollarSign, X, RefreshCw, Trash2, Calculator, Loader2, MessageCircle, Printer, RotateCcw } from 'lucide-react'
+import { Calendar, ClipboardList, AlertTriangle, CheckCircle2, Wallet, DollarSign, X, RefreshCw, Trash2, Calculator, Loader2, MessageCircle, Printer, RotateCcw, QrCode } from 'lucide-react'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import UpdateCpfModal from '@/components/modals/UpdateCpfModal'
 import CollapsibleBox from './CollapsibleBox'
@@ -81,6 +82,42 @@ const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('pt-BR')
 }
 const getToday = () => new Date().toISOString().split('T')[0]
+
+function PaymentChoiceModal({
+    parcela,
+    onClose,
+    onManual,
+    onPix,
+}: {
+    parcela: FinanciamentoParcela
+    onClose: () => void
+    onManual: () => void
+    onPix: () => void
+}) {
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
+            <div className="w-full max-w-sm overflow-hidden rounded-xl border border-white/10 bg-slate-900 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+                <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+                    <div>
+                        <p className="text-sm font-black text-white">Parcela {parcela.numero_parcela}</p>
+                        <p className="mt-1 text-xs text-slate-400">Escolha como deseja receber esta parcela.</p>
+                    </div>
+                    <button type="button" onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-white/10 hover:text-white"><X className="h-4 w-4" /></button>
+                </div>
+                <div className="grid gap-3 p-5">
+                    <button type="button" onClick={onManual} className="flex items-center gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 p-4 text-left transition-colors hover:bg-amber-500/20">
+                        <Wallet className="h-5 w-5 text-amber-300" />
+                        <span><strong className="block text-sm text-amber-100">Baixa manual</strong><small className="text-xs text-slate-400">Registrar o recebimento agora.</small></span>
+                    </button>
+                    <button type="button" onClick={onPix} className="flex items-center gap-3 rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-4 text-left transition-colors hover:bg-cyan-500/20">
+                        <QrCode className="h-5 w-5 text-cyan-300" />
+                        <span><strong className="block text-sm text-cyan-100">Gerar QR Code Pix</strong><small className="text-xs text-slate-400">Criar uma cobrança para o cliente pagar.</small></span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    )
+}
 
 // Sugere data: mesmo dia do próximo mês
 const getFirstDueMonth = () => {
@@ -234,6 +271,9 @@ export default function FinanciamentoBox({
     const [parcelaAtalho, setParcelaAtalho] = useState<FinanciamentoParcela | null>(null)
     const [isParcelaSearchModalOpen, setIsParcelaSearchModalOpen] = useState(false)
     const [pixCharges, setPixCharges] = useState<Record<number, PixInstallmentCharge>>({})
+    const [pixProvider, setPixProvider] = useState<'manual' | 'sicredi'>('manual')
+    const [paymentChoiceParcela, setPaymentChoiceParcela] = useState<FinanciamentoParcela | null>(null)
+    const [pixInstallment, setPixInstallment] = useState<FinanciamentoParcela | null>(null)
     const [sendingReceiptInstallmentId, setSendingReceiptInstallmentId] = useState<number | null>(null)
     const [sentReceiptInstallmentIds, setSentReceiptInstallmentIds] = useState<number[]>([])
     const [receiptToReverse, setReceiptToReverse] = useState<{
@@ -312,13 +352,21 @@ export default function FinanciamentoBox({
             return () => { active = false }
         }
 
-        void getPixChargesForInstallments(storeId, installmentIds)
-            .then((charges) => {
-                if (active) setPixCharges(charges)
-            })
-            .catch(() => {
-                if (active) setPixCharges({})
-            })
+        void getPixProviderForStore(storeId).then((provider) => {
+            if (!active) return
+            setPixProvider(provider)
+            if (provider !== 'sicredi') {
+                setPixCharges({})
+                return
+            }
+            return getPixChargesForInstallments(storeId, installmentIds)
+                .then((charges) => {
+                    if (active) setPixCharges(charges)
+                })
+                .catch(() => {
+                    if (active) setPixCharges({})
+                })
+        })
 
         return () => { active = false }
     }, [financiamento?.id, installmentIdsKey, isFinanced, storeId])
@@ -596,8 +644,14 @@ export default function FinanciamentoBox({
                                                 type="button"
                                                 onClick={(e) => {
                                                     e.stopPropagation()
-                                                    setParcelaAtalho(p)
-                                                    setIsParcelaSearchModalOpen(true)
+                                                    if (hasActivePix) {
+                                                        setPixInstallment(p)
+                                                    } else if (pixProvider === 'sicredi') {
+                                                        setPaymentChoiceParcela(p)
+                                                    } else {
+                                                        setParcelaAtalho(p)
+                                                        setIsParcelaSearchModalOpen(true)
+                                                    }
                                                 }}
                                                 disabled={disabled || isQuitado}
                                                 className="px-3 py-1.5 bg-amber-500/20 text-amber-400 text-[10px] font-bold rounded-lg hover:bg-amber-500/30 border border-amber-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-amber-900/20"
@@ -911,6 +965,39 @@ export default function FinanciamentoBox({
 
 
             {selectedParcela && <RecebimentoModal parcela={selectedParcela} hasNextInstallment={hasNextPendingInstallment(selectedParcela)} storeId={storeId} onClose={() => setSelectedParcela(null)} onConfirm={handleConfirmRecebimento} />}
+
+            {paymentChoiceParcela && (
+                <PaymentChoiceModal
+                    parcela={paymentChoiceParcela}
+                    onClose={() => setPaymentChoiceParcela(null)}
+                    onManual={() => {
+                        setParcelaAtalho(paymentChoiceParcela)
+                        setPaymentChoiceParcela(null)
+                        setIsParcelaSearchModalOpen(true)
+                    }}
+                    onPix={() => {
+                        setPixInstallment(paymentChoiceParcela)
+                        setPaymentChoiceParcela(null)
+                    }}
+                />
+            )}
+
+            {pixInstallment && (
+                <PixInstallmentChargeModal
+                    isOpen={Boolean(pixInstallment)}
+                    storeId={storeId}
+                    installment={{ ...(pixInstallment as any), venda_id: vendaId }}
+                    hasNextInstallment={hasNextPendingInstallment(pixInstallment)}
+                    initialCharge={pixCharges[Number(pixInstallment.id)]}
+                    onClose={() => setPixInstallment(null)}
+                    onChargeChanged={(charge) => setPixCharges((current) => {
+                        const next = { ...current }
+                        if (charge) next[Number(pixInstallment.id)] = charge
+                        else delete next[Number(pixInstallment.id)]
+                        return next
+                    })}
+                />
+            )}
 
             {receiptToReverse && (
                 <ReverseInstallmentReceiptModal
