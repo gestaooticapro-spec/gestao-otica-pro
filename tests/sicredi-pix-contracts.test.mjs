@@ -15,6 +15,7 @@ test('Sicredi Pix permanece limitado ao ambiente de homologacao', () => {
 })
 
 test('cobranca Pix exige autorizacao, evita duplicidade e confere o Sicredi antes de recriar', () => {
+  const client = readSource('src/lib/pix/sicredi-client.server.ts')
   const actions = readSource('src/lib/actions/pix-installment.actions.ts')
   const modal = readSource('src/components/modals/PixInstallmentChargeModal.tsx')
 
@@ -23,7 +24,12 @@ test('cobranca Pix exige autorizacao, evita duplicidade e confere o Sicredi ante
   assert.match(actions, /verifyEmployeeAuthorization\(data\.authorizationToken/)
   assert.match(actions, /status: 'CREATING'/)
   assert.match(actions, /reconcileChargeWithSicredi/)
+  assert.match(actions, /recoverCreatingCharge/)
+  assert.match(actions, /SicrediPixHttpError.*statusCode !== 404/s)
+  assert.match(client, /'GET' \| 'POST' \| 'PUT' \| 'PATCH'/)
+  assert.match(client, /input\.txid \? 'PUT' : 'POST'/)
   assert.match(modal, /reconcileBeforeNewCharge/)
+  assert.match(modal, /Recuperar geração/)
   assert.match(modal, /const authorizationToken = employee\.authorization_token/)
   assert.match(modal, /authorizationToken,/)
 })

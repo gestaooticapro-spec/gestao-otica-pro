@@ -3966,6 +3966,7 @@ export async function autenticarFuncionarioPorPin(
       || requestedPurpose === 'installment_receipt_reversal'
       || requestedPurpose === 'pix_charge_create'
       || requestedPurpose === 'pix_charge_cancel'
+      || requestedPurpose === 'pix_charge_recover'
       ? requestedPurpose
       : null
 
@@ -4008,7 +4009,7 @@ export async function autenticarFuncionarioPorPin(
           ? /^(?:\d+|legacy:\d+)$/.test(authorizationContext)
           : authorizationPurpose === 'pix_charge_create'
             ? /^\d+:\d+\.\d{2}:\d+\.\d{2}:(?:quitacao_total|baixa_parcial|somar_proxima)$/.test(authorizationContext)
-            : authorizationPurpose === 'pix_charge_cancel'
+            : authorizationPurpose === 'pix_charge_cancel' || authorizationPurpose === 'pix_charge_recover'
               ? /^\d+$/.test(authorizationContext)
               : true
 

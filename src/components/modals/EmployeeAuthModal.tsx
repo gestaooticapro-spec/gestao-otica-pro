@@ -29,7 +29,7 @@ type EmployeeAuthModalProps = {
   onSuccess: (employee: AuthedEmployee) => void
   title?: string
   description?: string
-  purpose?: 'evaluation_unlink' | 'installment_receipt_reversal' | 'pix_charge_create' | 'pix_charge_cancel'
+  purpose?: 'evaluation_unlink' | 'installment_receipt_reversal' | 'pix_charge_create' | 'pix_charge_cancel' | 'pix_charge_recover'
   authorizationContext?: string
 }
 

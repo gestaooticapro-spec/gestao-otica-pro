@@ -49,6 +49,16 @@ type SicrediCobResponse = {
   pixCopiaECola?: unknown
 }
 
+export class SicrediPixHttpError extends Error {
+  constructor(
+    public readonly statusCode: number,
+    message: string,
+  ) {
+    super(message)
+    this.name = 'SicrediPixHttpError'
+  }
+}
+
 export type SicrediImmediateCharge = {
   txid: string
   status: string
@@ -172,7 +182,7 @@ function requestToken(config: SicrediPixConfig): Promise<SicrediPixToken> {
 }
 
 async function requestSicrediJson<T>(
-  method: 'GET' | 'POST' | 'PATCH',
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH',
   pathname: string,
   body?: Record<string, unknown>,
 ): Promise<T> {
@@ -205,7 +215,7 @@ async function requestSicrediJson<T>(
         const status = response.statusCode || 0
         if (status < 200 || status >= 300) {
           const safePayload = payload.slice(0, 500).replace(/[\r\n]+/g, ' ')
-          reject(new Error(`Falha na API Pix Sicredi (HTTP ${status}): ${safePayload || 'sem detalhes'}`))
+          reject(new SicrediPixHttpError(status, `Falha na API Pix Sicredi (HTTP ${status}): ${safePayload || 'sem detalhes'}`))
           return
         }
 
@@ -270,6 +280,7 @@ export function clearSicrediPixTokenCache() {
 }
 
 export async function createSicrediImmediateCharge(input: {
+  txid?: string
   pixKey: string
   amount: number
   expirationSeconds: number
@@ -283,8 +294,11 @@ export async function createSicrediImmediateCharge(input: {
     throw new Error('A validade da cobrança Pix deve ser de ao menos 60 segundos.')
   }
   if (!input.pixKey.trim()) throw new Error('Chave Pix Sicredi ausente para esta loja.')
+  if (input.txid && !/^[A-Za-z0-9]{26,35}$/.test(input.txid)) {
+    throw new Error('O txid informado para a cobrança Pix é inválido.')
+  }
 
-  const response = await requestSicrediJson<SicrediCobResponse>('POST', '/api/v3/cob', {
+  const response = await requestSicrediJson<SicrediCobResponse>(input.txid ? 'PUT' : 'POST', input.txid ? `/api/v3/cob/${encodeURIComponent(input.txid)}` : '/api/v3/cob', {
     calendario: { expiracao: input.expirationSeconds },
     valor: { original: input.amount.toFixed(2), modalidadeAlteracao: 0 },
     chave: input.pixKey.trim(),

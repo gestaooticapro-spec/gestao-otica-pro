@@ -9,6 +9,7 @@ export type EmployeeAuthorizationPurpose =
   | 'installment_receipt_reversal'
   | 'pix_charge_create'
   | 'pix_charge_cancel'
+  | 'pix_charge_recover'
 
 type EmployeeAuthorizationPayload = {
   version: 1

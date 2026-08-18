@@ -8,6 +8,7 @@ import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import {
   cancelPixInstallmentCharge,
   createPixInstallmentCharge,
+  recoverPixInstallmentCharge,
   refreshPixInstallmentCharge,
   sendPixInstallmentChargeWhatsApp,
   type PixInstallmentCharge,
@@ -26,7 +27,7 @@ type Installment = {
   valor_renegociado_saida?: number | null
 }
 
-type PendingOperation = 'create' | 'cancel' | null
+type PendingOperation = 'create' | 'cancel' | 'recover' | null
 
 const money = (value: number) => value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const parseMoney = (value: string) => Number(value.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '')) || 0
@@ -137,6 +138,18 @@ export default function PixInstallmentChargeModal({
         return
       }
 
+      if (operation === 'recover') {
+        if (!charge) return
+        const result = await recoverPixInstallmentCharge({ storeId, chargeId: charge.id, authorizationToken })
+        if (!result.success) {
+          toast.error(result.message)
+          return
+        }
+        updateCharge(result.data)
+        toast.success('Geração Pix recuperada com sucesso.')
+        return
+      }
+
       if (!charge) return
       const result = await cancelPixInstallmentCharge({ storeId, chargeId: charge.id, authorizationToken })
       if (!result.success) {
@@ -241,7 +254,7 @@ export default function PixInstallmentChargeModal({
                   <button onClick={() => void sendWhatsApp()} disabled={isSending || charge.status !== 'PENDING'} className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-3 text-xs font-bold text-emerald-200 hover:bg-emerald-500/20 disabled:opacity-50">{isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />} Enviar WhatsApp</button>
                 </div>
 
-                {charge.status === 'CREATING' ? <p className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-3 text-xs text-cyan-100">A cobrança está sendo gerada. Aguarde e atualize a tela antes de tentar novamente.</p> : <button onClick={refreshStatus} disabled={isWorking} className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 py-3 text-xs font-bold text-slate-300 hover:bg-white/10 disabled:opacity-50">{isWorking ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Atualizar status no Sicredi</button>}
+                {charge.status === 'CREATING' ? <div className="space-y-2"><p className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-3 text-xs text-cyan-100">A cobrança está sendo gerada. Se não concluir após dois minutos, use a recuperação abaixo.</p><button onClick={() => requestAuthorization('recover')} disabled={isWorking} className="flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-500/20 bg-cyan-500/10 py-3 text-xs font-bold text-cyan-100 hover:bg-cyan-500/20 disabled:opacity-50"><RefreshCw className="h-4 w-4" /> Recuperar geração</button></div> : <button onClick={refreshStatus} disabled={isWorking} className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 py-3 text-xs font-bold text-slate-300 hover:bg-white/10 disabled:opacity-50">{isWorking ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Atualizar status no Sicredi</button>}
 
                 {charge.status === 'PENDING' ? <button onClick={() => requestAuthorization('cancel')} disabled={isWorking} className="w-full rounded-xl border border-rose-500/20 bg-rose-500/10 py-3 text-xs font-bold text-rose-200 hover:bg-rose-500/20 disabled:opacity-50">Cancelar / alterar valor</button> : null}
                 {charge.status === 'EXPIRED' || charge.status === 'CANCELLED' ? <button onClick={reconcileBeforeNewCharge} disabled={isWorking} className="w-full rounded-xl border border-cyan-500/20 bg-cyan-500/10 py-3 text-xs font-bold text-cyan-100 hover:bg-cyan-500/20 disabled:opacity-50">Confirmar e gerar novo QR Code</button> : null}
@@ -269,10 +282,10 @@ export default function PixInstallmentChargeModal({
         isOpen={isAuthOpen}
         onClose={() => setIsAuthOpen(false)}
         onSuccess={handleAuthorized}
-        title={pendingOperation === 'cancel' ? 'Autorizar cancelamento do Pix' : 'Autorizar geração do Pix'}
+        title={pendingOperation === 'cancel' ? 'Autorizar cancelamento do Pix' : pendingOperation === 'recover' ? 'Autorizar recuperação do Pix' : 'Autorizar geração do Pix'}
         description="Insira seu PIN para continuar."
-        purpose={pendingOperation === 'cancel' ? 'pix_charge_cancel' : 'pix_charge_create'}
-        authorizationContext={pendingOperation === 'cancel' && charge
+        purpose={pendingOperation === 'cancel' ? 'pix_charge_cancel' : pendingOperation === 'recover' ? 'pix_charge_recover' : 'pix_charge_create'}
+        authorizationContext={(pendingOperation === 'cancel' || pendingOperation === 'recover') && charge
           ? String(charge.id)
           : createAuthorizationContext(installment.id, amount, interest, isPartial ? strategy : 'quitacao_total')}
       />
