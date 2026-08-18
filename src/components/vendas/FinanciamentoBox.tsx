@@ -16,6 +16,7 @@ import {
 import { sendInstallmentReceiptWhatsApp } from '@/lib/actions/manual-whatsapp.actions'
 import ParcelaSearchModal from '@/components/modals/ParcelaSearchModal'
 import ReverseInstallmentReceiptModal, { type ReversibleReceiptOperation } from '@/components/financeiro/ReverseInstallmentReceiptModal'
+import { getPixChargesForInstallments, type PixInstallmentCharge } from '@/lib/actions/pix-installment.actions'
 
 import { Database } from '@/lib/database.types'
 import { Calendar, ClipboardList, AlertTriangle, CheckCircle2, Wallet, DollarSign, X, RefreshCw, Trash2, Calculator, Loader2, MessageCircle, Printer, RotateCcw } from 'lucide-react'
@@ -232,6 +233,7 @@ export default function FinanciamentoBox({
     const [selectedParcela, setSelectedParcela] = useState<FinanciamentoParcela | null>(null)
     const [parcelaAtalho, setParcelaAtalho] = useState<FinanciamentoParcela | null>(null)
     const [isParcelaSearchModalOpen, setIsParcelaSearchModalOpen] = useState(false)
+    const [pixCharges, setPixCharges] = useState<Record<number, PixInstallmentCharge>>({})
     const [sendingReceiptInstallmentId, setSendingReceiptInstallmentId] = useState<number | null>(null)
     const [sentReceiptInstallmentIds, setSentReceiptInstallmentIds] = useState<number[]>([])
     const [receiptToReverse, setReceiptToReverse] = useState<{
@@ -262,6 +264,7 @@ export default function FinanciamentoBox({
         )
     const recebimentosDoCarne = receiptOperations.filter((operation) => operation.state === 'completed' && !operation.reversed_at)
     const parcelasPorId = new Map((financiamento?.financiamento_parcelas || []).map((parcela) => [parcela.id, parcela]))
+    const installmentIdsKey = (financiamento?.financiamento_parcelas || []).map((parcela) => parcela.id).join(',')
     const recebidoAntesPorParcela = new Map<number, number>()
     const recebimentosPorParcela = new Map<number, Array<{ valor: number; saldoAntes: number; data: string; forma: string; transferido: number }>>()
     for (const operation of [...recebimentosDoCarne].sort((a, b) => String(a.received_on).localeCompare(String(b.received_on)) || a.id - b.id)) {
@@ -300,6 +303,25 @@ export default function FinanciamentoBox({
             setValorFinanciadoStr(formatCurrency(financiamento?.valor_total_financiado));
         }
     }, [valorRestante, isFinanced, financiamento, isDeletedLocally])
+
+    useEffect(() => {
+        let active = true
+        const installmentIds = (financiamento?.financiamento_parcelas || []).map((parcela) => Number(parcela.id))
+        if (!isFinanced || !installmentIds.length) {
+            setPixCharges({})
+            return () => { active = false }
+        }
+
+        void getPixChargesForInstallments(storeId, installmentIds)
+            .then((charges) => {
+                if (active) setPixCharges(charges)
+            })
+            .catch(() => {
+                if (active) setPixCharges({})
+            })
+
+        return () => { active = false }
+    }, [financiamento?.id, installmentIdsKey, isFinanced, storeId])
 
     useEffect(() => {
         if (!financiamento && isDeletedLocally) {
@@ -496,6 +518,8 @@ export default function FinanciamentoBox({
                             const recibosDaParcela = recebimentosPorParcela.get(p.id) || []
                             const valorAReceber = recibosDaParcela[0]?.saldoAntes ?? valorRestante
                             const isAtrasado = !isPago && new Date(p.data_vencimento) < new Date(new Date().setHours(0, 0, 0, 0));
+                            const pixCharge = pixCharges[Number(p.id)]
+                            const hasActivePix = pixCharge?.status === 'CREATING' || pixCharge?.status === 'PENDING'
                             return (
                                 <div key={p.id} className={`grid min-w-[820px] grid-cols-[42px_minmax(160px,1fr)_145px_190px_230px] items-center gap-2 p-3 hover:bg-white/5 transition-colors ${isPago ? 'bg-green-500/5' : ''}`}>
                                     <div className="contents">
@@ -578,7 +602,7 @@ export default function FinanciamentoBox({
                                                 disabled={disabled || isQuitado}
                                                 className="px-3 py-1.5 bg-amber-500/20 text-amber-400 text-[10px] font-bold rounded-lg hover:bg-amber-500/30 border border-amber-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-amber-900/20"
                                             >
-                                                RECEBER
+                                                {hasActivePix ? 'VER PIX' : 'OPÇÕES'}
                                             </button>
                                         )}
                                     </div>

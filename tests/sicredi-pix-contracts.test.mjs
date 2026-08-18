@@ -43,6 +43,6 @@ test('cobranca Pix exige autorizacao, evita duplicidade e confere o Sicredi ante
   assert.match(modal, /const authorizationToken = employee\.authorization_token/)
   assert.match(modal, /authorizationToken,/)
   assert.match(parcelasActions, /anexarStatusPix/)
-  assert.match(parcelas, /Aguardando pagamento Pix/)
+  assert.match(parcelas, /QR Code gerado/)
   assert.match(parcelas, /Quitado por Pix Sicredi/)
 })

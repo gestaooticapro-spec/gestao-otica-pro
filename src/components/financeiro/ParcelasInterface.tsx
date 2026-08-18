@@ -134,7 +134,7 @@ export default function ParcelasInterface({ storeId, reportMode = false }: { sto
             : charge.status === 'PAID'
                 ? { label: 'Pix pago · baixa pendente', className: 'border-amber-500/20 bg-amber-500/10 text-amber-300' }
                 : charge.status === 'PENDING'
-                    ? { label: 'Aguardando pagamento Pix', className: 'border-cyan-500/20 bg-cyan-500/10 text-cyan-300' }
+                    ? { label: 'QR Code gerado', className: 'border-cyan-500/20 bg-cyan-500/10 text-cyan-300' }
                     : charge.status === 'CREATING'
                         ? { label: 'Gerando Pix', className: 'border-cyan-500/20 bg-cyan-500/10 text-cyan-300' }
                         : charge.status === 'EXPIRED'
