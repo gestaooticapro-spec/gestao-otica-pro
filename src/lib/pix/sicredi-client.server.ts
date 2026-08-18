@@ -303,7 +303,14 @@ export async function createSicrediImmediateCharge(input: {
     valor: { original: input.amount.toFixed(2), modalidadeAlteracao: 0 },
     chave: input.pixKey.trim(),
     solicitacaoPagador: input.payerRequest.slice(0, 140),
-    ...(input.additionalInfo?.length ? { infoAdicionais: input.additionalInfo } : {}),
+    ...(input.additionalInfo?.length
+      ? {
+          infoAdicionais: input.additionalInfo.map((item) => ({
+            nome: item.name,
+            valor: item.value,
+          })),
+        }
+      : {}),
   })
 
   return parseImmediateCharge(response)

@@ -409,14 +409,21 @@ export async function createPixInstallmentCharge(input: z.input<typeof CreateCha
 
       revalidateInstallmentPaths(data.storeId)
       return { success: true, data: serializeCharge(inserted) }
-    } catch {
+    } catch (error) {
       try {
         if (charge) await cancelSicrediImmediateCharge(charge.txid)
       } catch {
         // A cobranca remota pode precisar ser cancelada manualmente pelo suporte.
       }
+      const safeError = error instanceof Error
+        ? error.message.slice(0, 500)
+        : 'Erro desconhecido durante a geracao da cobranca Pix.'
       await pixChargesTable(admin)
-        .update({ status: 'ERROR', updated_at: new Date().toISOString(), provider_response: { reservation: false, error: 'Falha durante a geracao da cobranca Pix.' } })
+        .update({
+          status: 'ERROR',
+          updated_at: new Date().toISOString(),
+          provider_response: { reservation: false, error: safeError },
+        })
         .eq('id', reservation.id)
       throw new Error('Nao foi possivel concluir a geracao da cobranca Pix. Se uma cobranca remota foi criada, tentamos cancela-la automaticamente; confira o status antes de tentar novamente.')
     }
