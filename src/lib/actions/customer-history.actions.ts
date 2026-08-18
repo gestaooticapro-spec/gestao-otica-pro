@@ -128,11 +128,12 @@ export async function searchCustomersQuick(
 // =============================================
 export async function getCustomerFinancialSummary(
     customerId: number,
-    storeId: number
+    storeId: number,
+    financingIds?: number[]
 ): Promise<FinancialSummary> {
     const supabaseAdmin = createAdminClient()
 
-    const { data: financiamentos, error } = await (supabaseAdmin
+    let financingQuery = (supabaseAdmin
         .from('financiamento_loja') as any)
         .select(`
             *,
@@ -141,6 +142,13 @@ export async function getCustomerFinancialSummary(
         `)
         .eq('customer_id', customerId)
         .eq('store_id', storeId)
+    const normalizedFinancingIds = (financingIds || [])
+        .map(Number)
+        .filter((id) => Number.isSafeInteger(id) && id > 0)
+    if (normalizedFinancingIds.length > 0) {
+        financingQuery = financingQuery.in('id', normalizedFinancingIds)
+    }
+    const { data: financiamentos, error } = await financingQuery
         .order('created_at', { ascending: false })
 
     if (error) {

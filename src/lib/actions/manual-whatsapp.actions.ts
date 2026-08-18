@@ -31,6 +31,7 @@ export type ManualWhatsAppMessageType =
   | 'assistance_update'
   | 'service_order'
   | 'customer_history'
+  | 'pix_charge'
   | 'document_link'
   | 'document_attachment'
 
@@ -82,6 +83,7 @@ export type SendSalePaymentReceiptWhatsAppInput = {
 export type SendCustomerFinancialSummaryWhatsAppInput = {
   storeId: number
   customerId: number
+  financingIds?: number[]
 }
 
 export type SendCustomerPrescriptionSummaryWhatsAppInput = {
@@ -728,7 +730,7 @@ export async function sendCustomerFinancialSummaryWhatsApp(
       }
     }
 
-    const financialData = await getCustomerFinancialSummary(customerId, storeId)
+    const financialData = await getCustomerFinancialSummary(customerId, storeId, input.financingIds)
     if (!financialData || financialData.totais.totalParcelas === 0) {
       return {
         success: false,
