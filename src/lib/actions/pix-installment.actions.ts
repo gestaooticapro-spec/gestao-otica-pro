@@ -34,6 +34,8 @@ export type PixInstallmentCharge = {
   expiresAt: string | null
   createdAt: string
   paidAt: string | null
+  settlementStatus: 'PENDING' | 'COMPLETED' | 'ERROR'
+  settledAt: string | null
 }
 
 type ActionResult<T = undefined> = { success: true; data: T } | { success: false; message: string }
@@ -77,6 +79,8 @@ function serializeCharge(row: any): PixInstallmentCharge {
     expiresAt: typeof row.expires_at === 'string' ? row.expires_at : null,
     createdAt: String(row.created_at),
     paidAt: typeof row.paid_at === 'string' ? row.paid_at : null,
+    settlementStatus: (row.settlement_status || 'PENDING') as PixInstallmentCharge['settlementStatus'],
+    settledAt: typeof row.settled_at === 'string' ? row.settled_at : null,
   }
 }
 
@@ -189,7 +193,98 @@ async function reconcileChargeWithSicredi(admin: any, row: any) {
     .select('*')
     .single()
   if (error || !updated) throw new Error('Nao foi possivel atualizar o status da cobranca Pix.')
+  if (status === 'PAID') return settleConfirmedPixCharge(admin, updated)
   return updated
+}
+
+async function settleConfirmedPixCharge(admin: any, row: any) {
+  if (row.status !== 'PAID' || row.settlement_status === 'COMPLETED') return row
+  if (!row.created_by_employee_id) {
+    throw new Error('A cobranca Pix nao possui funcionario responsavel para registrar a baixa.')
+  }
+
+  const receivedAmount = Number(row.amount)
+  const interestAmount = Number(row.interest_amount || 0)
+  const idempotencyKey = String(row.settlement_idempotency_key || '')
+  if (!idempotencyKey) throw new Error('A cobranca Pix nao possui chave de idempotencia para a baixa.')
+
+  const { data: result, error: settlementError } = await admin.rpc('receive_installment_payment', {
+    p_installment_id: Number(row.installment_id),
+    p_sale_id: Number(row.venda_id),
+    p_store_id: Number(row.store_id),
+    p_employee_id: Number(row.created_by_employee_id),
+    p_user_id: row.created_by_user_id || null,
+    p_tenant_id: row.tenant_id,
+    p_received_amount: receivedAmount,
+    p_interest_amount: interestAmount,
+    p_received_on: new Date().toISOString().slice(0, 10),
+    p_strategy: row.strategy,
+    p_receipts: {
+      idempotency_key: idempotencyKey,
+      items: [{ forma_pagamento: 'Pix Sicredi', valor: receivedAmount }],
+    },
+  })
+
+  if (settlementError || !result) {
+    const safeError = String(settlementError?.message || 'Nao foi possivel registrar a baixa automatica.').slice(0, 500)
+    await pixChargesTable(admin)
+      .update({
+        settlement_status: 'ERROR',
+        provider_response: { ...(row.provider_response || {}), settlement_error: safeError },
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', row.id)
+    throw new Error('Pagamento confirmado, mas nao foi possivel concluir a baixa automatica. A cobranca ficou marcada para reprocessamento.')
+  }
+
+  const operationId = result.operation_id ? Number(result.operation_id) : null
+  const { data: settled, error: settledError } = await pixChargesTable(admin)
+    .update({
+      settlement_status: 'COMPLETED',
+      settlement_operation_id: operationId,
+      settled_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', row.id)
+    .select('*')
+    .single()
+  if (settledError || !settled) throw new Error('Baixa concluida, mas nao foi possivel finalizar o controle da cobranca Pix.')
+  return settled
+}
+
+function extractWebhookTxids(payload: unknown) {
+  const candidates = Array.isArray(payload)
+    ? payload
+    : payload && typeof payload === 'object' && Array.isArray((payload as { pix?: unknown[] }).pix)
+      ? (payload as { pix: unknown[] }).pix
+      : [payload]
+
+  return Array.from(new Set(candidates
+    .map((item) => item && typeof item === 'object' ? String((item as { txid?: unknown }).txid || '').trim() : '')
+    .filter(Boolean)))
+}
+
+export async function processSicrediPixWebhookPayload(payload: unknown) {
+  const txids = extractWebhookTxids(payload)
+  if (txids.length === 0) return { processed: 0, ignored: 0 }
+
+  const admin = createAdminClient()
+  let processed = 0
+  let ignored = 0
+  for (const txid of txids) {
+    const { data: row, error } = await pixChargesTable(admin)
+      .select('*')
+      .eq('txid', txid)
+      .maybeSingle()
+    if (error) throw error
+    if (!row) {
+      ignored += 1
+      continue
+    }
+    await reconcileChargeWithSicredi(admin, row)
+    processed += 1
+  }
+  return { processed, ignored }
 }
 
 function getSicrediPixKey() {

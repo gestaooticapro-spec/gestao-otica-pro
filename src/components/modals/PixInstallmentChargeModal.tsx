@@ -35,8 +35,10 @@ const createAuthorizationContext = (installmentId: number, amount: number, inter
   `${installmentId}:${amount.toFixed(2)}:${interestAmount.toFixed(2)}:${strategy}`
 )
 
-function statusLabel(status: PixInstallmentCharge['status']) {
-  return ({ CREATING: 'Gerando cobrança', PENDING: 'Aguardando pagamento', PAID: 'Pago — aguardando baixa', EXPIRED: 'Expirado', CANCELLED: 'Cancelado', DIVERGENT: 'Divergente', ERROR: 'Com erro' } as const)[status]
+function statusLabel(charge: PixInstallmentCharge) {
+  if (charge.status === 'PAID' && charge.settlementStatus === 'COMPLETED') return 'Pago e baixado'
+  if (charge.status === 'PAID') return 'Pago — baixa pendente'
+  return ({ CREATING: 'Gerando cobrança', PENDING: 'Aguardando pagamento', EXPIRED: 'Expirado', CANCELLED: 'Cancelado', DIVERGENT: 'Divergente', ERROR: 'Com erro' } as const)[charge.status]
 }
 
 export default function PixInstallmentChargeModal({
@@ -180,7 +182,7 @@ export default function PixInstallmentChargeModal({
         return
       }
       updateCharge(result.data)
-      toast.success(`Status atualizado: ${statusLabel(result.data.status)}.`)
+      toast.success(`Status atualizado: ${statusLabel(result.data)}.`)
     })
   }
 
@@ -198,7 +200,9 @@ export default function PixInstallmentChargeModal({
         return
       }
       if (result.data.status === 'PAID') {
-        toast.error('Esta cobrança foi paga. Faça a baixa manual antes de gerar outro QR Code.')
+        toast.error(result.data.settlementStatus === 'COMPLETED'
+          ? 'Esta cobrança já foi paga e baixada.'
+          : 'Esta cobrança foi paga, mas a baixa ainda precisa ser concluída.')
         return
       }
       resetChargeForm()
@@ -238,7 +242,7 @@ export default function PixInstallmentChargeModal({
                 <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 text-center">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Valor da cobrança</p>
                   <p className="mt-1 text-4xl font-black text-white">R$ {money(charge.amount)}</p>
-                  <p className={`mt-3 text-xs font-bold ${charge.status === 'PENDING' ? 'text-amber-300' : charge.status === 'PAID' ? 'text-emerald-300' : 'text-slate-400'}`}>{statusLabel(charge.status)}</p>
+                  <p className={`mt-3 text-xs font-bold ${charge.status === 'PENDING' ? 'text-amber-300' : charge.status === 'PAID' ? 'text-emerald-300' : 'text-slate-400'}`}>{statusLabel(charge)}</p>
                   {expiresAt && charge.status === 'PENDING' ? <p className="mt-1 text-[10px] text-slate-500">Válido até {expiresAt}</p> : null}
                 </div>
 
@@ -254,11 +258,11 @@ export default function PixInstallmentChargeModal({
                   <button onClick={() => void sendWhatsApp()} disabled={isSending || charge.status !== 'PENDING'} className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-3 text-xs font-bold text-emerald-200 hover:bg-emerald-500/20 disabled:opacity-50">{isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />} Enviar WhatsApp</button>
                 </div>
 
-                {charge.status === 'CREATING' ? <div className="space-y-2"><p className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-3 text-xs text-cyan-100">A cobrança está sendo gerada. Se não concluir após dois minutos, use a recuperação abaixo.</p><button onClick={() => requestAuthorization('recover')} disabled={isWorking} className="flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-500/20 bg-cyan-500/10 py-3 text-xs font-bold text-cyan-100 hover:bg-cyan-500/20 disabled:opacity-50"><RefreshCw className="h-4 w-4" /> Recuperar geração</button></div> : <button onClick={refreshStatus} disabled={isWorking} className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 py-3 text-xs font-bold text-slate-300 hover:bg-white/10 disabled:opacity-50">{isWorking ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Atualizar status no Sicredi</button>}
+                {charge.status === 'CREATING' ? <div className="space-y-2"><p className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-3 text-xs text-cyan-100">A cobrança está sendo gerada. Se não concluir após dois minutos, use a recuperação abaixo.</p><button onClick={() => requestAuthorization('recover')} disabled={isWorking} className="flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-500/20 bg-cyan-500/10 py-3 text-xs font-bold text-cyan-100 hover:bg-cyan-500/20 disabled:opacity-50"><RefreshCw className="h-4 w-4" /> Recuperar geração</button></div> : <button onClick={refreshStatus} disabled={isWorking} className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 py-3 text-xs font-bold text-slate-300 hover:bg-white/10 disabled:opacity-50">{isWorking ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Atualizar status e baixa</button>}
 
                 {charge.status === 'PENDING' ? <button onClick={() => requestAuthorization('cancel')} disabled={isWorking} className="w-full rounded-xl border border-rose-500/20 bg-rose-500/10 py-3 text-xs font-bold text-rose-200 hover:bg-rose-500/20 disabled:opacity-50">Cancelar / alterar valor</button> : null}
                 {charge.status === 'EXPIRED' || charge.status === 'CANCELLED' ? <button onClick={reconcileBeforeNewCharge} disabled={isWorking} className="w-full rounded-xl border border-cyan-500/20 bg-cyan-500/10 py-3 text-xs font-bold text-cyan-100 hover:bg-cyan-500/20 disabled:opacity-50">Confirmar e gerar novo QR Code</button> : null}
-                {charge.status === 'PAID' ? <p className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-200">O pagamento foi confirmado no Sicredi. A baixa automática será incluída na próxima etapa; por enquanto, use a baixa manual conferindo o valor.</p> : null}
+                {charge.status === 'PAID' && charge.settlementStatus !== 'COMPLETED' ? <p className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-200">O pagamento foi confirmado no Sicredi, mas a baixa ainda não foi concluída. Use “Atualizar status e baixa” para reprocessar com segurança.</p> : null}
               </>
             ) : (
               <>
