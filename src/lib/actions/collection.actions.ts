@@ -7,6 +7,7 @@ import { Database } from '@/lib/database.types'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { isStoreModuleEnabledForStore } from '@/lib/store-modules.server'
+import { getInstallmentOutstanding } from '@/lib/installment-balance'
 
 // --- Tipos ---
 export type DevedorResumo = {
@@ -48,10 +49,13 @@ export async function getInadimplentes(storeId: number, filtro: 'cobrar' | 'ja_c
             .select(`
                 id,
                 valor_parcela,
+                valor_pago,
+                valor_transferido_entrada,
+                valor_transferido_saida,
                 data_vencimento,
                 customer_id,
                 status,
-                financiamento_loja ( venda_id ), 
+                financiamento_loja ( venda_id, vendas!financiamento_loja_venda_id_fkey ( status ) ),
                 customers!inner ( id, full_name, fone_movel, is_spc, cobranca_status )
             `)
             .eq('store_id', storeId)
@@ -73,11 +77,14 @@ export async function getInadimplentes(storeId: number, filtro: 'cobrar' | 'ja_c
         }
 
         if (!data) return []
+        const parcelasDeVendasAtivas = data.filter((parcela: any) =>
+            String(parcela.financiamento_loja?.vendas?.status || '').toLowerCase() !== 'cancelada'
+        )
 
         // PÓS-PROCESSAMENTO PARA FILTROS (Proxima Ação e Status)
 
         // 1. Busca todos historicos recentes desses clientes para saber a próxima ação
-        const clienteIds = Array.from(new Set(data.map((p: any) => p.customer_id))) as number[]
+        const clienteIds = Array.from(new Set(parcelasDeVendasAtivas.map((p: any) => p.customer_id))) as number[]
 
         if (clienteIds.length === 0) return []
 
@@ -101,7 +108,7 @@ export async function getInadimplentes(storeId: number, filtro: 'cobrar' | 'ja_c
 
         const mapaClientes = new Map<number, DevedorResumo>()
 
-        data.forEach((parcela: any) => {
+        parcelasDeVendasAtivas.forEach((parcela: any) => {
             const cust = parcela.customers
             if (!cust) return;
 
@@ -146,7 +153,7 @@ export async function getInadimplentes(storeId: number, filtro: 'cobrar' | 'ja_c
             }
 
             const current = mapaClientes.get(cust.id)!
-            current.total_atrasado += parcela.valor_parcela
+            current.total_atrasado += getInstallmentOutstanding(parcela)
             current.quantidade_parcelas_atrasadas += 1
 
             if (diffDays > current.dias_atraso) current.dias_atraso = diffDays
@@ -342,6 +349,9 @@ export async function getDetalhesDivida(customerId: number, storeId: number) {
                     numero_parcela,
                     data_vencimento,
                     valor_parcela,
+                    valor_pago,
+                    valor_transferido_entrada,
+                    valor_transferido_saida,
                     status,
                     data_pagamento
                 )
@@ -401,7 +411,7 @@ export async function getRetornosDeHoje(storeId: number): Promise<RetornoCobranc
         const customerIds = retornosFiltrados.map((item: any) => item.customer_id)
 
         const { data: parcelasPendentes } = await (supabaseAdmin.from('financiamento_parcelas') as any)
-            .select('customer_id')
+            .select('customer_id, financiamento_loja ( vendas!financiamento_loja_venda_id_fkey ( status ) )')
             .eq('store_id', storeId)
             .eq('status', 'Pendente')
             .gt('valor_parcela', 0.01)
@@ -409,7 +419,9 @@ export async function getRetornosDeHoje(storeId: number): Promise<RetornoCobranc
 
         // Set com IDs de clientes que AINDA devem
         const clientesDevedores = new Set(
-            (parcelasPendentes || []).map((p: any) => p.customer_id)
+            (parcelasPendentes || [])
+                .filter((p: any) => String(p.financiamento_loja?.vendas?.status || '').toLowerCase() !== 'cancelada')
+                .map((p: any) => p.customer_id)
         )
 
         return retornosFiltrados

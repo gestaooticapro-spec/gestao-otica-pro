@@ -26,6 +26,7 @@ type Venda = Database['public']['Tables']['vendas']['Row']
 type VendaItem = Database['public']['Tables']['venda_itens']['Row']
 type ServiceOrder = Database['public']['Tables']['service_orders']['Row']
 type Pagamento = Database['public']['Tables']['pagamentos']['Row']
+type ReceiptOperation = { id: number; origin_installment_id: number; received_amount: number; payment_method: string; received_on: string; state: string; reversed_at?: string | null }
 type Financiamento = Database['public']['Tables']['financiamento_loja']['Row']
 type FinanciamentoParcela = Database['public']['Tables']['financiamento_parcelas']['Row']
 type Employee = Database['public']['Tables']['employees']['Row']
@@ -38,6 +39,7 @@ interface VendaInterfaceProps {
     vendaItens: VendaItem[]
     serviceOrders: ServiceOrder[]
     pagamentos: Pagamento[]
+    receiptOperations?: ReceiptOperation[]
     financiamento: (Financiamento & { financiamento_parcelas: FinanciamentoParcela[] }) | null
     // Lentes, Armações, Tratamentos não são usados diretamente aqui, mas vêm da props
     lentes: any[]
@@ -50,7 +52,7 @@ interface VendaInterfaceProps {
 
 export default function VendaInterface({
     venda, customer, employee, vendaItens, serviceOrders,
-    pagamentos, financiamento, isQuitado, isVendaFechadaOuCancelada, onDataReload
+    pagamentos, receiptOperations = [], financiamento, isQuitado, isVendaFechadaOuCancelada, onDataReload
 }: VendaInterfaceProps) {
 
     const router = useRouter()
@@ -184,7 +186,7 @@ export default function VendaInterface({
 
                         {modules.installments && activeTab === 'carne' && (
                             <div className="space-y-3">
-                                <FinanciamentoBox financiamento={financiamento} vendaId={venda.id} customerId={venda.customer_id} customer={customer} storeId={venda.store_id} employeeId={employeeIdFinanceiro} valorRestante={venda.valor_restante ?? 0} onFinanceAdded={onDataReload} disabled={isVendaFechadaOuCancelada} isQuitado={isQuitado} whatsappReceiptEnabled={false} />
+                                <FinanciamentoBox financiamento={financiamento} receiptOperations={receiptOperations} pagamentos={pagamentos} vendaId={venda.id} customerId={venda.customer_id} customer={customer} storeId={venda.store_id} employeeId={employeeIdFinanceiro} valorRestante={venda.valor_restante ?? 0} onFinanceAdded={onDataReload} disabled={isVendaFechadaOuCancelada} isQuitado={isQuitado} whatsappReceiptEnabled={false} />
                             </div>
                         )}
                     </div>

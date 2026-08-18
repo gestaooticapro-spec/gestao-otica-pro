@@ -12,13 +12,22 @@ interface DegreeInputProps {
 
 export function DegreeInput({ name, value, onChange, placeholder, className }: DegreeInputProps) {
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        let raw = e.target.value.replace(/\D/g, '')
+        const inputValue = e.target.value
+        const raw = inputValue.replace(/\D/g, '')
+        const insertedSign = (e.nativeEvent as InputEvent).data
+        const sign = insertedSign === '-' || insertedSign === '+'
+            ? insertedSign
+            : inputValue.includes('-') && !inputValue.includes('+')
+                ? '-'
+                : inputValue.includes('+') && !inputValue.includes('-')
+                    ? '+'
+                    : value.includes('-') ? '-' : '+'
         if (!raw) {
-            onChange('')
+            onChange(sign === '-' ? '-' : '')
             return
         }
         const val = parseInt(raw, 10) / 100
-        const isNegative = value.includes('-')
+        const isNegative = sign === '-'
         const formatted = val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
         const finalValue = isNegative ? `-${formatted}` : `+${formatted}`
         onChange(finalValue)
@@ -49,8 +58,18 @@ export function DegreeInput({ name, value, onChange, placeholder, className }: D
     return (
         <input
             name={name}
+            type="text"
+            inputMode="text"
             value={value}
             onChange={handleChange}
+            onBeforeInput={(e) => {
+                const sign = (e.nativeEvent as InputEvent).data
+                if (sign === '-' || sign === '+') {
+                    e.preventDefault()
+                    const cleanValue = value.replace(/[+-]/g, '')
+                    onChange(cleanValue ? `${sign}${cleanValue}` : sign)
+                }
+            }}
             onFocus={() => {
                 if (name?.toLowerCase().includes('cilindrico') && !value.trim()) onChange('-')
             }}

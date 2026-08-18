@@ -33,6 +33,7 @@ export default async function VendaPage(props: Props) {
     employee, 
     vendaItens, 
     pagamentos, 
+    receiptOperations,
     serviceOrders, 
     financiamento,
     lentes,
@@ -56,6 +57,7 @@ export default async function VendaPage(props: Props) {
       vendaItens={vendaItens}
       serviceOrders={serviceOrders}
       pagamentos={pagamentos}
+      receiptOperations={receiptOperations}
       financiamento={financiamento}
       lentes={lentes || []}
       armacoes={armacoes || []}

@@ -8,7 +8,7 @@ import Link from 'next/link'
 import {
     ShoppingBag, DollarSign, FileText, User,
     Briefcase, Wrench, ArrowLeft, Plus, X, Save, Loader2, UserPlus, Stethoscope,
-    ChevronLeft, ChevronRight, ChevronDown, ChevronUp
+    ChevronLeft, ChevronRight, ChevronDown, ChevronUp, CalendarDays
 } from 'lucide-react'
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 
@@ -34,10 +34,13 @@ import { StoreSettings } from '@/lib/store-modules'
 
 import { Database } from '@/lib/database.types'
 
-type Venda = Database['public']['Tables']['vendas']['Row']
+type Venda = Database['public']['Tables']['vendas']['Row'] & {
+    data_fechamento?: string | null
+}
 type VendaItem = Database['public']['Tables']['venda_itens']['Row']
 type ServiceOrder = Database['public']['Tables']['service_orders']['Row']
 type Pagamento = Database['public']['Tables']['pagamentos']['Row']
+type ReceiptOperation = { id: number; origin_installment_id: number; received_amount: number; payment_method: string; received_on: string; state: string; reversed_at?: string | null }
 type Financiamento = Database['public']['Tables']['financiamento_loja']['Row']
 type FinanciamentoParcela = Database['public']['Tables']['financiamento_parcelas']['Row']
 type Employee = Database['public']['Tables']['employees']['Row']
@@ -48,6 +51,23 @@ type ServiceOrderWithLinks = ServiceOrder & {
     links?: { venda_item_id: number; uso_na_os: string }[]
 }
 
+const formatVendaDate = (dateValue: string | null | undefined, withTime = false) => {
+    if (!dateValue) return null
+
+    if (!withTime && dateValue.length === 10 && dateValue.includes('-')) {
+        const [year, month, day] = dateValue.split('-')
+        return `${day}/${month}/${year}`
+    }
+
+    return new Intl.DateTimeFormat('pt-BR', withTime
+        ? { dateStyle: 'short', timeStyle: 'short' }
+        : { dateStyle: 'short' }
+    ).format(new Date(dateValue))
+}
+
+const formatVendaCurrency = (value: number | null | undefined) =>
+    Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
 interface VendaInterfaceProps {
     venda: Venda
     customer: Customer | null
@@ -55,6 +75,7 @@ interface VendaInterfaceProps {
     vendaItens: VendaItem[]
     serviceOrders: ServiceOrderWithLinks[]
     pagamentos: Pagamento[]
+    receiptOperations?: ReceiptOperation[]
     financiamento: (Financiamento & { financiamento_parcelas: FinanciamentoParcela[] }) | null
     storeSettings: StoreSettings
     dependentes: Dependente[]
@@ -728,7 +749,7 @@ function SingleServiceOrderCard({
 
 export default function VendaInterfaceExperimental({
     venda, customer, employee, vendaItens, serviceOrders,
-    pagamentos, financiamento, storeSettings, dependentes, oftalmologistas, employees, isQuitado, isVendaFechadaOuCancelada, onDataReload, initialCatalogLens = null
+    pagamentos, receiptOperations = [], financiamento, storeSettings, dependentes, oftalmologistas, employees, isQuitado, isVendaFechadaOuCancelada, onDataReload, initialCatalogLens = null
 }: VendaInterfaceProps) {
 
     const router = useRouter()
@@ -783,6 +804,12 @@ export default function VendaInterfaceExperimental({
     const singleServiceOrder = serviceOrders[singleOSIndex] || serviceOrders[0]
     const showSingleOSCard = isSingleOSMode && (!!singleServiceOrder || isSingleOSDraftOpen)
     const canLaunchSingleOS = isSingleOSMode && !singleServiceOrder && !isSingleOSDraftOpen && !isVendaFechadaOuCancelada
+    const parcelasOrdenadas = [...(financiamento?.financiamento_parcelas || [])]
+        .sort((a, b) => String(a.data_vencimento || '').localeCompare(String(b.data_vencimento || '')) || a.id - b.id)
+    const proximaParcela = parcelasOrdenadas.find((parcela) => parcela.status !== 'Pago') || null
+    const ultimoPagamento = [...pagamentos]
+        .filter((pagamento) => pagamento.data_pagamento)
+        .sort((a, b) => String(b.data_pagamento).localeCompare(String(a.data_pagamento)) || b.id - a.id)[0] || null
 
     useEffect(() => {
         if (!modules.installments && activeModal === 'parcelamento') {
@@ -954,6 +981,39 @@ export default function VendaInterfaceExperimental({
             <div className="relative z-10 flex-1 overflow-y-auto custom-scrollbar p-4">
                 <div className="max-w-5xl mx-auto w-full space-y-4">
 
+                    <section className="overflow-hidden rounded-2xl border border-cyan-400/20 bg-cyan-500/5 shadow-lg shadow-cyan-950/10">
+                        <div className="flex items-center gap-2 border-b border-cyan-400/15 bg-cyan-500/10 px-4 py-2">
+                            <CalendarDays className="h-4 w-4 text-cyan-300" />
+                            <h2 className="text-[11px] font-black uppercase tracking-[0.18em] text-cyan-100">Linha do tempo da venda</h2>
+                        </div>
+                        <div className="grid grid-cols-2 divide-x divide-y divide-white/5 sm:grid-cols-5 sm:divide-y-0">
+                            <div className="px-4 py-3">
+                                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Venda criada</p>
+                                <p className="mt-1 text-xs font-semibold text-slate-200">{formatVendaDate(venda.created_at, true)}</p>
+                            </div>
+                            <div className="px-4 py-3">
+                                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Fechamento</p>
+                                <p className="mt-1 text-xs font-semibold text-slate-200">{formatVendaDate(venda.data_fechamento, true) || 'Em aberto'}</p>
+                            </div>
+                            <div className="px-4 py-3">
+                                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Início do carnê</p>
+                                <p className="mt-1 text-xs font-semibold text-slate-200">{formatVendaDate(financiamento?.data_inicio) || 'Sem carnê'}</p>
+                            </div>
+                            <div className="px-4 py-3">
+                                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Próximo vencimento</p>
+                                <p className="mt-1 text-xs font-semibold text-slate-200">
+                                    {proximaParcela ? `Parc. ${proximaParcela.numero_parcela} · ${formatVendaDate(proximaParcela.data_vencimento)}` : financiamento ? 'Carnê quitado' : '—'}
+                                </p>
+                            </div>
+                            <div className="col-span-2 px-4 py-3 sm:col-span-1">
+                                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Último recebimento</p>
+                                <p className="mt-1 text-xs font-semibold text-emerald-300">
+                                    {ultimoPagamento ? `${formatVendaDate(ultimoPagamento.data_pagamento)} · ${formatVendaCurrency(ultimoPagamento.valor_pago)}` : 'Sem recebimento'}
+                                </p>
+                            </div>
+                        </div>
+                    </section>
+
                     {savedObsGeral && (
                         <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-amber-100 shadow-lg shadow-amber-950/10">
                             <div className="mb-1 text-[10px] font-black uppercase tracking-[0.18em] text-amber-300">
@@ -1089,6 +1149,8 @@ export default function VendaInterfaceExperimental({
                             {financiamento ? (
                                 <FinanciamentoBox
                                     financiamento={financiamento}
+                                    receiptOperations={receiptOperations}
+                                    pagamentos={pagamentos}
                                     vendaId={venda.id}
                                     customerId={venda.customer_id}
                                     customer={customer}
@@ -1206,6 +1268,8 @@ export default function VendaInterfaceExperimental({
             >
                 <FinanciamentoBox
                     financiamento={financiamento}
+                    receiptOperations={receiptOperations}
+                    pagamentos={pagamentos}
                     vendaId={venda.id}
                     customerId={venda.customer_id}
                     customer={customer}

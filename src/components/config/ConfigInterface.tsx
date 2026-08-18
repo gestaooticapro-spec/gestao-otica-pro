@@ -16,6 +16,7 @@ import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/Backg
 import dynamic from 'next/dynamic';
 import { StoreSettings as SharedStoreSettings, getStoreModules } from '@/lib/store-modules';
 import { getStoreLogoPublicUrl } from '@/lib/store-logo';
+import { isSicrediPilotStoreCnpj } from '@/lib/pix/sicredi-availability';
 import {
     getStoreAccessAccounts,
     updateStoreAccessPassword,
@@ -658,6 +659,8 @@ function ResourcesForm({ storeId }: { storeId: number }) {
     const serviceOrderMode = data?.settings?.service_order_mode === 'single' ? 'single' : 'multiple'
     const lensSaleUnitMode = data?.settings?.lens_sale_unit_mode === true
     const localProtocolEnabled = data?.settings?.local_protocol_enabled === true
+    const canUseSicredi = isSicrediPilotStoreCnpj(data?.cnpj)
+    const pixProvider = canUseSicredi && data?.settings?.pix_provider === 'sicredi' ? 'sicredi' : 'manual'
 
     useEffect(() => {
         getStoreProfile(storeId).then(res => {
@@ -840,6 +843,25 @@ function ResourcesForm({ storeId }: { storeId: number }) {
                             </label>
                         )
                     })}
+                </div>
+
+                <div className="mt-4 rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <p className="text-sm font-black uppercase tracking-[0.15em] text-cyan-300">Recebimento Pix</p>
+                            <p className="mt-1 text-xs text-slate-400">Define se a loja apenas registra Pix manualmente ou pode gerar cobranças dinâmicas pelo Sicredi.</p>
+                        </div>
+                            <select
+                            value={pixProvider}
+                            onChange={(event) => handleSettingChange('pix_provider', event.target.value as 'manual' | 'sicredi')}
+                            disabled={isSaving || !canUseSicredi}
+                            className="h-10 min-w-48 rounded-lg border border-white/10 bg-slate-950 px-3 text-sm font-bold text-slate-200 outline-none focus:border-cyan-500/50"
+                        >
+                            <option value="manual">Pix manual (atual)</option>
+                            {canUseSicredi ? <option value="sicredi">Sicredi — QR Code dinâmico</option> : null}
+                        </select>
+                    </div>
+                    {!canUseSicredi ? <p className="mt-3 text-[10px] font-bold uppercase tracking-wide text-slate-500">Integração Sicredi disponível somente para a Ótica Ocular nesta versão.</p> : null}
                 </div>
 
                 <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4 transition-colors">

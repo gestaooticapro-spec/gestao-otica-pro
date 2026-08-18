@@ -19,6 +19,13 @@ export type WhatsAppCanonicalHumanizableIntent =
   | 'store_location'
   | 'human_agent_request'
   | 'order_status'
+  | 'payment_info'
+  | 'post_sale_positive'
+  | 'budget_request'
+  | 'prescription_submission'
+  | 'complaint_or_adaptation'
+  | 'pickup_or_scheduling'
+  | 'unknown'
 
 export function isWhatsAppCanonicalHumanizationCandidate(reply: WhatsAppCanonicalReply | null) {
   return getWhatsAppCanonicalHumanizableIntent(reply) !== null
@@ -29,31 +36,21 @@ export function getWhatsAppCanonicalHumanizableIntent(
 ): WhatsAppCanonicalHumanizableIntent | null {
   if (!reply) return null
 
-  if (
-    reply.intent === 'store_hours'
-    || reply.intent === 'store_location'
-    || reply.intent === 'human_agent_request'
-  ) {
-    return reply.intent
-  }
-
-  if (
-    reply.intent === 'order_status'
-    && reply.action === 'human_handoff'
-    && reply.outboundType === 'human_handoff'
-  ) {
+  if (reply.intent === 'store_hours' || reply.intent === 'store_location' || reply.intent === 'human_agent_request'
+    || reply.intent === 'order_status' || reply.intent === 'payment_info' || reply.intent === 'post_sale_positive'
+    || reply.intent === 'budget_request' || reply.intent === 'prescription_submission'
+    || reply.intent === 'complaint_or_adaptation' || reply.intent === 'pickup_or_scheduling' || reply.intent === 'unknown') {
     return reply.intent
   }
 
   if (
     reply.intent === null
-    && reply.action === 'human_handoff'
-    && reply.outboundType === 'human_handoff'
+    && (reply.action === 'human_handoff' || reply.outboundType === 'human_handoff')
   ) {
     return 'human_agent_request'
   }
 
-  return null
+  return 'unknown'
 }
 
 export function buildWhatsAppCanonicalPayload(input: {

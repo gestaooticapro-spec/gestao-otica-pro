@@ -82,8 +82,17 @@ function formatForInput(isoString: string | null) {
 function getLabStage(item: LabOSResult): LabStage {
     if (!item.dt_pedido_em) return 'falta_pedir'
     if (!item.dt_lente_chegou) return 'lentes_pedidas'
+    if (item.os_enviada_ao_lab && item.dt_montado_no_lab) return 'oculos_montado'
     if (!item.dt_montado_em) return 'lentes_chegaram'
     return 'oculos_montado'
+}
+
+function formatDateTime(isoString: string | null) {
+    if (!isoString) return ''
+    return new Date(isoString).toLocaleString('pt-BR', {
+        dateStyle: 'short',
+        timeStyle: 'short'
+    })
 }
 
 function formatStageElapsed(dateString: string | null) {
@@ -115,16 +124,18 @@ function getPrevStage(currentStage: LabStage): LabStage | null {
     return STAGE_ORDER[currentIndex - 1] || null
 }
 
-function getAutoAdvanceField(currentStage: LabStage): 'dt_pedido_em' | 'dt_lente_chegou' | 'dt_montado_em' | null {
+function getAutoAdvanceField(currentStage: LabStage, item?: LabOSResult): 'dt_pedido_em' | 'dt_lente_chegou' | 'dt_montado_em' | 'dt_montado_no_lab' | null {
     if (currentStage === 'falta_pedir') return 'dt_pedido_em'
     if (currentStage === 'lentes_pedidas') return 'dt_lente_chegou'
+    if (currentStage === 'lentes_chegaram' && item?.os_enviada_ao_lab) return 'dt_montado_no_lab'
     if (currentStage === 'lentes_chegaram') return 'dt_montado_em'
     return null
 }
 
-function getRegressField(currentStage: LabStage): 'dt_pedido_em' | 'dt_lente_chegou' | 'dt_montado_em' | null {
+function getRegressField(currentStage: LabStage, item?: LabOSResult): 'dt_pedido_em' | 'dt_lente_chegou' | 'dt_montado_em' | 'dt_montado_no_lab' | null {
     if (currentStage === 'lentes_pedidas') return 'dt_pedido_em'
     if (currentStage === 'lentes_chegaram') return 'dt_lente_chegou'
+    if (currentStage === 'oculos_montado' && item?.os_enviada_ao_lab && !item.dt_montado_em) return 'dt_montado_no_lab'
     if (currentStage === 'oculos_montado') return 'dt_montado_em'
     return null
 }
@@ -229,7 +240,7 @@ export default function LaboratorioPage() {
         setDraggedId(null)
 
         if (targetStage === nextStage) {
-            const field = getAutoAdvanceField(currentStage)
+            const field = getAutoAdvanceField(currentStage, draggedItem)
             if (!field) return
             startTransition(async () => {
                 const result = await advanceLabStage(draggedItem.id, storeId, field)
@@ -244,7 +255,7 @@ export default function LaboratorioPage() {
         }
 
         if (targetStage === prevStage) {
-            const field = getRegressField(currentStage)
+            const field = getRegressField(currentStage, draggedItem)
             if (!field) return
             startTransition(async () => {
                 const result = await regressLabStage(draggedItem.id, storeId, field)
@@ -479,14 +490,16 @@ export default function LaboratorioPage() {
                                                     const currentStage = getLabStage(item)
                                                     const canDrag = true
                                                     const isSelected = selectedOS?.id === item.id
-                                                    const waitDate =
+                                                            const waitDate =
                                                         currentStage === 'falta_pedir'
                                                             ? item.created_at
                                                             : currentStage === 'lentes_pedidas'
                                                                 ? item.dt_pedido_em
                                                                 : currentStage === 'lentes_chegaram'
                                                                     ? item.dt_lente_chegou
-                                                                    : item.dt_montado_em
+                                                                    : item.os_enviada_ao_lab && item.dt_montado_no_lab && !item.dt_montado_em
+                                                                        ? item.dt_montado_no_lab
+                                                                        : item.dt_montado_em
                                                     const waitingLabel = formatStageElapsed(waitDate)
                                                     const whatsappMessage = `Olá ${customerName.split(' ')[0]}! Tudo bem? Aqui é da Ótica. Os óculos de *${patientName}* ficaram prontos! Quando puder, passe aqui para retirar e ajustar.`
                                                     const whatsappMsgArmacao = `Olá ${customerName.split(' ')[0]}! Tudo bem? Aqui é da Ótica. As lentes de *${patientName}* chegaram. Quando puder, traga a armação para realizarmos a montagem.`
@@ -551,7 +564,33 @@ export default function LaboratorioPage() {
                                                                             ✓ Enviada p/ montagem
                                                                         </span>
                                                                     )}
+                                                                    {item.os_enviada_ao_lab && item.dt_montado_no_lab && !item.dt_montado_em && (
+                                                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-violet-500/20 text-violet-300 border-violet-500/30">
+                                                                            Montado no laboratório · aguardando retorno
+                                                                        </span>
+                                                                    )}
+                                                                    {item.os_enviada_ao_lab && item.dt_recebido_na_loja && (
+                                                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-emerald-500/20 text-emerald-300 border-emerald-500/30">
+                                                                            Recebido na loja · pronto para entrega
+                                                                        </span>
+                                                                    )}
                                                                 </div>
+
+                                                                {item.os_enviada_ao_lab && item.dt_lente_chegou && (
+                                                                    <p className="text-[11px] text-sky-300/80">
+                                                                        Chegou ao laboratório: {formatDateTime(item.dt_lente_chegou)}
+                                                                    </p>
+                                                                )}
+                                                                {item.os_enviada_ao_lab && item.dt_montado_no_lab && (
+                                                                    <p className="text-[11px] text-violet-300/80">
+                                                                        Montado no laboratório: {formatDateTime(item.dt_montado_no_lab)}
+                                                                    </p>
+                                                                )}
+                                                                {item.os_enviada_ao_lab && item.dt_recebido_na_loja && (
+                                                                    <p className="text-[11px] text-emerald-300/80">
+                                                                        Recebido na loja: {formatDateTime(item.dt_recebido_na_loja)}
+                                                                    </p>
+                                                                )}
 
                                                                 {currentStage === 'lentes_chegaram' && item.armacao_com_cliente && customerPhone && (
                                                                     <button
@@ -711,6 +750,34 @@ export default function LaboratorioPage() {
                                                     className="w-full bg-sky-950/40 border border-sky-500/20 rounded-xl px-3 py-2 text-sm font-bold text-sky-100 shadow-sm focus:border-sky-400/50 outline-none"
                                                 />
                                             </div>
+
+                                            {selectedOS.os_enviada_ao_lab && (
+                                                <>
+                                                    <div>
+                                                        <label className="text-[10px] font-bold uppercase text-violet-300/80 flex items-center gap-1.5 mb-1.5">
+                                                            <Wrench className="h-3 w-3" /> Montado no laboratório
+                                                        </label>
+                                                        <input
+                                                            type="datetime-local"
+                                                            name="dt_montado_no_lab"
+                                                            defaultValue={formatForInput(selectedOS.dt_montado_no_lab)}
+                                                            className="w-full bg-violet-950/30 border border-violet-500/20 rounded-xl px-3 py-2 text-sm font-bold text-violet-100 shadow-sm focus:border-violet-400/50 outline-none"
+                                                        />
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="text-[10px] font-bold uppercase text-emerald-300/80 flex items-center gap-1.5 mb-1.5">
+                                                            <Truck className="h-3 w-3" /> Recebido na loja
+                                                        </label>
+                                                        <input
+                                                            type="datetime-local"
+                                                            name="dt_recebido_na_loja"
+                                                            defaultValue={formatForInput(selectedOS.dt_recebido_na_loja)}
+                                                            className="w-full bg-emerald-950/30 border border-emerald-500/20 rounded-xl px-3 py-2 text-sm font-bold text-emerald-100 shadow-sm focus:border-emerald-400/50 outline-none"
+                                                        />
+                                                    </div>
+                                                </>
+                                            )}
 
                                             <div>
                                                 <label className="text-[10px] font-bold uppercase text-slate-500 flex items-center gap-1.5 mb-1.5">

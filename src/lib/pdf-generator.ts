@@ -194,6 +194,7 @@ export interface InstallmentReceiptData {
 export interface CustomerFinancialSummaryPdfData {
   customerName: string
   store: InstallmentReceiptData['store']
+  selectionNote?: string
   totals: {
     parcelasPagas: number
     parcelasPendentes: number

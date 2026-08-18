@@ -9,6 +9,7 @@ import { syncStoreFiscalData } from './fiscal.actions'
 import { StoreSettings } from '@/lib/store-modules'
 import { sanitizeAiSuggestionConfig } from '@/lib/ai-suggestion-config'
 import { getStoreLogoPublicUrl, STORE_LOGOS_BUCKET } from '@/lib/store-logo'
+import { isSicrediPilotStoreCnpj } from '@/lib/pix/sicredi-availability'
 
 const StoreProfileSchema = z.object({
     id: z.coerce.number(),
@@ -298,6 +299,10 @@ export async function updateStoreSettings(storeId: number, newSettings: Partial<
         const currentStore = await getStoreProfile(storeId)
         if (!currentStore) {
             return { success: false, message: 'Loja não encontrada.' }
+        }
+
+        if (newSettings.pix_provider === 'sicredi' && !isSicrediPilotStoreCnpj(currentStore.cnpj)) {
+            return { success: false, message: 'A integração Pix Sicredi está liberada somente para a Ótica Ocular.' }
         }
 
         const currentSettings = ((currentStore.settings || {}) as StoreSettings | Json) as StoreSettings

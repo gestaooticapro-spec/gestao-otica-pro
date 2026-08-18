@@ -168,7 +168,10 @@ export async function generateCustomerFinancialSummaryImages(data: CustomerFinan
   const generatedAt = new Date().toLocaleDateString('pt-BR')
   const logoDataUrl = await loadStoreLogoDataUrl(data.store.logoFile)
   const width = 1400
-  const maxRowsPerPage = 4
+  // A imagem cresce para acomodar os carnês mais comuns sem fragmentar a
+  // conversa no WhatsApp. Acima de seis parcelas mantemos a paginação para
+  // não produzir imagens excessivamente altas.
+  const maxRowsPerPage = 6
   const chunks = data.financiamentos.flatMap((financiamento) => {
     const pages = []
     for (let index = 0; index < financiamento.parcelas.length; index += maxRowsPerPage) {
@@ -185,7 +188,8 @@ export async function generateCustomerFinancialSummaryImages(data: CustomerFinan
     const chunk = chunks[pageIndex]
     const includeSummary = pageIndex === 0
     const headerHeight = includeSummary ? 290 : 100
-    const height = Math.max(920, headerHeight + 170 + (chunk.parcelas.length * 98))
+    const selectionNoteHeight = includeSummary && data.selectionNote ? 70 : 0
+    const height = Math.max(920, headerHeight + 170 + selectionNoteHeight + (chunk.parcelas.length * 98))
 
     return imageResponseToBuffer(
       (
@@ -240,6 +244,23 @@ export async function generateCustomerFinancialSummaryImages(data: CustomerFinan
                     </div>
                   ) : null}
                 </div>
+              </div>
+            ) : null}
+
+            {includeSummary && data.selectionNote ? (
+              <div
+                style={{
+                  display: 'flex',
+                  background: '#fef3c7',
+                  color: '#92400e',
+                  border: '2px solid #fcd34d',
+                  borderRadius: 18,
+                  padding: '14px 18px',
+                  fontSize: 19,
+                  fontWeight: 700,
+                }}
+              >
+                {`* ${data.selectionNote}`}
               </div>
             ) : null}
 

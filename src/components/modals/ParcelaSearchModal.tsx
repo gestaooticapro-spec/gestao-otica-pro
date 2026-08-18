@@ -9,11 +9,19 @@ import { searchPendenciasCliente, receberParcela } from '@/lib/actions/vendas.ac
 import { sendInstallmentReceiptWhatsApp } from '@/lib/actions/manual-whatsapp.actions'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import { printParcela } from '@/components/financeiro/PrintParcelaButton'
+import { getInstallmentOutstanding } from '@/lib/installment-balance'
+import PixInstallmentChargeModal from '@/components/modals/PixInstallmentChargeModal'
+import {
+    getPixChargesForInstallments,
+    getPixProviderForStore,
+    type PixInstallmentCharge,
+} from '@/lib/actions/pix-installment.actions'
 
 
 const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const formatDate = (d: string) => new Date(d).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
 const getToday = () => new Date().toISOString().split('T')[0]
+const getSaldoParcela = getInstallmentOutstanding
 
 const parseMoney = (val: string) => {
     if (!val) return 0
@@ -23,18 +31,26 @@ const parseMoney = (val: string) => {
 
 const PAYMENT_METHODS = ['PIX Remoto', 'PIX na maquininha', 'Dinheiro', 'Cartão Débito', 'Cartão Crédito']
 
-function ParcelaCard({ p, onClick }: { p: any, onClick: () => void }) {
+function ParcelaCard({
+    p,
+    onReceive,
+    onGeneratePix,
+    pixCharge,
+}: {
+    p: any
+    onReceive: () => void
+    onGeneratePix?: () => void
+    pixCharge?: PixInstallmentCharge
+}) {
     const isVencida = new Date(p.data_vencimento) < new Date(getToday())
 
     return (
-        <button
-            onClick={onClick}
-            className="w-full flex items-center justify-between p-3 bg-white/5 border border-white/10 rounded-xl hover:bg-amber-500/10 hover:border-amber-500/30 transition-all group text-left relative overflow-hidden"
-        >
+        <div className="w-full p-3 bg-white/5 border border-white/10 rounded-xl hover:border-amber-500/30 transition-all group text-left relative overflow-hidden">
             {isVencida && <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-500" />}
             {!isVencida && <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500/50" />}
 
-            <div className="flex items-center gap-3 pl-2">
+            <button onClick={onReceive} className="flex w-full items-center justify-between gap-3 pl-2 text-left">
+            <div className="flex items-center gap-3">
                 <div className={`p-2 rounded-lg ${isVencida ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/10 text-amber-500'}`}>
                     <Calendar className="h-4 w-4" />
                 </div>
@@ -46,12 +62,12 @@ function ParcelaCard({ p, onClick }: { p: any, onClick: () => void }) {
                 </div>
             </div>
             <div className="text-right">
-                <span className="block text-slate-200 font-black text-base">{formatCurrency(p.valor_parcela)}</span>
-                <span className="text-[9px] font-bold text-amber-500 opacity-0 group-hover:opacity-100 transition-opacity uppercase tracking-wide">
-                    Pagar Agora
-                </span>
+                <span className="block text-slate-200 font-black text-base">{formatCurrency(getSaldoParcela(p))}</span>
+                {pixCharge ? <span className={`text-[9px] font-bold uppercase tracking-wide ${pixCharge.status === 'PENDING' ? 'text-cyan-400' : pixCharge.status === 'PAID' ? 'text-emerald-400' : 'text-slate-500'}`}>Pix: {pixCharge.status === 'PENDING' ? 'pendente' : pixCharge.status === 'PAID' ? 'pago' : pixCharge.status.toLowerCase()}</span> : <span className="text-[9px] font-bold text-amber-500 opacity-0 group-hover:opacity-100 transition-opacity uppercase tracking-wide">Receber</span>}
             </div>
-        </button>
+            </button>
+            {onGeneratePix ? <div className="mt-3 flex justify-end border-t border-white/5 pt-3"><button type="button" onClick={onGeneratePix} className="rounded-lg border border-cyan-500/20 bg-cyan-500/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-cyan-300 hover:bg-cyan-500/20">{pixCharge?.status === 'PENDING' ? 'Ver Pix' : 'Gerar QR Code'}</button></div> : null}
+        </div>
     )
 }
 
@@ -89,14 +105,18 @@ export default function ParcelaSearchModal({
     const [valorTotalPagoStr, setValorTotalPagoStr] = useState('')
     const [valorJurosStr, setValorJurosStr] = useState('0,00')
     const [recebimentos, setRecebimentos] = useState([{ forma_pagamento: 'PIX Remoto', valor: '' }])
-    const [estrategia, setEstrategia] = useState('criar_pendencia')
+    const [estrategia, setEstrategia] = useState<'baixa_parcial' | 'somar_proxima'>('baixa_parcial')
 
     const [isAuthOpen, setIsAuthOpen] = useState(false)
     const [isProcessing, startProcess] = useTransition()
     const [isPrinting, setIsPrinting] = useState(false)
     const [isSendingReceipt, setIsSendingReceipt] = useState(false)
     const [receiptSent, setReceiptSent] = useState(false)
+    const [pixProvider, setPixProvider] = useState<'manual' | 'sicredi'>('manual')
+    const [pixCharges, setPixCharges] = useState<Record<number, PixInstallmentCharge>>({})
+    const [pixInstallment, setPixInstallment] = useState<any>(null)
     const searchInputRef = useRef<HTMLInputElement>(null)
+    const receiptAttemptRef = useRef<{ signature: string; key: string } | null>(null)
 
     const valorTotalRecebido = parseMoney(valorTotalPagoStr)
     const totalFormasRecebimento = recebimentos.reduce(
@@ -114,13 +134,16 @@ export default function ParcelaSearchModal({
 
     useEffect(() => {
         if (isOpen) {
+            receiptAttemptRef.current = null
             if (initialParcela) {
                 setSelectedClientData(null)
                 setSelectedParcela(initialParcela)
-                setValorTotalPagoStr(formatCurrency(initialParcela.valor_parcela).replace(/[^\d,]/g, ''))
-                setRecebimentos([{ forma_pagamento: 'PIX Remoto', valor: formatCurrency(initialParcela.valor_parcela).replace(/[^\d,]/g, '') }])
+                const saldo = getSaldoParcela(initialParcela)
+                const saldoStr = formatCurrency(saldo).replace(/[^\d,]/g, '')
+                setValorTotalPagoStr(saldoStr)
+                setRecebimentos([{ forma_pagamento: 'PIX Remoto', valor: saldoStr }])
                 setValorJurosStr('0,00')
-                setEstrategia('criar_pendencia')
+                setEstrategia(initialParcela.has_next_installment ? 'somar_proxima' : 'baixa_parcial')
                 setStep('pay')
             } else {
                 setStep('search')
@@ -135,6 +158,19 @@ export default function ParcelaSearchModal({
         }
 
     }, [isOpen, initialQuery, initialParcela?.id])
+
+    useEffect(() => {
+        if (!isOpen) return
+        void getPixProviderForStore(storeId).then(setPixProvider)
+    }, [isOpen, storeId])
+
+    useEffect(() => {
+        if (!isOpen || !selectedClientData || pixProvider !== 'sicredi') return
+        const installmentIds = (selectedClientData.parcelas || []).map((item: any) => Number(item.id)).filter(Boolean)
+        void getPixChargesForInstallments(storeId, installmentIds)
+            .then(setPixCharges)
+            .catch(() => toast.error('Não foi possível consultar as cobranças Pix. Tente novamente antes de gerar um novo QR Code.'))
+    }, [isOpen, selectedClientData, pixProvider, storeId])
 
     useEffect(() => {
         if (!isOpen) return
@@ -171,12 +207,13 @@ export default function ParcelaSearchModal({
     const handleSelectParcela = (parcela: any) => {
         console.log("[DEBUG] Parcela selecionada:", parcela)
         setSelectedParcela(parcela)
+        receiptAttemptRef.current = null
 
-        const valLimpo = formatCurrency(parcela.valor_parcela).replace(/[^\d,]/g, '')
+        const valLimpo = formatCurrency(getSaldoParcela(parcela)).replace(/[^\d,]/g, '')
         setValorTotalPagoStr(valLimpo)
         setRecebimentos([{ forma_pagamento: 'PIX Remoto', valor: valLimpo }])
         setValorJurosStr('0,00')
-        setEstrategia('criar_pendencia')
+        setEstrategia(parcela.has_next_installment ? 'somar_proxima' : 'baixa_parcial')
         setStep('pay')
     }
 
@@ -222,7 +259,7 @@ export default function ParcelaSearchModal({
             return
         }
 
-        const valorOriginal = selectedParcela.valor_parcela
+        const valorOriginal = getSaldoParcela(selectedParcela)
         const valorTotalPago = parseMoney(valorTotalPagoStr)
         const valorJuros = parseMoney(valorJurosStr)
 
@@ -244,7 +281,6 @@ export default function ParcelaSearchModal({
         formData.append('store_id', storeId.toString())
         formData.append('employee_id', employee.id.toString())
 
-        formData.append('valor_original', valorOriginal.toString())
         formData.append('valor_pago_total', valorTotalPago.toString())
         formData.append('valor_juros', valorJuros.toString())
 
@@ -255,8 +291,23 @@ export default function ParcelaSearchModal({
         const principalAbatido = valorTotalPago - valorJuros
         const diferenca = valorOriginal - principalAbatido
         const isParcial = diferenca > 0.01
+        const strategy = isParcial ? estrategia : 'quitacao_total'
+        const requestSignature = JSON.stringify({
+            parcelaId: selectedParcela.id,
+            vendaId: selectedParcela.venda_id,
+            employeeId: employee.id,
+            valorTotalPago,
+            valorJuros,
+            recebimentos: recebimentosValidos,
+            dataPagamento: getToday(),
+            strategy,
+        })
+        if (receiptAttemptRef.current?.signature !== requestSignature) {
+            receiptAttemptRef.current = { signature: requestSignature, key: crypto.randomUUID() }
+        }
 
-        formData.append('estrategia', isParcial ? estrategia : 'quitacao_total')
+        formData.append('estrategia', strategy)
+        formData.append('idempotency_key', receiptAttemptRef.current.key)
 
         console.log("[DEBUG] 3. Iniciando Server Action com FormData...")
 
@@ -333,7 +384,7 @@ export default function ParcelaSearchModal({
     return createPortal(
         <>
             <div className="fixed inset-0 z-[50] flex items-start pt-20 justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                <div className="bg-slate-950 w-full max-w-lg rounded-2xl shadow-2xl border border-white/10 overflow-hidden flex flex-col h-[600px]">
+                <div className="bg-slate-950 w-full max-w-2xl rounded-2xl shadow-2xl border border-white/10 overflow-hidden flex flex-col h-[min(760px,calc(100vh-6rem))]">
 
                     {/* Header Amber (Financeiro) */}
                     <div className="bg-amber-950/30 border-b border-amber-500/20 px-6 py-4 flex justify-between items-center text-amber-100 shrink-0">
@@ -422,7 +473,13 @@ export default function ParcelaSearchModal({
                                                         return a.numero_parcela - b.numero_parcela
                                                     })
                                                     .map((p: any) => (
-                                                    <ParcelaCard key={p.id} p={p} onClick={() => handleSelectParcela(p)} />
+                                                    <ParcelaCard
+                                                        key={p.id}
+                                                        p={p}
+                                                        onReceive={() => handleSelectParcela(p)}
+                                                        pixCharge={pixCharges[Number(p.id)]}
+                                                        onGeneratePix={pixProvider === 'sicredi' ? () => setPixInstallment(p) : undefined}
+                                                    />
                                                 ))}
                                             </div>
                                         </div>
@@ -434,8 +491,15 @@ export default function ParcelaSearchModal({
                         {step === 'pay' && selectedParcela && (
                             <div className="p-6 space-y-6 animate-in slide-in-from-right-4">
                                 <div className="text-center pb-4 border-b border-white/10">
-                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Valor Original</p>
-                                    <p className="text-5xl font-black text-white tracking-tight drop-shadow-lg">{formatCurrency(selectedParcela.valor_parcela)}</p>
+                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Valor a Receber</p>
+                                    <p className="text-5xl font-black text-white tracking-tight drop-shadow-lg">{formatCurrency(getSaldoParcela(selectedParcela))}</p>
+                                    {(Number(selectedParcela.valor_pago || 0) > 0 || Number(selectedParcela.valor_transferido_entrada || 0) > 0) && (
+                                        <p className="text-xs text-slate-500 mt-2">
+                                            Parcela: {formatCurrency(Number(selectedParcela.valor_parcela || 0))}
+                                            {Number(selectedParcela.valor_transferido_entrada || 0) > 0 ? ` + ${formatCurrency(Number(selectedParcela.valor_transferido_entrada))} transferidos` : ''}
+                                            {' '}· Já recebido: {formatCurrency(Number(selectedParcela.valor_pago || 0))}
+                                        </p>
+                                    )}
                                     <div className="flex justify-center gap-4 mt-3">
                                         <p className="text-xs text-slate-400 bg-white/5 px-2 py-1 rounded border border-white/5">Parcela {selectedParcela.numero_parcela}</p>
                                         <p className={`text-xs font-bold px-2 py-1 rounded border ${new Date(selectedParcela.data_vencimento) < new Date(getToday()) ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-slate-800 text-slate-400 border-white/5'}`}>
@@ -452,7 +516,13 @@ export default function ParcelaSearchModal({
                                             <input
                                                 type="text"
                                                 value={valorTotalPagoStr}
-                                                onChange={e => setValorTotalPagoStr(e.target.value)}
+                                                onChange={e => {
+                                                    const value = e.target.value
+                                                    setValorTotalPagoStr(value)
+                                                    if (recebimentos.length === 1) {
+                                                        setRecebimentos([{ ...recebimentos[0], valor: value }])
+                                                    }
+                                                }}
                                                 className="w-full h-11 bg-white/5 border border-white/10 rounded-lg shadow-sm focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 outline-none font-bold text-emerald-400 pl-10 text-xl transition-colors"
                                             />
                                         </div>
@@ -506,7 +576,7 @@ export default function ParcelaSearchModal({
                                 )}
 
                                 {(() => {
-                                    const vOrig = selectedParcela.valor_parcela
+                                    const vOrig = getSaldoParcela(selectedParcela)
                                     const vTotal = parseMoney(valorTotalPagoStr)
                                     const vJuros = parseMoney(valorJurosStr)
 
@@ -521,12 +591,12 @@ export default function ParcelaSearchModal({
                                                 </div>
                                                 <div className="space-y-2">
                                                     <label className="flex items-start gap-3 cursor-pointer p-3 rounded-lg hover:bg-white/5 transition-colors border border-transparent hover:border-white/5">
-                                                        <input type="radio" name="strat" checked={estrategia === 'criar_pendencia'} onChange={() => setEstrategia('criar_pendencia')} className="mt-1 text-amber-500 bg-transparent border-slate-500 focus:ring-amber-500 focus:ring-offset-slate-900" />
-                                                        <div><span className="block text-sm font-bold text-slate-200">Manter como Pendência</span><span className="block text-xs text-slate-500">Cria nova parcela.</span></div>
+                                                        <input type="radio" name="strat" checked={estrategia === 'baixa_parcial'} onChange={() => setEstrategia('baixa_parcial')} className="mt-1 text-amber-500 bg-transparent border-slate-500 focus:ring-amber-500 focus:ring-offset-slate-900" />
+                                                        <div><span className="block text-sm font-bold text-slate-200">Baixa parcial</span><span className="block text-xs text-slate-500">Mantém o restante nesta parcela para receber depois.</span></div>
                                                     </label>
-                                                    <label className="flex items-start gap-3 cursor-pointer p-3 rounded-lg hover:bg-white/5 transition-colors border border-transparent hover:border-white/5">
-                                                        <input type="radio" name="strat" checked={estrategia === 'somar_proxima'} onChange={() => setEstrategia('somar_proxima')} className="mt-1 text-amber-500 bg-transparent border-slate-500 focus:ring-amber-500 focus:ring-offset-slate-900" />
-                                                        <div><span className="block text-sm font-bold text-slate-200">Jogar para Próxima</span><span className="block text-xs text-slate-500">Soma na próxima parcela.</span></div>
+                                                    <label className={`flex items-start gap-3 p-3 rounded-lg transition-colors border border-transparent ${selectedParcela.has_next_installment ? 'cursor-pointer hover:bg-white/5 hover:border-white/5' : 'cursor-not-allowed opacity-50'}`}>
+                                                        <input type="radio" name="strat" disabled={!selectedParcela.has_next_installment} checked={estrategia === 'somar_proxima'} onChange={() => setEstrategia('somar_proxima')} className="mt-1 text-amber-500 bg-transparent border-slate-500 focus:ring-amber-500 focus:ring-offset-slate-900" />
+                                                        <div><span className="block text-sm font-bold text-slate-200">Jogar para a próxima</span><span className="block text-xs text-slate-500">Transfere o restante para a próxima cobrança sem alterar o valor contratado.</span></div>
                                                     </label>
                                                 </div>
                                             </div>
@@ -614,6 +684,22 @@ export default function ParcelaSearchModal({
                     onSuccess={handleAuthSuccess}
                     title="Autorizar Pagamento"
                     description="Insira seu PIN para confirmar."
+                />
+            )}
+            {pixInstallment && (
+                <PixInstallmentChargeModal
+                    isOpen={Boolean(pixInstallment)}
+                    storeId={storeId}
+                    installment={pixInstallment}
+                    hasNextInstallment={Boolean(selectedClientData?.parcelas?.some((candidate: any) => Number(candidate.financiamento_id) === Number(pixInstallment.financiamento_id) && Number(candidate.numero_parcela) > Number(pixInstallment.numero_parcela) && String(candidate.status).toLowerCase() !== 'pago'))}
+                    initialCharge={pixCharges[Number(pixInstallment.id)]}
+                    onClose={() => setPixInstallment(null)}
+                    onChargeChanged={(charge) => setPixCharges((current) => {
+                        const next = { ...current }
+                        if (charge) next[Number(pixInstallment.id)] = charge
+                        else delete next[Number(pixInstallment.id)]
+                        return next
+                    })}
                 />
             )}
         </>,

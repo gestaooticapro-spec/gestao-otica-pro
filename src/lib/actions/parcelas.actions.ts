@@ -6,6 +6,7 @@ import { isStoreModuleEnabledForStore } from '../store-modules.server'
 import { verifyEmployeeAuthorization } from '../server/employee-authorization'
 import { getReceiptReversalMetadata } from '../installment-reversal.server'
 import { revalidatePath } from 'next/cache'
+import { getInstallmentOutstanding } from '../installment-balance'
 
 export type ParcelaFiltro = {
     status?: 'todas' | 'pendente' | 'pago' | 'atrasado';
@@ -53,16 +54,17 @@ async function adicionarTotaisPagamentos(supabaseAdmin: any, parcelas: any[]) {
 
     const { data: pagamentos } = await supabaseAdmin
         .from('pagamentos')
-        .select('parcela_id, valor_pago, data_pagamento')
+        .select('parcela_id, valor_pago, data_pagamento, receipt_operation_id')
         .in('parcela_id', ids)
 
-    const porParcela = new Map<number, { total: number, ultimaData: string | null }>()
+    const porParcela = new Map<number, { total: number, ultimaData: string | null, pagamentos: any[] }>()
     for (const pagamento of pagamentos || []) {
         const parcelaId = Number(pagamento.parcela_id)
-        const atual = porParcela.get(parcelaId) || { total: 0, ultimaData: null }
+        const atual = porParcela.get(parcelaId) || { total: 0, ultimaData: null, pagamentos: [] }
         atual.total += Number(pagamento.valor_pago || 0)
         const dataPagamento = pagamento.data_pagamento ? String(pagamento.data_pagamento) : null
         if (dataPagamento && (!atual.ultimaData || dataPagamento > atual.ultimaData)) atual.ultimaData = dataPagamento
+        atual.pagamentos.push(pagamento)
         porParcela.set(parcelaId, atual)
     }
 
@@ -70,12 +72,42 @@ async function adicionarTotaisPagamentos(supabaseAdmin: any, parcelas: any[]) {
         parcelas.map((parcela) => Number(parcela.financiamento_id)).filter(Number.isFinite)
     ))
     const reversalMetadata = await getReceiptReversalMetadata(supabaseAdmin, financiamentoIds)
+    const { data: receiptOperations } = await (supabaseAdmin.from('installment_receipt_operations') as any)
+        .select('id, origin_installment_id, received_amount, received_on, state, reversed_at, installments_before')
+        .in('financiamento_id', financiamentoIds)
+        .eq('state', 'completed')
+        .is('reversed_at', null)
+        .order('received_on', { ascending: true })
+        .order('id', { ascending: true })
+    const operationsByOrigin = new Map<number, any[]>()
+    for (const operation of receiptOperations || []) {
+        const originId = Number(operation.origin_installment_id)
+        operationsByOrigin.set(originId, [...(operationsByOrigin.get(originId) || []), operation])
+    }
 
     return parcelas.map((parcela) => {
+        const resumo = porParcela.get(Number(parcela.id))
+        const operations = operationsByOrigin.get(Number(parcela.id)) || []
+        const firstOperation = operations[0]
+        const firstSnapshot = Array.isArray(firstOperation?.installments_before)
+            ? firstOperation.installments_before.find((item: any) => Number(item.id) === Number(parcela.id))
+            : null
+        const pagamentosAntes = firstOperation
+            ? (resumo?.pagamentos || []).filter((pagamento) => String(pagamento.data_pagamento || '').slice(0, 10) < String(firstOperation.received_on)).reduce((total, pagamento) => total + Number(pagamento.valor_pago || 0), 0)
+            : 0
+        const valorAReceber = firstSnapshot
+            ? getInstallmentOutstanding(firstSnapshot)
+            : firstOperation
+                ? Math.max(0, Number(parcela.valor_parcela || 0) + Number(parcela.valor_transferido_entrada || 0) - pagamentosAntes - Number(parcela.valor_transferido_saida || 0))
+                : getInstallmentOutstanding({ ...parcela, valor_pago: resumo?.total ?? parcela.valor_pago })
         return {
             ...parcela,
-            valor_pago_relatorio: porParcela.get(Number(parcela.id))?.total || 0,
-            data_pagamento_relatorio: porParcela.get(Number(parcela.id))?.ultimaData || null,
+            valor_pago_relatorio: resumo?.total || 0,
+            data_pagamento_relatorio: resumo?.ultimaData || null,
+            valor_a_receber_relatorio: valorAReceber,
+            valor_recebido_relatorio: operations.length
+                ? operations.reduce((total, operation) => total + Number(operation.received_amount || 0), 0)
+                : null,
             reversible_receipt_operation: reversalMetadata.get(Number(parcela.id)) || null,
         }
     })
@@ -285,11 +317,14 @@ export async function getParcelasFiltradas(storeId: number, filtros: ParcelaFilt
                 numero_parcela,
                 data_vencimento,
                 valor_parcela,
+                valor_pago,
+                valor_transferido_entrada,
+                valor_transferido_saida,
                 status,
                 data_pagamento,
                 customer_id,
                 financiamento_id,
-                financiamento_loja ( venda_id, vendas!financiamento_loja_venda_id_fkey ( is_historical_import ) ),
+                financiamento_loja ( venda_id, vendas!financiamento_loja_venda_id_fkey ( is_historical_import, status ) ),
                 customers (full_name, cpf)
             `)
             .eq('store_id', storeId)
@@ -311,7 +346,10 @@ export async function getParcelasFiltradas(storeId: number, filtros: ParcelaFilt
             return { success: false, message: 'Erro ao buscar parcelas', data: [] }
         }
 
-        let resultado = await adicionarTotaisPagamentos(supabaseAdmin, (parcelas || []) as any[])
+        const parcelasDeVendasAtivas = (parcelas || []).filter((parcela: any) =>
+            String(parcela.financiamento_loja?.vendas?.status || '').toLowerCase() !== 'cancelada'
+        )
+        let resultado = await adicionarTotaisPagamentos(supabaseAdmin, parcelasDeVendasAtivas as any[])
 
         // Filtro de Status
         if (filtros.status && filtros.status !== 'todas') {
@@ -376,11 +414,14 @@ export async function getParcelasFiltradas(storeId: number, filtros: ParcelaFilt
                 numero_parcela,
                 data_vencimento,
                 valor_parcela,
+                valor_pago,
+                valor_transferido_entrada,
+                valor_transferido_saida,
                 status,
                 data_pagamento,
                 customer_id,
                 financiamento_id,
-                financiamento_loja ( venda_id, vendas!financiamento_loja_venda_id_fkey ( is_historical_import ) ),
+                financiamento_loja ( venda_id, vendas!financiamento_loja_venda_id_fkey ( is_historical_import, status ) ),
                 customers (full_name, cpf)
             `)
             .in('financiamento_id', financiamentoIds)
@@ -392,7 +433,10 @@ export async function getParcelasFiltradas(storeId: number, filtros: ParcelaFilt
             return { success: false, message: 'Erro ao buscar contexto completo das parcelas', data: [] }
         }
 
-        let finalData: any[] = await adicionarTotaisPagamentos(supabaseAdmin, (todasParcelas || []) as any[])
+        const todasParcelasAtivas = (todasParcelas || []).filter((parcela: any) =>
+            String(parcela.financiamento_loja?.vendas?.status || '').toLowerCase() !== 'cancelada'
+        )
+        let finalData: any[] = await adicionarTotaisPagamentos(supabaseAdmin, todasParcelasAtivas as any[])
 
         // Como expandimos o contexto, aplicamos o filtro de Status novamente
         // para não misturar pagas/pendentes se o usuário exigiu um status específico
@@ -443,6 +487,9 @@ export async function getCustomerParcelasFiltradas(storeId: number, customerId: 
                 numero_parcela,
                 data_vencimento,
                 valor_parcela,
+                valor_pago,
+                valor_transferido_entrada,
+                valor_transferido_saida,
                 status,
                 data_pagamento,
                 customer_id,
@@ -525,6 +572,9 @@ export async function getCustomerParcelasFiltradas(storeId: number, customerId: 
                 numero_parcela,
                 data_vencimento,
                 valor_parcela,
+                valor_pago,
+                valor_transferido_entrada,
+                valor_transferido_saida,
                 status,
                 data_pagamento,
                 customer_id,

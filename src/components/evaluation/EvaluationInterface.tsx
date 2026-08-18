@@ -2298,14 +2298,23 @@ function DegreeInput({
   placeholder?: string
 }) {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.value.replace(/\D/g, '')
+    const inputValue = e.target.value
+    const raw = inputValue.replace(/\D/g, '')
+    const insertedSign = (e.nativeEvent as InputEvent).data
+    const sign = insertedSign === '-' || insertedSign === '+'
+      ? insertedSign
+      : inputValue.includes('-') && !inputValue.includes('+')
+        ? '-'
+        : inputValue.includes('+') && !inputValue.includes('-')
+          ? '+'
+          : value.includes('-') ? '-' : '+'
     if (!raw) {
-      onChange('')
+      onChange(sign === '-' ? '-' : '')
       return
     }
 
     const val = parseInt(raw, 10) / 100
-    const isNegative = value.includes('-')
+    const isNegative = sign === '-'
     const formatted = val.toLocaleString('pt-BR', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
@@ -2335,7 +2344,17 @@ function DegreeInput({
   return (
     <input
       value={value}
+      type="text"
+      inputMode="text"
       onChange={handleChange}
+      onBeforeInput={(e) => {
+        const sign = (e.nativeEvent as InputEvent).data
+        if (sign === '-' || sign === '+') {
+          e.preventDefault()
+          const cleanValue = value.replace(/[+-]/g, '')
+          onChange(cleanValue ? `${sign}${cleanValue}` : sign)
+        }
+      }}
       onKeyDown={handleKeyDown}
       className={`${className || ''} ${textColor}`}
       placeholder={placeholder || '+0,00'}

@@ -13,13 +13,22 @@ const config = {
 // "Boa tarde" e, alguns segundos depois, "Esta otima"). Vinte segundos
 // preservam uma conversa mais natural sem atrasar demais a resposta.
 const INBOUND_AGGREGATION_WINDOW_MS = Number(process.env.WHATSAPP_INBOUND_AGGREGATION_WINDOW_MS || 20000)
-const APP_REQUEST_TIMEOUT_MS = Number(process.env.WHATSAPP_APP_REQUEST_TIMEOUT_MS || 45000)
+const APP_REQUEST_TIMEOUT_MS = Number(process.env.WHATSAPP_APP_REQUEST_TIMEOUT_MS || 65000)
 const PENDING_REPLY_RECOVERY_ATTEMPTS = 4
 const PENDING_REPLY_RECOVERY_DELAY_MS = 1500
 const MAX_ADMIN_BODY_BYTES = 15 * 1024 * 1024
 const MAX_MEDIA_BYTES = 10 * 1024 * 1024
 const MAX_INBOUND_VISION_BYTES = 3 * 1024 * 1024
+// A Loja 1 e o canal piloto do atendimento automatico. O watchdog fica
+// propositalmente restrito a esta instancia para nao reiniciar os demais
+// WhatsApps sem uma decisao operacional explicita.
+const STORE_ONE_WATCHDOG_ENABLED = process.env.WHATSAPP_STORE_ONE_WATCHDOG_ENABLED !== 'false'
+const STORE_ONE_WATCHDOG_INSTANCE_KEY = process.env.WHATSAPP_STORE_ONE_WATCHDOG_INSTANCE_KEY || 'loja-1-otica-prisma-guaira'
+const STORE_ONE_WATCHDOG_INTERVAL_MS = Math.max(30000, Number(process.env.WHATSAPP_STORE_ONE_WATCHDOG_INTERVAL_MS || 60000))
+const STORE_ONE_WATCHDOG_RESTART_COOLDOWN_MS = Math.max(60000, Number(process.env.WHATSAPP_STORE_ONE_WATCHDOG_RESTART_COOLDOWN_MS || 300000))
 const inboundBuffers = new Map()
+let storeOneWatchdogRunning = false
+let storeOneWatchdogLastRestartAt = 0
 
 function requiredEnv(name) {
   const value = process.env[name]?.trim()
@@ -246,6 +255,7 @@ function extractInbound(payload) {
     phone,
     providerMessageId,
     messageText: extractText(message),
+    providerCreatedAt: messageTimestampIso(payload),
     attachmentKind: detectAttachmentKind(message),
     statusReferenceId: statusReference?.providerMessageId || null,
     statusInteractionType: statusReference?.interactionType || null,
@@ -461,6 +471,17 @@ async function restartEvolutionInstance(instanceKey) {
   })
 }
 
+async function waitForEvolutionConnected(instanceKey, timeoutMs = 20000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const statePayload = await getEvolutionConnectionState(instanceKey).catch(() => null)
+    const state = extractConnectionState(statePayload)
+    if (isEvolutionConnectedState(state)) return true
+    await wait(1000)
+  }
+  return false
+}
+
 async function sendEvolutionMediaWithRecovery(instanceKey, phone, media) {
   try {
     return await sendEvolutionMedia(instanceKey, phone, media)
@@ -472,7 +493,10 @@ async function sendEvolutionMediaWithRecovery(instanceKey, phone, media) {
     // comecou, portanto reiniciar a instancia e repetir uma vez e seguro.
     console.warn(`[whatsapp-automation] Media socket closed for instance=${instanceKey}; restarting the instance before one retry.`)
     await restartEvolutionInstance(instanceKey)
-    await wait(3000)
+    const connected = await waitForEvolutionConnected(instanceKey)
+    if (!connected) {
+      throw new Error(`Evolution media send recovery timed out for instance=${instanceKey}`)
+    }
     return sendEvolutionMedia(instanceKey, phone, media)
   }
 }
@@ -578,8 +602,114 @@ async function logoutEvolutionInstance(instanceKey) {
   })
 }
 
+async function recoverAndRetryEvolutionMedia(instanceKey, phone, media, outboundMessageId) {
+  try {
+    console.warn(`[whatsapp-automation] Media socket closed for instance=${instanceKey}; recovery retry started in background.`)
+    await restartEvolutionInstance(instanceKey)
+    const connected = await waitForEvolutionConnected(instanceKey)
+    if (!connected) {
+      throw new Error(`Evolution media send recovery timed out for instance=${instanceKey}`)
+    }
+
+    const result = await sendEvolutionMedia(instanceKey, phone, media)
+    const providerMessageId = result.key?.id || result.messageId || result.id
+    const deliverySynced = await updateDelivery(outboundMessageId, 'sent', {
+      providerMessageId,
+      payload: result,
+    })
+    if (!deliverySynced) console.error('[whatsapp-automation] Background media retry sent, but delivery sync failed.')
+  } catch (error) {
+    if (isTimeoutError(error)) {
+      console.error('[whatsapp-automation] Background media retry timed out; leaving outbound pending for reconciliation.')
+      return
+    }
+
+    const failedSynced = await updateDelivery(outboundMessageId, 'failed', {
+      errorMessage: error instanceof Error ? error.message : String(error),
+    })
+    if (!failedSynced) console.error('[whatsapp-automation] Failed to persist background media retry failure.')
+  }
+}
+
+async function deleteEvolutionInstance(instanceKey) {
+  return evolutionRequest(`/instance/delete/${encodeURIComponent(instanceKey)}`, {
+    method: 'DELETE',
+  })
+}
+
+async function logoutEvolutionInstanceWithRecovery(instanceKey) {
+  try {
+    return await logoutEvolutionInstance(instanceKey)
+  } catch (error) {
+    if (!isEvolutionConnectionClosed(error)) throw error
+
+    // Uma sessao Baileys pode continuar marcada como aberta mesmo depois de
+    // perder o socket. Reiniciar apenas essa instancia recria o socket e
+    // permite concluir o logout solicitado pelo operador.
+    console.warn(`[whatsapp-automation] Connection closed while logging out instance=${instanceKey}; restarting before one retry.`)
+    await restartEvolutionInstance(instanceKey)
+    await wait(3000)
+    try {
+      return await logoutEvolutionInstance(instanceKey)
+    } catch (retryError) {
+      if (!isEvolutionConnectionClosed(retryError)) throw retryError
+
+      // Se nem um socket novo consegue executar o logout, a sessao persistida
+      // esta corrompida. Remover a instancia tem o mesmo efeito solicitado
+      // pelo operador e permite que o setup seguinte gere um QR limpo.
+      console.warn(`[whatsapp-automation] Logout still failed for instance=${instanceKey}; deleting the broken instance.`)
+      return deleteEvolutionInstance(instanceKey)
+    }
+  }
+}
+
 async function getEvolutionConnectionState(instanceKey) {
   return evolutionRequest(`/instance/connectionState/${encodeURIComponent(instanceKey)}`)
+}
+
+function isEvolutionConnectedState(state) {
+  return state === 'open' || state === 'connected'
+}
+
+function isEvolutionDisconnectedState(state) {
+  return ['close', 'closed', 'disconnected', 'offline', 'refused'].includes(state)
+}
+
+async function runStoreOneConnectionWatchdog() {
+  if (!STORE_ONE_WATCHDOG_ENABLED || storeOneWatchdogRunning) return
+  storeOneWatchdogRunning = true
+
+  try {
+    const statePayload = await getEvolutionConnectionState(STORE_ONE_WATCHDOG_INSTANCE_KEY)
+    const state = extractConnectionState(statePayload)
+    if (isEvolutionConnectedState(state)) return
+
+    // Durante o QR e a reconexao inicial a Evolution informa "connecting".
+    // Reiniciar nesse momento invalida a tentativa em andamento e pode deixar
+    // a instancia em ciclo de reconexao. Estados desconhecidos tambem nao
+    // devem disparar um restart sem confirmacao explicita de desconexao.
+    if (!isEvolutionDisconnectedState(state)) {
+      console.warn(`[watchdog] store=1 instance=${STORE_ONE_WATCHDOG_INSTANCE_KEY} state=${state}; waiting without restart.`)
+      return
+    }
+
+    const now = Date.now()
+    const elapsedSinceRestart = now - storeOneWatchdogLastRestartAt
+    if (elapsedSinceRestart < STORE_ONE_WATCHDOG_RESTART_COOLDOWN_MS) {
+      console.warn(`[watchdog] store=1 instance=${STORE_ONE_WATCHDOG_INSTANCE_KEY} state=${state}; restart skipped during cooldown.`)
+      return
+    }
+
+    storeOneWatchdogLastRestartAt = now
+    console.warn(`[watchdog] store=1 instance=${STORE_ONE_WATCHDOG_INSTANCE_KEY} state=${state}; restarting Evolution instance.`)
+    await restartEvolutionInstance(STORE_ONE_WATCHDOG_INSTANCE_KEY)
+  } catch (error) {
+    // A falha da propria consulta nao deve reiniciar cegamente a instancia:
+    // ela pode ser uma indisponibilidade temporaria da API Evolution.
+    console.error(`[watchdog] store=1 instance=${STORE_ONE_WATCHDOG_INSTANCE_KEY} health check failed:`, error)
+  } finally {
+    storeOneWatchdogRunning = false
+  }
 }
 
 async function configureEvolutionWebhook(instanceKey) {
@@ -621,9 +751,14 @@ async function handleAdminMessageSend(payload) {
   let result
   try {
     result = media
-      ? await sendEvolutionMediaWithRecovery(instanceKey, phone, media)
+      ? await sendEvolutionMedia(instanceKey, phone, media)
       : await sendEvolutionText(instanceKey, phone, text)
   } catch (error) {
+    if (media && isEvolutionConnectionClosed(error)) {
+      void recoverAndRetryEvolutionMedia(instanceKey, phone, media, outboundMessageId)
+      return { sent: false, retryScheduled: true, deliverySynced: false }
+    }
+
     if (!isTimeoutError(error)) {
       const failedSynced = await updateDelivery(outboundMessageId, 'failed', {
         errorMessage: error instanceof Error ? error.message : String(error),
@@ -766,6 +901,7 @@ async function flushBufferedInbound(key, reason = 'timeout') {
     phone: entry.phone,
     providerMessageId: lastMessage.providerMessageId,
     messageText: aggregatedText,
+    providerCreatedAt: lastMessage.providerCreatedAt,
   }, buildAggregatedInboundPayload(messages))
 }
 
@@ -798,6 +934,7 @@ function enqueueBufferedInbound(instanceKey, inbound) {
     providerMessageId: inbound.providerMessageId,
     messageText: inbound.messageText,
     attachmentKind: inbound.attachmentKind,
+    providerCreatedAt: inbound.providerCreatedAt,
     receivedAt: new Date().toISOString(),
   })
   entry.providerMessageIds.add(inbound.providerMessageId)
@@ -925,7 +1062,7 @@ const server = createServer(async (request, response) => {
           })
         }
 
-        await logoutEvolutionInstance(instanceKey)
+        await logoutEvolutionInstanceWithRecovery(instanceKey)
         return jsonResponse(response, 200, {
           instanceKey,
           connectionStatus: 'disconnected',
@@ -1002,3 +1139,14 @@ const server = createServer(async (request, response) => {
 server.listen(config.port, '0.0.0.0', () => {
   console.log(`[whatsapp-automation] Listening on port ${config.port}`)
 })
+
+if (STORE_ONE_WATCHDOG_ENABLED) {
+  // Executa uma vez ao iniciar e depois permanece independente do dashboard.
+  // O intervalo curto limita a janela de uma desconexao real, enquanto o
+  // cooldown impede ciclos de restart caso a Evolution esteja instavel.
+  void runStoreOneConnectionWatchdog()
+  setInterval(() => {
+    void runStoreOneConnectionWatchdog()
+  }, STORE_ONE_WATCHDOG_INTERVAL_MS)
+  console.log(`[watchdog] store=1 enabled instance=${STORE_ONE_WATCHDOG_INSTANCE_KEY} interval_ms=${STORE_ONE_WATCHDOG_INTERVAL_MS}`)
+}

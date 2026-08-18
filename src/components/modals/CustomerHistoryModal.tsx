@@ -73,6 +73,7 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
 
     // Estados de dados
     const [financialData, setFinancialData] = useState<FinancialSummary | null>(null)
+    const [selectedFinancingIds, setSelectedFinancingIds] = useState<number[]>([])
     const [prescriptionGroups, setPrescriptionGroups] = useState<PrescriptionSummaryGroup[]>([])
     const [selectedPrescriptionGroupId, setSelectedPrescriptionGroupId] = useState('titular')
     const [isLoadingData, setIsLoadingData] = useState(false)
@@ -85,6 +86,7 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
             setSearchResults([])
             setSelectedCustomer(null)
             setFinancialData(null)
+            setSelectedFinancingIds([])
             setPrescriptionGroups([])
             setSelectedPrescriptionGroupId('titular')
             setActiveTab('financeiro')
@@ -127,6 +129,7 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
                 getCustomerPrescriptionSummary(customer.id, storeId)
             ])
             setFinancialData(financial)
+            setSelectedFinancingIds(financial.financiamentos.map((financiamento) => financiamento.id))
             setPrescriptionGroups(prescriptions)
             setSelectedPrescriptionGroupId('titular')
         } finally {
@@ -138,6 +141,7 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
     const handleBack = () => {
         setSelectedCustomer(null)
         setFinancialData(null)
+        setSelectedFinancingIds([])
         setPrescriptionGroups([])
         setSelectedPrescriptionGroupId('titular')
     }
@@ -157,7 +161,17 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
     const getFinancialWhatsAppMessage = (): string => {
         if (!financialData || !selectedCustomer) return ''
 
-        const { totais, financiamentos } = financialData
+        const financiamentos = financialData.financiamentos.filter((financiamento) => selectedFinancingIds.includes(financiamento.id))
+        const parcelas = financiamentos.flatMap((financiamento) => financiamento.parcelas)
+        const parcelasPagas = parcelas.filter((parcela) => String(parcela.status || '').toLowerCase() === 'pago')
+        const parcelasPendentes = parcelas.filter((parcela) => String(parcela.status || '').toLowerCase() !== 'pago')
+        const totais = {
+            parcelasPagas: parcelasPagas.length,
+            parcelasPendentes: parcelasPendentes.length,
+            totalParcelas: parcelas.length,
+            valorPago: parcelas.reduce((total, parcela) => total + Number(parcela.valorPago || 0), 0),
+            valorRestante: parcelasPendentes.reduce((total, parcela) => total + Number(parcela.valor || 0), 0),
+        }
 
         if (totais.totalParcelas === 0) {
             return `Olá! Não encontramos parcelas ativas em seu nome.`
@@ -265,6 +279,7 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
                 const result = await sendCustomerFinancialSummaryWhatsApp({
                     storeId,
                     customerId: selectedCustomer.id,
+                    financingIds: selectedFinancingIds,
                 })
 
                 if (result.success) {
@@ -283,6 +298,7 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
                             customerId: selectedCustomer.id,
                             tab: activeTab,
                             prescriptionGroup: null,
+                            financingIds: selectedFinancingIds,
                         },
                     })
                     return
@@ -544,7 +560,22 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
                                                             </span>
                                                             <span className="text-xs text-slate-600">•</span>
                                                             <span className="text-xs text-slate-400">{formatDate(f.dataVenda)}</span>
-                                                            <span className="text-xs text-slate-500 ml-auto">
+                                                            <label className="ml-auto flex cursor-pointer items-center gap-1.5 text-xs font-semibold text-emerald-300">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={selectedFinancingIds.includes(f.id)}
+                                                                    disabled={sendingWhatsApp}
+                                                                    onChange={(event) => {
+                                                                        setSelectedFinancingIds((current) => event.target.checked
+                                                                            ? [...current, f.id]
+                                                                            : current.filter((id) => id !== f.id)
+                                                                        )
+                                                                    }}
+                                                                    className="h-3.5 w-3.5 rounded border-slate-500 bg-slate-900 text-emerald-500 focus:ring-emerald-500"
+                                                                />
+                                                                Enviar
+                                                            </label>
+                                                            <span className="text-xs text-slate-500">
                                                                 {f.parcelasPagas}/{f.totalParcelas} pagas
                                                             </span>
                                                         </div>
@@ -702,6 +733,7 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
                                         disabled={
                                             sendingWhatsApp ||
                                             (activeTab === 'financeiro' && (!financialData || financialData.totais.totalParcelas === 0)) ||
+                                            (activeTab === 'financeiro' && selectedFinancingIds.length === 0) ||
                                             (activeTab === 'receitas' && prescriptionData.length === 0)
                                         }
                                         className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors shadow-lg shadow-emerald-500/20 border border-white/10"
@@ -709,7 +741,9 @@ export default function CustomerHistoryModal({ isOpen, onClose, storeId }: Custo
                                         <MessageCircle className="h-5 w-5" />
                                         {activeTab === 'receitas'
                                             ? `Enviar receita de ${selectedPrescriptionGroupLabel} via WhatsApp`
-                                            : 'Enviar financeiro via WhatsApp'}
+                                            : selectedFinancingIds.length === 0
+                                                ? 'Selecione ao menos uma venda'
+                                                : 'Enviar financeiro via WhatsApp'}
                                     </button>
                                 </div>
                             )}

@@ -55,6 +55,9 @@ type NfcDatabase = {
           dt_pedido_em: string | null
           dt_lente_chegou: string | null
           dt_montado_em: string | null
+          dt_montado_no_lab: string | null
+          dt_recebido_na_loja: string | null
+          os_enviada_ao_lab: boolean
         }
         Insert: Record<string, never>
         Update: {
@@ -121,6 +124,9 @@ export type OSContext = {
   dt_pedido_em: string | null
   dt_lente_chegou: string | null
   dt_montado_em: string | null
+  dt_montado_no_lab: string | null
+  dt_recebido_na_loja: string | null
+  os_enviada_ao_lab: boolean
 }
 
 export type NfcAction =
@@ -136,6 +142,8 @@ export type TrayContextResult = {
   nextAction?:
     | 'VINCULAR_OS'
     | 'LENTE_CHEGOU'
+    | 'MONTAGEM_LAB_CONCLUIDA'
+    | 'RECEBIMENTO_NA_LOJA'
     | 'MONTAGEM_CONCLUIDA'
     | 'CRIAR_BANDEJA'
     | 'PRONTO'
@@ -351,7 +359,7 @@ export async function getTrayContext(
 
   const { data: osData, error: osError } = await supabaseAdmin
     .from('service_orders')
-    .select('id,store_id,dt_pedido_em,dt_lente_chegou,dt_montado_em')
+    .select('id,store_id,dt_pedido_em,dt_lente_chegou,dt_montado_em,dt_montado_no_lab,dt_recebido_na_loja,os_enviada_ao_lab')
     .eq('id', typedTray.current_service_order_id)
     .eq('store_id', storeId)
     .maybeSingle()
@@ -372,6 +380,10 @@ export async function getTrayContext(
   let nextAction: TrayContextResult['nextAction']
   if (!osData.dt_lente_chegou) {
     nextAction = 'LENTE_CHEGOU'
+  } else if (osData.os_enviada_ao_lab && !osData.dt_montado_no_lab) {
+    nextAction = 'MONTAGEM_LAB_CONCLUIDA'
+  } else if (osData.os_enviada_ao_lab && !osData.dt_montado_em) {
+    nextAction = 'RECEBIMENTO_NA_LOJA'
   } else if (!osData.dt_montado_em) {
     nextAction = 'MONTAGEM_CONCLUIDA'
   } else {
@@ -386,6 +398,9 @@ export async function getTrayContext(
       dt_pedido_em: osData.dt_pedido_em,
       dt_lente_chegou: osData.dt_lente_chegou,
       dt_montado_em: osData.dt_montado_em,
+      dt_montado_no_lab: osData.dt_montado_no_lab,
+      dt_recebido_na_loja: osData.dt_recebido_na_loja,
+      os_enviada_ao_lab: osData.os_enviada_ao_lab ?? false,
     },
     nextAction,
   }
@@ -495,5 +510,7 @@ export async function advanceOsStatus(
   }
 
   revalidatePath(`/nfc/${storeId}/bandeja/${trayId}`)
+  revalidatePath(`/dashboard/loja/${storeId}/laboratorio`)
+  revalidatePath(`/dashboard/loja/${storeId}/entrega`)
   return { success: true }
 }

@@ -1,6 +1,7 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getInstallmentOutstanding } from '@/lib/installment-balance'
 
 export interface CustomerXRayData {
     customer: {
@@ -153,7 +154,7 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
                 .select(`
                     id, venda_id,
                     financiamento_parcelas (
-                        id, numero_parcela, data_vencimento, valor_parcela, status, data_pagamento
+                        id, numero_parcela, data_vencimento, valor_parcela, valor_pago, valor_transferido_entrada, valor_transferido_saida, status, data_pagamento
                     )
                 `)
                 .in('venda_id', vendasIds)
@@ -307,7 +308,10 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
         const hoje = new Date().toISOString().split('T')[0];
         const { data: pendingParcelas, error: pendingError } = await (supabase
             .from('financiamento_parcelas') as any)
-            .select('valor_parcela, data_vencimento, venda_id')
+            .select(`
+                valor_parcela, valor_pago, valor_transferido_entrada, valor_transferido_saida, data_vencimento,
+                financiamento_loja ( venda_id, vendas!financiamento_loja_venda_id_fkey ( status ) )
+            `)
             .eq('store_id', storeId)
             .eq('customer_id', customerId)
             .eq('status', 'Pendente')
@@ -319,9 +323,11 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
 
         if (pendingParcelas && !pendingError) {
             pendingParcelas.forEach((p: any) => {
-                saldoPendente += Number(p.valor_parcela || 0);
-                if (p.venda_id) {
-                    vendasComSaldoSet.add(p.venda_id);
+                if (String(p.financiamento_loja?.vendas?.status || '').toLowerCase() === 'cancelada') return
+                saldoPendente += getInstallmentOutstanding(p);
+                const vendaId = Number(p.financiamento_loja?.venda_id)
+                if (Number.isFinite(vendaId) && vendaId > 0) {
+                    vendasComSaldoSet.add(vendaId);
                 }
                 const vencStr = p.data_vencimento ? p.data_vencimento.split('T')[0] : '';
                 if (vencStr < hoje) {
@@ -391,7 +397,9 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
 
             // Process Pending Installments
             const financiamentoLoja = venda.financiamento_loja?.[0]
-            const parcelasFiltradas = (financiamentoLoja?.financiamento_parcelas || []).filter((p: any) => p.status === 'Pendente')
+            const parcelasFiltradas = venda.status === 'Cancelada'
+                ? []
+                : (financiamentoLoja?.financiamento_parcelas || []).filter((p: any) => String(p.status || '').toLowerCase() === 'pendente')
             const hojeStr = new Date().toISOString().split('T')[0]
             const parcelasPendentes = parcelasFiltradas.map((p: any) => {
                 const vencStr = p.data_vencimento ? p.data_vencimento.split('T')[0] : ''
@@ -399,7 +407,7 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
                     id: p.id,
                     numero_parcela: p.numero_parcela,
                     data_vencimento: p.data_vencimento,
-                    valor_parcela: p.valor_parcela,
+                    valor_parcela: getInstallmentOutstanding(p),
                     status: p.status,
                     isAtrasada: vencStr < hojeStr
                 }
@@ -409,7 +417,11 @@ export async function getCustomerXRay(customerId: number, storeId: number): Prom
                 id: venda.id,
                 data: venda.created_at,
                 valorTotal: venda.valor_total,
-                valorRestante: venda.is_historical_import === true ? 0 : (venda.valor_restante || 0),
+                valorRestante: venda.status === 'Cancelada'
+                    ? 0
+                    : venda.is_historical_import === true
+                        ? parcelasPendentes.reduce((total: number, parcela: any) => total + Number(parcela.valor_parcela || 0), 0)
+                        : (venda.valor_restante || 0),
                 status: venda.status,
                 isHistoricalImport: venda.is_historical_import === true,
                 historicalEntryAmount: venda.historical_entry_amount || 0,

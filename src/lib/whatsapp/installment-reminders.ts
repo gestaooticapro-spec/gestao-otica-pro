@@ -2,6 +2,7 @@
 
 import { Json } from '@/lib/database.types'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getInstallmentOutstanding } from '@/lib/installment-balance'
 import { getStoreModules, StoreSettings, WhatsAppInstallmentDueReminderSettings } from '@/lib/store-modules'
 import { phonesMatch, toEvolutionNumber } from '@/lib/whatsapp/phone'
 
@@ -46,6 +47,9 @@ type InstallmentRow = {
   numero_parcela: number
   data_vencimento: string
   valor_parcela: number
+  valor_pago?: number | null
+  valor_transferido_entrada?: number | null
+  valor_transferido_saida?: number | null
   status: string
   customer_id: number
   store_id: number
@@ -58,6 +62,9 @@ type InstallmentRow = {
   financiamento_loja?: {
     venda_id: number | null
     quantidade_parcelas: number | null
+    vendas?: {
+      status: string | null
+    } | null
   } | null
 }
 
@@ -285,7 +292,7 @@ function buildMessage(
     paciente: patientText(customerName, dependentName),
     numero_parcela: parcelaLabel,
     data_vencimento: formatDatePtBr(installment.data_vencimento),
-    valor_parcela: Number(installment.valor_parcela || 0).toLocaleString('pt-BR', {
+    valor_parcela: getInstallmentOutstanding(installment).toLocaleString('pt-BR', {
       style: 'currency',
       currency: 'BRL',
     }),
@@ -339,11 +346,14 @@ async function loadDueInstallments(storeId: number, targetDate: string) {
       numero_parcela,
       data_vencimento,
       valor_parcela,
+      valor_pago,
+      valor_transferido_entrada,
+      valor_transferido_saida,
       status,
       customer_id,
       store_id,
       customers ( id, full_name, phone, fone_movel ),
-      financiamento_loja ( venda_id, quantidade_parcelas )
+      financiamento_loja ( venda_id, quantidade_parcelas, vendas!financiamento_loja_venda_id_fkey ( status ) )
     `)
     .eq('store_id', storeId)
     .in('status', ['Pendente', 'pendente'])
@@ -354,7 +364,35 @@ async function loadDueInstallments(storeId: number, targetDate: string) {
     .order('id', { ascending: true })
 
   if (error) throw error
-  return (data ?? []) as InstallmentRow[]
+  return ((data ?? []) as InstallmentRow[]).filter((installment) =>
+    String(installment.financiamento_loja?.vendas?.status || '').toLowerCase() !== 'cancelada'
+  )
+}
+
+async function loadInstallmentForDispatch(storeId: number, installmentId: number) {
+  const supabase = createAdminClient()
+  const { data, error } = await (supabase.from('financiamento_parcelas') as any)
+    .select(`
+      id,
+      financiamento_id,
+      numero_parcela,
+      data_vencimento,
+      valor_parcela,
+      valor_pago,
+      valor_transferido_entrada,
+      valor_transferido_saida,
+      status,
+      customer_id,
+      store_id,
+      customers ( id, full_name, phone, fone_movel ),
+      financiamento_loja ( venda_id, quantidade_parcelas, vendas!financiamento_loja_venda_id_fkey ( status ) )
+    `)
+    .eq('id', installmentId)
+    .eq('store_id', storeId)
+    .maybeSingle()
+
+  if (error) throw error
+  return data as InstallmentRow | null
 }
 
 async function loadPatientNames(storeId: number, vendaIds: number[]) {
@@ -443,7 +481,7 @@ async function scheduleReminders(now: Date) {
             financiamentoId: installment.financiamento_id,
             numeroParcela: installment.numero_parcela,
             totalParcelas: installment.financiamento_loja?.quantidade_parcelas ?? null,
-            valorParcela: installment.valor_parcela ?? null,
+            valorParcela: getInstallmentOutstanding(installment),
             targetDate: installment.reminderTargetDate,
             daysBeforeDue: Math.max(
               1,
@@ -519,6 +557,8 @@ async function dispatchDueReminders(now: Date, limit = DEFAULT_DISPATCH_LIMIT) {
   let failed = 0
 
   for (const reminder of (data ?? []) as ReminderRow[]) {
+    let currentMessageText = reminder.message_text
+    let currentPayload = reminder.payload
     const { data: claimedReminder, error: claimError } = await (supabase.from('whatsapp_installment_reminders') as any)
       .update({
         status: 'sending',
@@ -542,6 +582,56 @@ async function dispatchDueReminders(now: Date, limit = DEFAULT_DISPATCH_LIMIT) {
         .eq('id', reminder.id)
       continue
     }
+
+    const currentInstallment = await loadInstallmentForDispatch(reminder.store_id, reminder.installment_id)
+    const currentOutstanding = currentInstallment ? getInstallmentOutstanding(currentInstallment) : 0
+    const saleCancelled = String(currentInstallment?.financiamento_loja?.vendas?.status || '').toLowerCase() === 'cancelada'
+    if (!currentInstallment || saleCancelled || String(currentInstallment.status || '').toLowerCase() !== 'pendente' || currentOutstanding <= 0) {
+      await (supabase.from('whatsapp_installment_reminders') as any)
+        .update({
+          status: 'cancelled',
+          error_message: saleCancelled
+            ? 'Venda cancelada antes do envio.'
+            : 'Parcela quitada ou indisponivel antes do envio.',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', reminder.id)
+      continue
+    }
+
+    const currentSettings = ((reminder.stores?.settings || {}) as StoreSettings) || {}
+    const currentReminderSettings = buildInstallmentDueReminderSettings(
+      currentSettings.whatsapp_automation?.installment_due_reminder
+    )
+    const currentVendaId = currentInstallment.financiamento_loja?.venda_id ?? null
+    const currentPatientNames = currentVendaId
+      ? await loadPatientNames(reminder.store_id, [currentVendaId])
+      : new Map<number, string | null>()
+    currentMessageText = buildMessage(
+      currentReminderSettings.template,
+      currentInstallment,
+      currentVendaId ? currentPatientNames.get(currentVendaId) ?? null : null
+    )
+    const previousPayload = currentPayload && typeof currentPayload === 'object' && !Array.isArray(currentPayload)
+      ? currentPayload as Record<string, Json | undefined>
+      : {}
+    currentPayload = {
+      ...previousPayload,
+      vendaId: currentVendaId,
+      financiamentoId: currentInstallment.financiamento_id,
+      numeroParcela: currentInstallment.numero_parcela,
+      totalParcelas: currentInstallment.financiamento_loja?.quantidade_parcelas ?? null,
+      valorParcela: currentOutstanding,
+      targetDate: currentInstallment.data_vencimento.slice(0, 10),
+    }
+    await (supabase.from('whatsapp_installment_reminders') as any)
+      .update({
+        message_text: currentMessageText,
+        payload: currentPayload,
+        due_date: currentInstallment.data_vencimento.slice(0, 10),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', reminder.id)
 
     if (await isCustomerForcedToHuman(reminder.channel_id, reminder.remote_phone)) {
       await (supabase.from('whatsapp_installment_reminders') as any)
@@ -570,7 +660,7 @@ async function dispatchDueReminders(now: Date, limit = DEFAULT_DISPATCH_LIMIT) {
         channel_id: reminder.channel_id,
         inbound_message_id: null,
         remote_phone: reminder.remote_phone,
-        message_text: reminder.message_text,
+        message_text: currentMessageText,
         message_type: 'installment_due_reminder',
         status: 'pending',
         payload: {
@@ -595,7 +685,7 @@ async function dispatchDueReminders(now: Date, limit = DEFAULT_DISPATCH_LIMIT) {
       await automationSendRequest({
         instanceKey,
         phone: reminder.remote_phone,
-        text: reminder.message_text,
+        text: currentMessageText,
         outboundMessageId: outbound.id,
       })
 
@@ -609,16 +699,16 @@ async function dispatchDueReminders(now: Date, limit = DEFAULT_DISPATCH_LIMIT) {
         .eq('id', reminder.id)
 
       await markReminderConversationContext(reminder, outbound.id, sentAtIso, {
-        messageText: reminder.message_text,
-        dueDate: String((reminder as any).due_date || (reminder as any).payload?.targetDate || ''),
-        amount: typeof (reminder as any).payload?.valorParcela === 'number'
-          ? (reminder as any).payload.valorParcela
+        messageText: currentMessageText,
+        dueDate: currentInstallment.data_vencimento.slice(0, 10),
+        amount: typeof (currentPayload as any)?.valorParcela === 'number'
+          ? (currentPayload as any).valorParcela
           : null,
-        installmentNumber: typeof (reminder as any).payload?.numeroParcela === 'number'
-          ? (reminder as any).payload.numeroParcela
+        installmentNumber: typeof (currentPayload as any)?.numeroParcela === 'number'
+          ? (currentPayload as any).numeroParcela
           : null,
-        totalInstallments: typeof (reminder as any).payload?.totalParcelas === 'number'
-          ? (reminder as any).payload.totalParcelas
+        totalInstallments: typeof (currentPayload as any)?.totalParcelas === 'number'
+          ? (currentPayload as any).totalParcelas
           : null,
       })
 

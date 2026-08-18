@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getFiscalInvoices } from "@/lib/actions/fiscal-db.actions";
 import { consultarNFCe, consultarNFe, cancelarNota } from "@/lib/actions/fiscal.actions";
+import { createFiscalPublicPrintLink } from "@/lib/actions/fiscal-public-link.actions";
 import BackButton from "@/components/ui/BackButton";
 import {
     FileText, Plus, Search, Loader2, AlertCircle,
@@ -197,8 +198,13 @@ export default function FiscalDashboard(props: { params: { storeId: string } }) 
         };
     };
 
-    const handleWhatsApp = (inv: Invoice) => {
-        const pdfLink = `${window.location.origin}/api/fiscal/print/${inv.id}?download=true`;
+    const handleWhatsApp = async (inv: Invoice) => {
+        const linkResult = await createFiscalPublicPrintLink(inv.id);
+        if (!linkResult.success) {
+            alert(linkResult.message);
+            return;
+        }
+        const pdfLink = `${window.location.origin}${linkResult.path}`;
         const firstName = inv.destinatario_nome?.split(" ")[0] || "";
         const tipoText = inv.tipo_documento === "NFSe"
             ? "Nota Fiscal de Serviço (NFS-e)"

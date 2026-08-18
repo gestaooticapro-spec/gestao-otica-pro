@@ -9,13 +9,19 @@ import { sendInstallmentReceiptWhatsApp } from '@/lib/actions/manual-whatsapp.ac
 import { toast } from 'sonner'
 import ContratosQuitadosModal from './ContratosQuitadosModal'
 import ReverseInstallmentReceiptModal, { type ReversibleReceiptOperation } from './ReverseInstallmentReceiptModal'
+import { getInstallmentOutstanding } from '@/lib/installment-balance'
 
 type ParcelaData = {
     id: number
     numero_parcela: number
     data_vencimento: string
     valor_parcela: number
+    valor_pago?: number | null
+    valor_transferido_entrada?: number | null
+    valor_transferido_saida?: number | null
     valor_pago_relatorio?: number
+    valor_a_receber_relatorio?: number
+    valor_recebido_relatorio?: number | null
     data_pagamento_relatorio?: string | null
     status: string
     data_pagamento: string | null
@@ -90,12 +96,12 @@ export default function ParcelasInterface({ storeId, reportMode = false }: { sto
         return date.toLocaleDateString('pt-BR')
     }
 
-    // Helper para exibir status bonito
+    // Status discreto para manter datas e valores como foco da tabela.
     const getStatusBadge = (p: ParcelaData) => {
         const isPago = p.status === 'pago' || p.data_pagamento !== null
         
         if (isPago) {
-            return <span className="px-2 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-md text-[10px] font-bold uppercase tracking-wider">Pago</span>
+            return <span className="inline-flex w-[74px] text-[10px] font-bold uppercase tracking-wide text-emerald-400">Pago</span>
         }
 
         const hoje = new Date()
@@ -109,10 +115,10 @@ export default function ParcelasInterface({ storeId, reportMode = false }: { sto
         }
         
         if (dataVenc < hoje) {
-            return <span className="px-2 py-1 bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-md text-[10px] font-bold uppercase tracking-wider">Atrasado</span>
+            return <span className="inline-flex w-[74px] text-[10px] font-bold uppercase tracking-wide text-rose-400">Atrasado</span>
         }
 
-        return <span className="px-2 py-1 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-md text-[10px] font-bold uppercase tracking-wider">Pendente</span>
+        return <span className="inline-flex w-[74px] text-[10px] font-bold uppercase tracking-wide text-amber-400">Pendente</span>
     }
 
     const handleSendReceipt = async (parcelaId: number) => {
@@ -373,7 +379,17 @@ export default function ParcelasInterface({ storeId, reportMode = false }: { sto
                                                             )}
                                                         </div>
                                                         <div className="overflow-x-auto">
-                                                            <table className="w-full text-left border-collapse">
+                                                            <table className="w-full table-fixed text-left border-collapse">
+                                                                <colgroup>
+                                                                    <col className="w-[8%]" />
+                                                                    <col className="w-[10%]" />
+                                                                    <col className="w-[13%]" />
+                                                                    <col className="w-[13%]" />
+                                                                    <col className="w-[10%]" />
+                                                                    <col className="w-[10%]" />
+                                                                    <col className="w-[10%]" />
+                                                                    <col className="w-[26%]" />
+                                                                </colgroup>
                                                                 <thead>
                                                                     <tr>
                                                                         <th className="bg-transparent border-b border-white/5 px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Parcela</th>
@@ -381,6 +397,8 @@ export default function ParcelasInterface({ storeId, reportMode = false }: { sto
                                                                         <th className="bg-transparent border-b border-white/5 px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Vencimento</th>
                                                                         <th className="bg-transparent border-b border-white/5 px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Pagamento</th>
                                                                         <th className="bg-transparent border-b border-white/5 px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-right">Valor</th>
+                                                                        <th className="bg-transparent border-b border-white/5 px-2 py-2 text-[9px] font-bold text-slate-500 uppercase tracking-wider text-right">A receber</th>
+                                                                        <th className="bg-transparent border-b border-white/5 px-2 py-2 text-[9px] font-bold text-slate-500 uppercase tracking-wider text-right">Recebido</th>
                                                                         <th className="bg-transparent border-b border-white/5 px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-right">Comprovante</th>
                                                                     </tr>
                                                                 </thead>
@@ -406,6 +424,12 @@ export default function ParcelasInterface({ storeId, reportMode = false }: { sto
                                                                                 </td>
                                                                                 <td className="px-4 py-2 text-xs font-bold text-white text-right">
                                                                                     {formatCurrency(p.valor_parcela)}
+                                                                                </td>
+                                                                                <td className="px-2 py-2 text-[11px] font-bold text-amber-300 text-right whitespace-nowrap">
+                                                                                    {formatCurrency(Number(p.valor_a_receber_relatorio ?? getInstallmentOutstanding(p)))}
+                                                                                </td>
+                                                                                <td className="px-2 py-2 text-[11px] font-bold text-emerald-400 text-right whitespace-nowrap">
+                                                                                    {p.valor_recebido_relatorio != null ? formatCurrency(Number(p.valor_recebido_relatorio)) : '-'}
                                                                                 </td>
                                                                                 <td className="px-4 py-2 text-right">
                                                                                     {isPago ? (
@@ -466,6 +490,8 @@ export default function ParcelasInterface({ storeId, reportMode = false }: { sto
                                         <th className="bg-slate-800/50 border-b border-white/10 px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Vencimento</th>
                                         <th className="bg-slate-800/50 border-b border-white/10 px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Pagamento</th>
                                         <th className="bg-slate-800/50 border-b border-white/10 px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Valor</th>
+                                        <th className="bg-slate-800/50 border-b border-white/10 px-2 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-right">A receber</th>
+                                        <th className="bg-slate-800/50 border-b border-white/10 px-2 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-right">Recebido</th>
                                         <th className="bg-slate-800/50 border-b border-white/10 px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Comprovante</th>
                                         <th className="bg-slate-800/50 border-b border-white/10 px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider text-right">Ação</th>
                                     </tr>
@@ -500,7 +526,13 @@ export default function ParcelasInterface({ storeId, reportMode = false }: { sto
                                                     {(p.data_pagamento_relatorio || p.data_pagamento) ? formatDate(p.data_pagamento_relatorio || p.data_pagamento || '') : '-'}
                                                 </td>
                                                 <td className="px-4 py-3 text-sm font-bold text-white">
-                                                    {formatCurrency(reportMode && Number(p.valor_pago_relatorio || 0) > 0 ? Number(p.valor_pago_relatorio) : p.valor_parcela)}
+                                                    {formatCurrency(p.valor_parcela)}
+                                                </td>
+                                                <td className="px-2 py-3 text-xs font-bold text-amber-300 text-right whitespace-nowrap">
+                                                    {formatCurrency(Number(p.valor_a_receber_relatorio ?? getInstallmentOutstanding(p)))}
+                                                </td>
+                                                <td className="px-2 py-3 text-xs font-bold text-emerald-400 text-right whitespace-nowrap">
+                                                    {p.valor_recebido_relatorio != null ? formatCurrency(Number(p.valor_recebido_relatorio)) : '-'}
                                                 </td>
                                                 <td className="px-4 py-3">
                                                     {isPago ? (

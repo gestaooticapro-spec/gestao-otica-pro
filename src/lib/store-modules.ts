@@ -103,6 +103,7 @@ export type StoreSettings = {
   module_post_sales_enabled?: boolean
   module_quick_sale_enabled?: boolean
   module_labels_enabled?: boolean
+  pix_provider?: 'manual' | 'sicredi'
   whatsapp_automation?: WhatsAppAutomationSettings
   store_hours?: StoreHoursConfig
   [key: string]: Json | undefined
