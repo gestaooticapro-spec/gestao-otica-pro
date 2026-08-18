@@ -57,6 +57,7 @@ next-env.d.ts
 *.pdf
 Guia_tecnico_integracao_APIPix_Sicredi_v2.1.pdf
 CollectionAPIPixSicredi.json
+/.sicredicharles/
 *.zip
 *.rar
 *.7z
