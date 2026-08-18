@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { getStoreProfile } from '@/lib/actions/store.actions'
+import { updateVendaStatus } from '@/lib/actions/vendas.actions'
 import { isSicrediPilotStoreCnpj } from '@/lib/pix/sicredi-availability'
 import {
   cancelSicrediImmediateCharge,
@@ -214,6 +215,7 @@ async function settleSaleCharge(admin: any, row: any) {
   const obs = `Pix Sicredi venda #${row.venda_id} txid ${row.txid}`
   const { data: existing } = await admin.from('pagamentos').select('id').eq('venda_id', row.venda_id).eq('obs', obs).maybeSingle()
   if (existing) {
+    await finalizeSaleFinancials(admin, row)
     await table(admin).update({ settlement_status: 'COMPLETED', settlement_pagamento_id: existing.id, settled_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', row.id)
     return row
   }
@@ -234,9 +236,24 @@ async function settleSaleCharge(admin: any, row: any) {
     await table(admin).update({ settlement_status: 'ERROR', updated_at: new Date().toISOString() }).eq('id', row.id)
     throw new Error('Pagamento confirmado, mas a venda nao foi baixada.')
   }
+  await finalizeSaleFinancials(admin, row)
   await table(admin).update({ settlement_status: 'COMPLETED', settlement_pagamento_id: payment.id, settled_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', row.id)
   revalidateSale(Number(row.store_id), Number(row.venda_id))
   return row
+}
+
+async function finalizeSaleFinancials(admin: any, row: any) {
+  const { error: financeError } = await admin.rpc('update_venda_financeiro', { p_venda_id: Number(row.venda_id) })
+  if (financeError) throw new Error('Pagamento confirmado, mas nao foi possivel recalcular o saldo da venda.')
+
+  const { data: venda } = await admin.from('vendas').select('status, valor_restante, financiamento_id').eq('id', row.venda_id).maybeSingle()
+  const shouldClose = venda?.status === 'Em Aberto'
+    && !venda?.financiamento_id
+    && Number(venda?.valor_restante || 0) <= 0.01
+  if (shouldClose) {
+    const closed = await updateVendaStatus(Number(row.venda_id), Number(row.store_id), 'Fechada', Number(row.created_by_employee_id || 0))
+    if (!closed.success) throw new Error(closed.message || 'Pagamento confirmado, mas nao foi possivel fechar a venda.')
+  }
 }
 
 export async function processSicrediPixSaleWebhook(txid: string) {
