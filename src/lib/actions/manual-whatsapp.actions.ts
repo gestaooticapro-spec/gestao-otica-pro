@@ -34,6 +34,7 @@ export type ManualWhatsAppMessageType =
   | 'customer_history'
   | 'document_link'
   | 'document_attachment'
+  | 'pix_charge'
 
 export type ManualWhatsAppRouteUsed = 'vps' | 'external_fallback'
 

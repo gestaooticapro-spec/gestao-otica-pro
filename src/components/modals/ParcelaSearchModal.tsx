@@ -10,6 +10,12 @@ import { sendInstallmentReceiptWhatsApp } from '@/lib/actions/manual-whatsapp.ac
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import { printParcela } from '@/components/financeiro/PrintParcelaButton'
 import { getInstallmentOutstanding } from '@/lib/installment-balance'
+import PixInstallmentChargeModal from '@/components/modals/PixInstallmentChargeModal'
+import {
+    getPixChargesForInstallments,
+    getPixProviderForStore,
+    type PixInstallmentCharge,
+} from '@/lib/actions/pix-installment.actions'
 
 
 const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -25,18 +31,26 @@ const parseMoney = (val: string) => {
 
 const PAYMENT_METHODS = ['PIX Remoto', 'PIX na maquininha', 'Dinheiro', 'Cartão Débito', 'Cartão Crédito']
 
-function ParcelaCard({ p, onClick }: { p: any, onClick: () => void }) {
+function ParcelaCard({
+    p,
+    onReceive,
+    onGeneratePix,
+    pixCharge,
+}: {
+    p: any
+    onReceive: () => void
+    onGeneratePix?: () => void
+    pixCharge?: PixInstallmentCharge
+}) {
     const isVencida = new Date(p.data_vencimento) < new Date(getToday())
 
     return (
-        <button
-            onClick={onClick}
-            className="w-full flex items-center justify-between p-3 bg-white/5 border border-white/10 rounded-xl hover:bg-amber-500/10 hover:border-amber-500/30 transition-all group text-left relative overflow-hidden"
-        >
+        <div className="w-full p-3 bg-white/5 border border-white/10 rounded-xl hover:border-amber-500/30 transition-all group text-left relative overflow-hidden">
             {isVencida && <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-500" />}
             {!isVencida && <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500/50" />}
 
-            <div className="flex items-center gap-3 pl-2">
+            <button onClick={onReceive} className="flex w-full items-center justify-between gap-3 pl-2 text-left">
+            <div className="flex items-center gap-3">
                 <div className={`p-2 rounded-lg ${isVencida ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/10 text-amber-500'}`}>
                     <Calendar className="h-4 w-4" />
                 </div>
@@ -49,11 +63,11 @@ function ParcelaCard({ p, onClick }: { p: any, onClick: () => void }) {
             </div>
             <div className="text-right">
                 <span className="block text-slate-200 font-black text-base">{formatCurrency(getSaldoParcela(p))}</span>
-                <span className="text-[9px] font-bold text-amber-500 opacity-0 group-hover:opacity-100 transition-opacity uppercase tracking-wide">
-                    Pagar Agora
-                </span>
+                {pixCharge ? <span className={`text-[9px] font-bold uppercase tracking-wide ${pixCharge.status === 'PENDING' ? 'text-cyan-400' : pixCharge.status === 'PAID' ? 'text-emerald-400' : 'text-slate-500'}`}>Pix: {pixCharge.status === 'PENDING' ? 'pendente' : pixCharge.status === 'PAID' ? 'pago' : pixCharge.status.toLowerCase()}</span> : <span className="text-[9px] font-bold text-amber-500 opacity-0 group-hover:opacity-100 transition-opacity uppercase tracking-wide">Receber</span>}
             </div>
-        </button>
+            </button>
+            {onGeneratePix ? <div className="mt-3 flex justify-end border-t border-white/5 pt-3"><button type="button" onClick={onGeneratePix} className="rounded-lg border border-cyan-500/20 bg-cyan-500/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-cyan-300 hover:bg-cyan-500/20">{pixCharge?.status === 'PENDING' ? 'Ver Pix' : 'Gerar QR Code'}</button></div> : null}
+        </div>
     )
 }
 
@@ -98,6 +112,9 @@ export default function ParcelaSearchModal({
     const [isPrinting, setIsPrinting] = useState(false)
     const [isSendingReceipt, setIsSendingReceipt] = useState(false)
     const [receiptSent, setReceiptSent] = useState(false)
+    const [pixProvider, setPixProvider] = useState<'manual' | 'sicredi'>('manual')
+    const [pixCharges, setPixCharges] = useState<Record<number, PixInstallmentCharge>>({})
+    const [pixInstallment, setPixInstallment] = useState<any>(null)
     const searchInputRef = useRef<HTMLInputElement>(null)
     const receiptAttemptRef = useRef<{ signature: string; key: string } | null>(null)
 
@@ -141,6 +158,17 @@ export default function ParcelaSearchModal({
         }
 
     }, [isOpen, initialQuery, initialParcela?.id])
+
+    useEffect(() => {
+        if (!isOpen) return
+        void getPixProviderForStore(storeId).then(setPixProvider)
+    }, [isOpen, storeId])
+
+    useEffect(() => {
+        if (!isOpen || !selectedClientData || pixProvider !== 'sicredi') return
+        const installmentIds = (selectedClientData.parcelas || []).map((item: any) => Number(item.id)).filter(Boolean)
+        void getPixChargesForInstallments(storeId, installmentIds).then(setPixCharges)
+    }, [isOpen, selectedClientData, pixProvider, storeId])
 
     useEffect(() => {
         if (!isOpen) return
@@ -443,7 +471,13 @@ export default function ParcelaSearchModal({
                                                         return a.numero_parcela - b.numero_parcela
                                                     })
                                                     .map((p: any) => (
-                                                    <ParcelaCard key={p.id} p={p} onClick={() => handleSelectParcela(p)} />
+                                                    <ParcelaCard
+                                                        key={p.id}
+                                                        p={p}
+                                                        onReceive={() => handleSelectParcela(p)}
+                                                        pixCharge={pixCharges[Number(p.id)]}
+                                                        onGeneratePix={pixProvider === 'sicredi' ? () => setPixInstallment(p) : undefined}
+                                                    />
                                                 ))}
                                             </div>
                                         </div>
@@ -648,6 +682,22 @@ export default function ParcelaSearchModal({
                     onSuccess={handleAuthSuccess}
                     title="Autorizar Pagamento"
                     description="Insira seu PIN para confirmar."
+                />
+            )}
+            {pixInstallment && (
+                <PixInstallmentChargeModal
+                    isOpen={Boolean(pixInstallment)}
+                    storeId={storeId}
+                    installment={pixInstallment}
+                    hasNextInstallment={Boolean(selectedClientData?.parcelas?.some((candidate: any) => Number(candidate.financiamento_id) === Number(pixInstallment.financiamento_id) && Number(candidate.numero_parcela) > Number(pixInstallment.numero_parcela) && String(candidate.status).toLowerCase() !== 'pago'))}
+                    initialCharge={pixCharges[Number(pixInstallment.id)]}
+                    onClose={() => setPixInstallment(null)}
+                    onChargeChanged={(charge) => setPixCharges((current) => {
+                        const next = { ...current }
+                        if (charge) next[Number(pixInstallment.id)] = charge
+                        else delete next[Number(pixInstallment.id)]
+                        return next
+                    })}
                 />
             )}
         </>,

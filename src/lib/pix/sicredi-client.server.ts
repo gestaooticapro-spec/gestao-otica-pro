@@ -34,6 +34,31 @@ type SicrediPixConfig = {
   keyPassphrase?: string
 }
 
+type SicrediCobResponse = {
+  txid?: unknown
+  status?: unknown
+  calendario?: {
+    criacao?: unknown
+    expiracao?: unknown
+  }
+  location?: unknown
+  loc?: {
+    id?: unknown
+    location?: unknown
+  }
+  pixCopiaECola?: unknown
+}
+
+export type SicrediImmediateCharge = {
+  txid: string
+  status: string
+  pixCopyPaste: string | null
+  location: string | null
+  createdAt: string | null
+  expirationSeconds: number | null
+  raw: Record<string, unknown>
+}
+
 let cachedToken: SicrediPixToken | null = null
 
 function required(value: string | undefined, label: string) {
@@ -149,6 +174,84 @@ function requestToken(config: SicrediPixConfig): Promise<SicrediPixToken> {
   })
 }
 
+async function requestSicrediJson<T>(
+  method: 'GET' | 'POST' | 'PATCH',
+  pathname: string,
+  body?: Record<string, unknown>,
+): Promise<T> {
+  const config = getSicrediPixConfig()
+  const token = await getSicrediPixAccessToken()
+  const endpoint = new URL(pathname, config.baseUrl)
+  const serializedBody = body ? JSON.stringify(body) : undefined
+
+  return new Promise((resolvePromise, reject) => {
+    const request = httpsRequest({
+      protocol: endpoint.protocol,
+      hostname: endpoint.hostname,
+      port: endpoint.port || 443,
+      path: `${endpoint.pathname}${endpoint.search}`,
+      method,
+      cert: Buffer.concat([config.certificate, Buffer.from('\n'), config.certificateChain]),
+      key: config.privateKey,
+      passphrase: config.keyPassphrase,
+      rejectUnauthorized: true,
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token.accessToken}`,
+        ...(serializedBody ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(serializedBody) } : {}),
+      },
+    }, (response) => {
+      const chunks: Buffer[] = []
+      response.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
+      response.on('end', () => {
+        const payload = Buffer.concat(chunks).toString('utf8')
+        const status = response.statusCode || 0
+        if (status < 200 || status >= 300) {
+          const safePayload = payload.slice(0, 500).replace(/[\r\n]+/g, ' ')
+          reject(new Error(`Falha na API Pix Sicredi (HTTP ${status}): ${safePayload || 'sem detalhes'}`))
+          return
+        }
+
+        try {
+          resolvePromise((payload ? JSON.parse(payload) : {}) as T)
+        } catch {
+          reject(new Error('O Sicredi retornou uma resposta invalida para a cobrança Pix.'))
+        }
+      })
+    })
+
+    request.setTimeout(REQUEST_TIMEOUT_MS, () => {
+      request.destroy(new Error('Tempo limite excedido na API Pix Sicredi.'))
+    })
+    request.on('error', (error) => reject(new Error(`Falha de conexao mTLS com o Sicredi: ${error.message}`)))
+    if (serializedBody) request.write(serializedBody)
+    request.end()
+  })
+}
+
+function parseImmediateCharge(response: SicrediCobResponse): SicrediImmediateCharge {
+  if (typeof response.txid !== 'string' || !response.txid.trim()) {
+    throw new Error('O Sicredi nao retornou o txid da cobrança Pix.')
+  }
+
+  const raw = response as Record<string, unknown>
+  return {
+    txid: response.txid,
+    status: typeof response.status === 'string' ? response.status : 'ATIVA',
+    pixCopyPaste: typeof response.pixCopiaECola === 'string' ? response.pixCopiaECola : null,
+    location: typeof response.location === 'string'
+      ? response.location
+      : typeof response.loc?.location === 'string'
+        ? response.loc.location
+        : null,
+    createdAt: typeof response.calendario?.criacao === 'string' ? response.calendario.criacao : null,
+    expirationSeconds: Number.isFinite(Number(response.calendario?.expiracao))
+      ? Number(response.calendario?.expiracao)
+      : null,
+    raw,
+  }
+}
+
 export async function getSicrediPixAccessToken(
   options: { forceRefresh?: boolean } = {},
 ): Promise<SicrediPixToken> {
@@ -167,4 +270,42 @@ export async function getSicrediPixAccessToken(
 
 export function clearSicrediPixTokenCache() {
   cachedToken = null
+}
+
+export async function createSicrediImmediateCharge(input: {
+  pixKey: string
+  amount: number
+  expirationSeconds: number
+  payerRequest: string
+  additionalInfo?: Array<{ name: string; value: string }>
+}): Promise<SicrediImmediateCharge> {
+  if (!Number.isFinite(input.amount) || input.amount <= 0) {
+    throw new Error('O valor da cobrança Pix deve ser maior que zero.')
+  }
+  if (!Number.isInteger(input.expirationSeconds) || input.expirationSeconds < 60) {
+    throw new Error('A validade da cobrança Pix deve ser de ao menos 60 segundos.')
+  }
+  if (!input.pixKey.trim()) throw new Error('Chave Pix Sicredi ausente para esta loja.')
+
+  const response = await requestSicrediJson<SicrediCobResponse>('POST', '/api/v3/cob', {
+    calendario: { expiracao: input.expirationSeconds },
+    valor: { original: input.amount.toFixed(2), modalidadeAlteracao: 0 },
+    chave: input.pixKey.trim(),
+    solicitacaoPagador: input.payerRequest.slice(0, 140),
+    ...(input.additionalInfo?.length ? { infoAdicionais: input.additionalInfo } : {}),
+  })
+
+  return parseImmediateCharge(response)
+}
+
+export async function getSicrediImmediateCharge(txid: string): Promise<SicrediImmediateCharge> {
+  const response = await requestSicrediJson<SicrediCobResponse>('GET', `/api/v3/cob/${encodeURIComponent(txid)}`)
+  return parseImmediateCharge(response)
+}
+
+export async function cancelSicrediImmediateCharge(txid: string): Promise<SicrediImmediateCharge> {
+  const response = await requestSicrediJson<SicrediCobResponse>('PATCH', `/api/v3/cob/${encodeURIComponent(txid)}`, {
+    status: 'REMOVIDA_PELO_USUARIO_RECEBEDOR',
+  })
+  return parseImmediateCharge(response)
 }
