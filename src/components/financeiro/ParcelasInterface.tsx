@@ -29,6 +29,10 @@ type ParcelaData = {
     financiamento_loja?: { venda_id: number, vendas?: { is_historical_import?: boolean } | null }
     customers?: { full_name: string, cpf: string }
     reversible_receipt_operation?: ReversibleReceiptOperation | null
+    pix_charge?: {
+        status: 'CREATING' | 'PENDING' | 'PAID' | 'EXPIRED' | 'CANCELLED' | 'DIVERGENT' | 'ERROR'
+        settlement_status?: 'PENDING' | 'COMPLETED' | 'ERROR' | null
+    } | null
 }
 
 type ParcelasPorVenda = Record<string, ParcelaData[]>
@@ -119,6 +123,29 @@ export default function ParcelasInterface({ storeId, reportMode = false }: { sto
         }
 
         return <span className="inline-flex w-[74px] text-[10px] font-bold uppercase tracking-wide text-amber-400">Pendente</span>
+    }
+
+    const getPixBadge = (p: ParcelaData) => {
+        const charge = p.pix_charge
+        if (!charge) return null
+
+        const presentation = charge.status === 'PAID' && charge.settlement_status === 'COMPLETED'
+            ? { label: 'Quitado por Pix Sicredi', className: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300' }
+            : charge.status === 'PAID'
+                ? { label: 'Pix pago · baixa pendente', className: 'border-amber-500/20 bg-amber-500/10 text-amber-300' }
+                : charge.status === 'PENDING'
+                    ? { label: 'Aguardando pagamento Pix', className: 'border-cyan-500/20 bg-cyan-500/10 text-cyan-300' }
+                    : charge.status === 'CREATING'
+                        ? { label: 'Gerando Pix', className: 'border-cyan-500/20 bg-cyan-500/10 text-cyan-300' }
+                        : charge.status === 'EXPIRED'
+                            ? { label: 'Pix expirado', className: 'border-slate-500/20 bg-slate-500/10 text-slate-300' }
+                            : charge.status === 'CANCELLED'
+                                ? { label: 'Pix cancelado', className: 'border-slate-500/20 bg-slate-500/10 text-slate-300' }
+                                : charge.status === 'ERROR'
+                                    ? { label: 'Pix com erro', className: 'border-rose-500/20 bg-rose-500/10 text-rose-300' }
+                                    : { label: 'Pix divergente', className: 'border-amber-500/20 bg-amber-500/10 text-amber-300' }
+
+        return <span className={`mt-1 inline-flex max-w-[150px] rounded-md border px-1.5 py-0.5 text-[9px] font-bold normal-case tracking-normal ${presentation.className}`}>{presentation.label}</span>
     }
 
     const handleSendReceipt = async (parcelaId: number) => {
@@ -414,7 +441,10 @@ export default function ParcelasInterface({ storeId, reportMode = false }: { sto
                                                                                     {p.numero_parcela}
                                                                                 </td>
                                                                                 <td className="px-4 py-2 whitespace-nowrap">
-                                                                                    {getStatusBadge(p)}
+                                                                                    <div className="flex flex-col items-start">
+                                                                                        {getStatusBadge(p)}
+                                                                                        {getPixBadge(p)}
+                                                                                    </div>
                                                                                 </td>
                                                                                 <td className="px-4 py-2 text-xs text-slate-300 font-medium">
                                                                                     {formatDate(p.data_vencimento)}
@@ -506,7 +536,10 @@ export default function ParcelasInterface({ storeId, reportMode = false }: { sto
                                         return (
                                             <tr key={p.id} className="hover:bg-slate-800/30 transition-colors group">
                                                 <td className="px-4 py-3 whitespace-nowrap">
-                                                    {getStatusBadge(p)}
+                                                    <div className="flex flex-col items-start">
+                                                        {getStatusBadge(p)}
+                                                        {getPixBadge(p)}
+                                                    </div>
                                                 </td>
                                                 <td className="px-4 py-3">
                                                     <div className="text-sm font-bold text-white truncate max-w-[200px]" title={p.customers?.full_name}>

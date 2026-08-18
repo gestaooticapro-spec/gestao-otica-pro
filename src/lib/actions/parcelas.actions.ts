@@ -234,6 +234,40 @@ export type ContratoQuitado = {
     data_quitacao: string
 }
 
+async function anexarStatusPix(supabaseAdmin: any, storeId: number, parcelas: any[]) {
+    const installmentIds = Array.from(new Set(
+        parcelas.map((parcela) => Number(parcela.id)).filter((id) => Number.isSafeInteger(id) && id > 0)
+    ))
+    if (installmentIds.length === 0) return parcelas
+
+    try {
+        const { data: charges, error } = await (supabaseAdmin.from('pix_installment_charges') as any)
+            .select('id, installment_id, status, settlement_status, settled_at, created_at')
+            .eq('store_id', storeId)
+            .in('installment_id', installmentIds)
+            .order('created_at', { ascending: false })
+
+        if (error) {
+            console.warn('[Parcelas] Nao foi possivel consultar status Pix:', error.message)
+            return parcelas
+        }
+
+        const latestByInstallment = new Map<number, any>()
+        for (const charge of charges || []) {
+            const installmentId = Number(charge.installment_id)
+            if (!latestByInstallment.has(installmentId)) latestByInstallment.set(installmentId, charge)
+        }
+
+        return parcelas.map((parcela) => ({
+            ...parcela,
+            pix_charge: latestByInstallment.get(Number(parcela.id)) || null,
+        }))
+    } catch (error) {
+        console.warn('[Parcelas] Status Pix indisponivel:', error)
+        return parcelas
+    }
+}
+
 export async function getContratosQuitados(storeId: number, filtros: ContratoQuitadoFiltro = {}) {
     const enabled = await isStoreModuleEnabledForStore(storeId, 'installments')
     if (!enabled) return { success: false, message: 'Módulo de parcelamento desativado', data: [] as ContratoQuitado[] }
@@ -350,6 +384,7 @@ export async function getParcelasFiltradas(storeId: number, filtros: ParcelaFilt
             String(parcela.financiamento_loja?.vendas?.status || '').toLowerCase() !== 'cancelada'
         )
         let resultado = await adicionarTotaisPagamentos(supabaseAdmin, parcelasDeVendasAtivas as any[])
+        resultado = await anexarStatusPix(supabaseAdmin, storeId, resultado)
 
         // Filtro de Status
         if (filtros.status && filtros.status !== 'todas') {
@@ -437,6 +472,7 @@ export async function getParcelasFiltradas(storeId: number, filtros: ParcelaFilt
             String(parcela.financiamento_loja?.vendas?.status || '').toLowerCase() !== 'cancelada'
         )
         let finalData: any[] = await adicionarTotaisPagamentos(supabaseAdmin, todasParcelasAtivas as any[])
+        finalData = await anexarStatusPix(supabaseAdmin, storeId, finalData)
 
         // Como expandimos o contexto, aplicamos o filtro de Status novamente
         // para não misturar pagas/pendentes se o usuário exigiu um status específico

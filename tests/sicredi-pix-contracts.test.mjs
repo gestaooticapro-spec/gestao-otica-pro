@@ -18,6 +18,8 @@ test('cobranca Pix exige autorizacao, evita duplicidade e confere o Sicredi ante
   const client = readSource('src/lib/pix/sicredi-client.server.ts')
   const actions = readSource('src/lib/actions/pix-installment.actions.ts')
   const modal = readSource('src/components/modals/PixInstallmentChargeModal.tsx')
+  const parcelas = readSource('src/components/financeiro/ParcelasInterface.tsx')
+  const parcelasActions = readSource('src/lib/actions/parcelas.actions.ts')
   const webhook = readSource('src/app/api/webhooks/sicredi/pix/route.ts')
   const migration = readSource('supabase/migrations/20260818140000_sicredi_pix_automatic_settlement.sql')
 
@@ -40,4 +42,7 @@ test('cobranca Pix exige autorizacao, evita duplicidade e confere o Sicredi ante
   assert.match(modal, /Recuperar geração/)
   assert.match(modal, /const authorizationToken = employee\.authorization_token/)
   assert.match(modal, /authorizationToken,/)
+  assert.match(parcelasActions, /anexarStatusPix/)
+  assert.match(parcelas, /Aguardando pagamento Pix/)
+  assert.match(parcelas, /Quitado por Pix Sicredi/)
 })
