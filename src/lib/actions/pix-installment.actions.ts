@@ -13,6 +13,7 @@ import {
 } from '@/lib/pix/sicredi-client.server'
 import type { StoreSettings } from '@/lib/store-modules'
 import { sendManualWhatsApp } from '@/lib/actions/manual-whatsapp.actions'
+import { isSicrediPilotStoreCnpj } from '@/lib/pix/sicredi-availability'
 
 type PixChargeStatus = 'PENDING' | 'PAID' | 'EXPIRED' | 'CANCELLED' | 'DIVERGENT' | 'ERROR'
 
@@ -147,6 +148,7 @@ export async function getPixProviderForStore(storeId: number): Promise<'manual' 
   try {
     await requireStoreAccess(storeId)
     const store = await getStoreProfile(storeId)
+    if (!isSicrediPilotStoreCnpj(store?.cnpj)) return 'manual'
     const provider = (store?.settings as StoreSettings | null)?.pix_provider
     return provider === 'sicredi' ? 'sicredi' : 'manual'
   } catch {
@@ -187,6 +189,9 @@ export async function createPixInstallmentCharge(input: z.input<typeof CreateCha
     await assertEmployeeBelongsToStore(admin, data.employeeId, data.storeId)
 
     const store = await getStoreProfile(data.storeId)
+    if (!isSicrediPilotStoreCnpj(store?.cnpj)) {
+      throw new Error('A integração Sicredi está liberada somente para a Ótica Ocular.')
+    }
     const settings = (store?.settings as StoreSettings | null)
     if (settings?.pix_provider !== 'sicredi') {
       throw new Error('A integração Pix Sicredi não está habilitada para esta loja.')
