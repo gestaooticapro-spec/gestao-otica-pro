@@ -254,7 +254,7 @@ export default function AddPagamentoForm({
         )}
 
         <div className="pt-1">
-          {isModal && !isQuitado && !disabled && (
+          {isModal && !isQuitado && !disabled && formaPagamento !== 'Pix Sicredi' && (
             <div className="bg-sky-500/10 border border-sky-500/20 text-sky-200 text-[10px] font-bold p-2.5 rounded-lg flex items-start gap-2 mb-3 shadow-inner">
               <Info className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
               <p className="leading-tight">
@@ -265,7 +265,7 @@ export default function AddPagamentoForm({
           
           {formaPagamento === 'Pix Sicredi' ? (
             <button type="button" onClick={() => setIsPixSaleModalOpen(true)} className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs rounded-lg shadow-lg shadow-cyan-900/20 w-full bg-cyan-600 hover:bg-cyan-500 text-white border border-cyan-500/50 font-bold transition-all active:scale-95 uppercase tracking-wide">
-              <QrCode className="h-4 w-4" /> <span>ABRIR PIX DA VENDA</span>
+              <QrCode className="h-4 w-4" /> <span>GERAR PIX DA VENDA</span>
             </button>
           ) : isQuitado ? (
             <div className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs rounded-lg w-full bg-white/20 text-white border border-white/30 font-bold">
