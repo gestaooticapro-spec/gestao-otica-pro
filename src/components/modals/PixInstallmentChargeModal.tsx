@@ -30,9 +30,12 @@ type PendingOperation = 'create' | 'cancel' | null
 
 const money = (value: number) => value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const parseMoney = (value: string) => Number(value.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '')) || 0
+const createAuthorizationContext = (installmentId: number, amount: number, interestAmount: number, strategy: 'quitacao_total' | 'baixa_parcial' | 'somar_proxima') => (
+  `${installmentId}:${amount.toFixed(2)}:${interestAmount.toFixed(2)}:${strategy}`
+)
 
 function statusLabel(status: PixInstallmentCharge['status']) {
-  return ({ PENDING: 'Aguardando pagamento', PAID: 'Pago — aguardando baixa', EXPIRED: 'Expirado', CANCELLED: 'Cancelado', DIVERGENT: 'Divergente', ERROR: 'Com erro' } as const)[status]
+  return ({ CREATING: 'Gerando cobrança', PENDING: 'Aguardando pagamento', PAID: 'Pago — aguardando baixa', EXPIRED: 'Expirado', CANCELLED: 'Cancelado', DIVERGENT: 'Divergente', ERROR: 'Com erro' } as const)[status]
 }
 
 export default function PixInstallmentChargeModal({
@@ -88,6 +91,13 @@ export default function PixInstallmentChargeModal({
     onChargeChanged(next)
   }
 
+  const resetChargeForm = () => {
+    updateCharge(null)
+    setAmountText(money(outstanding))
+    setInterestText('0,00')
+    setStrategy('quitacao_total')
+  }
+
   const requestAuthorization = (operation: Exclude<PendingOperation, null>) => {
     if (operation === 'create' && !canGenerate) {
       toast.error('Revise o valor e a estratégia antes de gerar o Pix.')
@@ -97,21 +107,26 @@ export default function PixInstallmentChargeModal({
     setIsAuthOpen(true)
   }
 
-  const handleAuthorized = (employee: { id: number }) => {
+  const handleAuthorized = (employee: { id: number; authorization_token?: string }) => {
     setIsAuthOpen(false)
     const operation = pendingOperation
     setPendingOperation(null)
     if (!operation) return
+    const authorizationToken = employee.authorization_token
+    if (!authorizationToken) {
+      toast.error('A autorizacao do funcionario nao foi emitida. Informe o PIN novamente.')
+      return
+    }
 
     startTransition(async () => {
       if (operation === 'create') {
         const result = await createPixInstallmentCharge({
           storeId,
           installmentId: installment.id,
-          employeeId: employee.id,
           amount,
           interestAmount: interest,
           strategy: isPartial ? strategy : 'quitacao_total',
+          authorizationToken,
         })
         if (!result.success) {
           toast.error(result.message)
@@ -123,12 +138,12 @@ export default function PixInstallmentChargeModal({
       }
 
       if (!charge) return
-      const result = await cancelPixInstallmentCharge({ storeId, chargeId: charge.id, employeeId: employee.id })
+      const result = await cancelPixInstallmentCharge({ storeId, chargeId: charge.id, authorizationToken })
       if (!result.success) {
         toast.error(result.message)
         return
       }
-      updateCharge(null)
+      resetChargeForm()
       toast.success('Cobrança Pix cancelada. Você já pode gerar outro QR Code.')
     })
   }
@@ -153,6 +168,27 @@ export default function PixInstallmentChargeModal({
       }
       updateCharge(result.data)
       toast.success(`Status atualizado: ${statusLabel(result.data.status)}.`)
+    })
+  }
+
+  const reconcileBeforeNewCharge = () => {
+    if (!charge) return resetChargeForm()
+    startTransition(async () => {
+      const result = await refreshPixInstallmentCharge({ storeId, chargeId: charge.id })
+      if (!result.success) {
+        toast.error('Não foi possível confirmar o status no Sicredi. Não gere outro QR Code ainda.')
+        return
+      }
+      updateCharge(result.data)
+      if (result.data.status === 'PENDING') {
+        toast.error('Esta cobrança ainda está ativa no Sicredi. Use o QR existente ou cancele-a antes de gerar outro.')
+        return
+      }
+      if (result.data.status === 'PAID') {
+        toast.error('Esta cobrança foi paga. Faça a baixa manual antes de gerar outro QR Code.')
+        return
+      }
+      resetChargeForm()
     })
   }
 
@@ -205,9 +241,10 @@ export default function PixInstallmentChargeModal({
                   <button onClick={() => void sendWhatsApp()} disabled={isSending || charge.status !== 'PENDING'} className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-3 text-xs font-bold text-emerald-200 hover:bg-emerald-500/20 disabled:opacity-50">{isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />} Enviar WhatsApp</button>
                 </div>
 
-                <button onClick={refreshStatus} disabled={isWorking} className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 py-3 text-xs font-bold text-slate-300 hover:bg-white/10 disabled:opacity-50">{isWorking ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Atualizar status no Sicredi</button>
+                {charge.status === 'CREATING' ? <p className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-3 text-xs text-cyan-100">A cobrança está sendo gerada. Aguarde e atualize a tela antes de tentar novamente.</p> : <button onClick={refreshStatus} disabled={isWorking} className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 py-3 text-xs font-bold text-slate-300 hover:bg-white/10 disabled:opacity-50">{isWorking ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Atualizar status no Sicredi</button>}
 
                 {charge.status === 'PENDING' ? <button onClick={() => requestAuthorization('cancel')} disabled={isWorking} className="w-full rounded-xl border border-rose-500/20 bg-rose-500/10 py-3 text-xs font-bold text-rose-200 hover:bg-rose-500/20 disabled:opacity-50">Cancelar / alterar valor</button> : null}
+                {charge.status === 'EXPIRED' || charge.status === 'CANCELLED' ? <button onClick={reconcileBeforeNewCharge} disabled={isWorking} className="w-full rounded-xl border border-cyan-500/20 bg-cyan-500/10 py-3 text-xs font-bold text-cyan-100 hover:bg-cyan-500/20 disabled:opacity-50">Confirmar e gerar novo QR Code</button> : null}
                 {charge.status === 'PAID' ? <p className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-200">O pagamento foi confirmado no Sicredi. A baixa automática será incluída na próxima etapa; por enquanto, use a baixa manual conferindo o valor.</p> : null}
               </>
             ) : (
@@ -219,7 +256,7 @@ export default function PixInstallmentChargeModal({
                 </div>
 
                 {isPartial ? <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-4"><div className="flex items-center gap-2 text-sm font-bold text-amber-200"><AlertTriangle className="h-4 w-4" /> Restarão R$ {money(difference)} da dívida</div><label className="mt-3 flex gap-2 text-xs text-slate-300"><input type="radio" checked={strategy === 'baixa_parcial'} onChange={() => setStrategy('baixa_parcial')} /> Manter o restante nesta parcela</label><label className={`mt-2 flex gap-2 text-xs ${hasNextInstallment ? 'text-slate-300' : 'text-slate-600'}`}><input type="radio" disabled={!hasNextInstallment} checked={strategy === 'somar_proxima'} onChange={() => setStrategy('somar_proxima')} /> Transferir o restante para a próxima parcela</label></div> : null}
-                {isOverpayment ? <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 p-4 text-xs text-blue-200">R$ {money(Math.abs(difference))} excedentes serão tratados como amortização da próxima parcela quando a baixa automática for habilitada.</div> : null}
+                {isOverpayment ? <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 p-4 text-xs text-blue-200">Há R$ {money(Math.abs(difference))} excedentes. Nesta versão, a baixa é manual: confira e registre o tratamento do excedente antes de quitar a parcela.</div> : null}
                 <p className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-xs text-slate-400">Gerar o QR Code não baixa a parcela. A cobrança ficará pendente até a confirmação do Sicredi.</p>
                 <button onClick={() => requestAuthorization('create')} disabled={isWorking || !canGenerate} className="flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-500 py-4 text-sm font-black uppercase tracking-wide text-cyan-950 hover:bg-cyan-400 disabled:opacity-50">{isWorking ? <Loader2 className="h-5 w-5 animate-spin" /> : <CheckCircle2 className="h-5 w-5" />} Gerar QR Code</button>
               </>
@@ -227,7 +264,18 @@ export default function PixInstallmentChargeModal({
           </div>
         </div>
       </div>
-      <EmployeeAuthModal storeId={storeId} isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} onSuccess={handleAuthorized} title={pendingOperation === 'cancel' ? 'Autorizar cancelamento do Pix' : 'Autorizar geração do Pix'} description="Insira seu PIN para continuar." />
+      <EmployeeAuthModal
+        storeId={storeId}
+        isOpen={isAuthOpen}
+        onClose={() => setIsAuthOpen(false)}
+        onSuccess={handleAuthorized}
+        title={pendingOperation === 'cancel' ? 'Autorizar cancelamento do Pix' : 'Autorizar geração do Pix'}
+        description="Insira seu PIN para continuar."
+        purpose={pendingOperation === 'cancel' ? 'pix_charge_cancel' : 'pix_charge_create'}
+        authorizationContext={pendingOperation === 'cancel' && charge
+          ? String(charge.id)
+          : createAuthorizationContext(installment.id, amount, interest, isPartial ? strategy : 'quitacao_total')}
+      />
     </>,
     document.body,
   )

@@ -23,12 +23,12 @@ create table if not exists public.pix_installment_charges (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint pix_installment_charges_status_check
-    check (status in ('PENDING', 'PAID', 'EXPIRED', 'CANCELLED', 'DIVERGENT', 'ERROR'))
+    check (status in ('CREATING', 'PENDING', 'PAID', 'EXPIRED', 'CANCELLED', 'DIVERGENT', 'ERROR'))
 );
 
 create unique index if not exists pix_installment_charges_one_pending_per_installment_idx
   on public.pix_installment_charges (installment_id)
-  where status = 'PENDING';
+  where status in ('CREATING', 'PENDING');
 
 create index if not exists pix_installment_charges_store_status_idx
   on public.pix_installment_charges (store_id, status, created_at desc);

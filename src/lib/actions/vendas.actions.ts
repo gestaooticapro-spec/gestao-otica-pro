@@ -3962,7 +3962,10 @@ export async function autenticarFuncionarioPorPin(
   const requestedPurpose = String(formData.get('authorization_purpose') || '')
   const authorizationContext = String(formData.get('authorization_context') || '')
   const authorizationPurpose: EmployeeAuthorizationPurpose | null =
-    requestedPurpose === 'evaluation_unlink' || requestedPurpose === 'installment_receipt_reversal'
+    requestedPurpose === 'evaluation_unlink'
+      || requestedPurpose === 'installment_receipt_reversal'
+      || requestedPurpose === 'pix_charge_create'
+      || requestedPurpose === 'pix_charge_cancel'
       ? requestedPurpose
       : null
 
@@ -4003,7 +4006,11 @@ export async function autenticarFuncionarioPorPin(
         ? /^\d+:\d+$/.test(authorizationContext)
         : authorizationPurpose === 'installment_receipt_reversal'
           ? /^(?:\d+|legacy:\d+)$/.test(authorizationContext)
-          : true
+          : authorizationPurpose === 'pix_charge_create'
+            ? /^\d+:\d+\.\d{2}:\d+\.\d{2}:(?:quitacao_total|baixa_parcial|somar_proxima)$/.test(authorizationContext)
+            : authorizationPurpose === 'pix_charge_cancel'
+              ? /^\d+$/.test(authorizationContext)
+              : true
 
     if (!hasValidAuthorizationContext) {
       return { success: false, message: 'Contexto de autorizacao invalido.' }

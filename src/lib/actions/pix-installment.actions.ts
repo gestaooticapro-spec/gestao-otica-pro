@@ -1,5 +1,6 @@
 'use server'
 
+import { randomUUID } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
@@ -10,12 +11,14 @@ import {
   cancelSicrediImmediateCharge,
   createSicrediImmediateCharge,
   getSicrediImmediateCharge,
+  type SicrediImmediateCharge,
 } from '@/lib/pix/sicredi-client.server'
 import type { StoreSettings } from '@/lib/store-modules'
 import { sendManualWhatsApp } from '@/lib/actions/manual-whatsapp.actions'
 import { isSicrediPilotStoreCnpj } from '@/lib/pix/sicredi-availability'
+import { verifyEmployeeAuthorization } from '@/lib/server/employee-authorization'
 
-type PixChargeStatus = 'PENDING' | 'PAID' | 'EXPIRED' | 'CANCELLED' | 'DIVERGENT' | 'ERROR'
+type PixChargeStatus = 'CREATING' | 'PENDING' | 'PAID' | 'EXPIRED' | 'CANCELLED' | 'DIVERGENT' | 'ERROR'
 
 export type PixInstallmentCharge = {
   id: number
@@ -33,21 +36,24 @@ export type PixInstallmentCharge = {
 }
 
 type ActionResult<T = undefined> = { success: true; data: T } | { success: false; message: string }
-type AccessProfile = { role: string; store_id: number | null }
+type AccessProfile = { role: string; store_id: number | null; tenant_id: string | null }
 
 const CreateChargeSchema = z.object({
   storeId: z.number().int().positive(),
   installmentId: z.number().int().positive(),
-  employeeId: z.number().int().positive(),
   amount: z.number().positive().finite(),
   interestAmount: z.number().min(0).finite().default(0),
   strategy: z.enum(['quitacao_total', 'baixa_parcial', 'somar_proxima']),
+  authorizationToken: z.string().min(20),
 })
 
 const ChargeActionSchema = z.object({
   storeId: z.number().int().positive(),
   chargeId: z.number().int().positive(),
-  employeeId: z.number().int().positive().optional(),
+})
+
+const AuthorizedChargeActionSchema = ChargeActionSchema.extend({
+  authorizationToken: z.string().min(20),
 })
 
 function toNumber(value: unknown) {
@@ -76,9 +82,19 @@ function pixChargesTable(admin: any) {
   return admin.from('pix_installment_charges') as any
 }
 
-function mapSicrediStatus(status: string, expiresAt: string | null): PixChargeStatus {
+function createAuthorizationContext(input: {
+  installmentId: number
+  amount: number
+  interestAmount: number
+  strategy: 'quitacao_total' | 'baixa_parcial' | 'somar_proxima'
+}) {
+  return `${input.installmentId}:${input.amount.toFixed(2)}:${input.interestAmount.toFixed(2)}:${input.strategy}`
+}
+
+function mapSicrediStatus(status: string, expiresAt: string | null, remoteStatusIsAuthoritative = false): PixChargeStatus {
   if (status === 'CONCLUIDA') return 'PAID'
   if (status === 'REMOVIDA_PELO_USUARIO_RECEBEDOR') return 'CANCELLED'
+  if (remoteStatusIsAuthoritative && status === 'ATIVA') return 'PENDING'
   if (expiresAt && new Date(expiresAt).getTime() <= Date.now()) return 'EXPIRED'
   return 'PENDING'
 }
@@ -89,21 +105,32 @@ async function requireStoreAccess(storeId: number) {
   if (!user) throw new Error('Usuario nao autenticado.')
 
   const profile = await getProfileByAdmin(user.id) as AccessProfile | null
-  if (!profile || (profile.role !== 'admin' && profile.store_id !== storeId)) {
+  const admin = createAdminClient()
+  const { data: store, error: storeError } = await (admin.from('stores') as any)
+    .select('id, tenant_id')
+    .eq('id', storeId)
+    .maybeSingle()
+  if (
+    !profile?.tenant_id
+    || storeError
+    || !store
+    || store.tenant_id !== profile.tenant_id
+    || (profile.role !== 'admin' && profile.store_id !== storeId)
+  ) {
     throw new Error('Acesso negado para esta loja.')
   }
 
-  return { userId: user.id, profile, admin: createAdminClient() }
+  return { userId: user.id, profile, admin }
 }
 
 async function assertEmployeeBelongsToStore(admin: any, employeeId: number, storeId: number) {
   const { data: employee, error } = await admin
     .from('employees')
-    .select('id, store_id')
+    .select('id, store_id, is_active')
     .eq('id', employeeId)
     .eq('store_id', storeId)
     .maybeSingle()
-  if (error || !employee) throw new Error('Funcionário autorizador invalido para esta loja.')
+  if (error || !employee?.is_active) throw new Error('Funcionário autorizador invalido para esta loja.')
 }
 
 async function getInstallmentContext(admin: any, storeId: number, installmentId: number) {
@@ -144,6 +171,25 @@ async function expireLocalChargeIfNeeded(admin: any, row: any) {
   return row
 }
 
+async function reconcileChargeWithSicredi(admin: any, row: any) {
+  const remote = await getSicrediImmediateCharge(row.txid)
+  const status = mapSicrediStatus(remote.status, row.expires_at || null, true)
+  const { data: updated, error } = await pixChargesTable(admin)
+    .update({
+      status,
+      pix_copy_paste: remote.pixCopyPaste || row.pix_copy_paste,
+      location: remote.location || row.location,
+      paid_at: status === 'PAID' ? row.paid_at || new Date().toISOString() : row.paid_at,
+      provider_response: remote.raw,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', row.id)
+    .select('*')
+    .single()
+  if (error || !updated) throw new Error('Nao foi possivel atualizar o status da cobranca Pix.')
+  return updated
+}
+
 export async function getPixProviderForStore(storeId: number): Promise<'manual' | 'sicredi'> {
   try {
     await requireStoreAccess(storeId)
@@ -177,16 +223,15 @@ export async function getPixChargesForInstallments(
       if (!byInstallment[installmentId]) byInstallment[installmentId] = serializeCharge(current)
     }
     return byInstallment
-  } catch {
-    return {}
+  } catch (error) {
+    throw new Error(error instanceof Error ? error.message : 'Nao foi possivel consultar as cobrancas Pix.')
   }
 }
 
 export async function createPixInstallmentCharge(input: z.input<typeof CreateChargeSchema>): Promise<ActionResult<PixInstallmentCharge>> {
   try {
     const data = CreateChargeSchema.parse(input)
-    const { admin, userId } = await requireStoreAccess(data.storeId)
-    await assertEmployeeBelongsToStore(admin, data.employeeId, data.storeId)
+    const { admin, userId, profile } = await requireStoreAccess(data.storeId)
 
     const store = await getStoreProfile(data.storeId)
     if (!isSicrediPilotStoreCnpj(store?.cnpj)) {
@@ -198,6 +243,17 @@ export async function createPixInstallmentCharge(input: z.input<typeof CreateCha
     }
 
     const { installment, financing } = await getInstallmentContext(admin, data.storeId, data.installmentId)
+    const authorizationTenantId = profile.tenant_id
+    if (!authorizationTenantId) throw new Error('Perfil sem empresa vinculada.')
+    const authorization = verifyEmployeeAuthorization(data.authorizationToken, {
+      userId,
+      tenantId: authorizationTenantId,
+      storeId: data.storeId,
+      purpose: 'pix_charge_create',
+      context: createAuthorizationContext(data),
+    })
+    if (!authorization) throw new Error('Autorizacao expirada ou invalida. Informe novamente o PIN para gerar o Pix.')
+    await assertEmployeeBelongsToStore(admin, authorization.employeeId, data.storeId)
     const tenantId = installment.tenant_id || store?.tenant_id
     if (!tenantId) throw new Error('Tenant da loja não encontrado para registrar a cobrança Pix.')
     const outstanding = getInstallmentOutstanding(installment)
@@ -210,13 +266,20 @@ export async function createPixInstallmentCharge(input: z.input<typeof CreateCha
     const { data: pendingRows, error: pendingError } = await pixChargesTable(admin)
       .select('*')
       .eq('installment_id', data.installmentId)
-      .eq('status', 'PENDING')
+      .in('status', ['CREATING', 'PENDING', 'EXPIRED'])
       .order('created_at', { ascending: false })
       .limit(1)
     if (pendingError) throw new Error('Nao foi possivel verificar cobranças Pix pendentes.')
-    const pending = pendingRows?.[0] ? await expireLocalChargeIfNeeded(admin, pendingRows[0]) : null
-    if (pending?.status === 'PENDING') {
-      return { success: true, data: serializeCharge(pending) }
+    const pending = pendingRows?.[0] || null
+    if (pending?.status === 'CREATING') {
+      throw new Error('Ja existe uma geracao de Pix em andamento para esta parcela. Aguarde alguns segundos e atualize a tela.')
+    }
+    if (pending) {
+      const current = pending.status === 'PENDING' && (!pending.expires_at || new Date(pending.expires_at).getTime() > Date.now())
+        ? pending
+        : await reconcileChargeWithSicredi(admin, pending)
+      if (current.status === 'PENDING') return { success: true, data: serializeCharge(current) }
+      if (current.status === 'PAID') throw new Error('Esta cobranca Pix ja foi paga. Faca a baixa manual antes de gerar outro QR Code.')
     }
 
     const pixKey = process.env.SICREDI_PIX_HML_PIX_KEY?.trim()
@@ -224,24 +287,11 @@ export async function createPixInstallmentCharge(input: z.input<typeof CreateCha
       throw new Error('Configuracao Sicredi ausente: SICREDI_PIX_HML_PIX_KEY.')
     }
 
-    const expirationSeconds = Number(process.env.SICREDI_PIX_HML_CHARGE_EXPIRATION_SECONDS || 86_400)
-    const charge = await createSicrediImmediateCharge({
-      pixKey,
-      amount: data.amount,
-      expirationSeconds: Number.isInteger(expirationSeconds) && expirationSeconds >= 60 ? expirationSeconds : 86_400,
-      payerRequest: `Parcela ${installment.numero_parcela} da venda ${financing.venda_id}`,
-      additionalInfo: [
-        { name: 'Venda', value: String(financing.venda_id) },
-        { name: 'Parcela', value: String(installment.numero_parcela) },
-      ],
-    })
-    if (!charge.pixCopyPaste) throw new Error('O Sicredi nao retornou o codigo Pix copia e cola.')
-
-    const createdAt = charge.createdAt ? new Date(charge.createdAt) : new Date()
-    const expiresAt = charge.expirationSeconds
-      ? new Date(createdAt.getTime() + charge.expirationSeconds * 1000).toISOString()
-      : null
-    const { data: inserted, error: insertError } = await pixChargesTable(admin)
+    const configuredExpiration = Number(process.env.SICREDI_PIX_HML_CHARGE_EXPIRATION_SECONDS || 86_400)
+    const expirationSeconds = Number.isInteger(configuredExpiration) && configuredExpiration >= 60 ? configuredExpiration : 86_400
+    const reservationExpiresAt = new Date(Date.now() + expirationSeconds * 1000).toISOString()
+    const reservationTxid = `reservation-${randomUUID()}`
+    const { data: reservation, error: reservationError } = await pixChargesTable(admin)
       .insert({
         tenant_id: tenantId,
         store_id: data.storeId,
@@ -250,24 +300,72 @@ export async function createPixInstallmentCharge(input: z.input<typeof CreateCha
         financiamento_id: installment.financiamento_id,
         installment_id: installment.id,
         provider: 'sicredi',
-        txid: charge.txid,
-        status: mapSicrediStatus(charge.status, expiresAt),
+        txid: reservationTxid,
+        status: 'CREATING',
         amount: data.amount.toFixed(2),
         interest_amount: data.interestAmount.toFixed(2),
         strategy: data.strategy,
-        pix_copy_paste: charge.pixCopyPaste,
-        location: charge.location,
-        expires_at: expiresAt,
-        created_by_employee_id: data.employeeId,
+        expires_at: reservationExpiresAt,
+        created_by_employee_id: authorization.employeeId,
         created_by_user_id: userId,
-        provider_response: charge.raw,
+        provider_response: { reservation: true },
       })
       .select('*')
       .single()
-    if (insertError || !inserted) throw new Error('A cobrança foi criada no Sicredi, mas não foi possível registrá-la no sistema.')
+    if (reservationError || !reservation) {
+      if (reservationError?.code === '23505') {
+        throw new Error('Outra geracao de Pix ja esta em andamento para esta parcela. Atualize a tela antes de tentar novamente.')
+      }
+      throw new Error('Nao foi possivel reservar a geracao da cobranca Pix.')
+    }
 
-    revalidateInstallmentPaths(data.storeId)
-    return { success: true, data: serializeCharge(inserted) }
+    let charge: SicrediImmediateCharge | null = null
+    try {
+      charge = await createSicrediImmediateCharge({
+        pixKey,
+        amount: data.amount,
+        expirationSeconds,
+        payerRequest: `Parcela ${installment.numero_parcela} da venda ${financing.venda_id}`,
+        additionalInfo: [
+          { name: 'Venda', value: String(financing.venda_id) },
+          { name: 'Parcela', value: String(installment.numero_parcela) },
+        ],
+      })
+      if (!charge.pixCopyPaste) throw new Error('O Sicredi nao retornou o codigo Pix copia e cola.')
+
+      const createdAt = charge.createdAt ? new Date(charge.createdAt) : new Date()
+      const expiresAt = charge.expirationSeconds
+        ? new Date(createdAt.getTime() + charge.expirationSeconds * 1000).toISOString()
+        : reservationExpiresAt
+      const { data: inserted, error: insertError } = await pixChargesTable(admin)
+        .update({
+          txid: charge.txid,
+          status: mapSicrediStatus(charge.status, expiresAt),
+          pix_copy_paste: charge.pixCopyPaste,
+          location: charge.location,
+          expires_at: expiresAt,
+          provider_response: charge.raw,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', reservation.id)
+        .eq('status', 'CREATING')
+        .select('*')
+        .single()
+      if (insertError || !inserted) throw new Error('Falha ao registrar a cobranca no sistema.')
+
+      revalidateInstallmentPaths(data.storeId)
+      return { success: true, data: serializeCharge(inserted) }
+    } catch {
+      try {
+        if (charge) await cancelSicrediImmediateCharge(charge.txid)
+      } catch {
+        // A cobranca remota pode precisar ser cancelada manualmente pelo suporte.
+      }
+      await pixChargesTable(admin)
+        .update({ status: 'ERROR', updated_at: new Date().toISOString(), provider_response: { reservation: false, error: 'Falha durante a geracao da cobranca Pix.' } })
+        .eq('id', reservation.id)
+      throw new Error('Nao foi possivel concluir a geracao da cobranca Pix. Se uma cobranca remota foi criada, tentamos cancela-la automaticamente; confira o status antes de tentar novamente.')
+    }
   } catch (error) {
     return { success: false, message: error instanceof Error ? error.message : 'Nao foi possivel gerar a cobrança Pix.' }
   }
@@ -284,21 +382,7 @@ export async function refreshPixInstallmentCharge(input: z.input<typeof ChargeAc
       .maybeSingle()
     if (error || !row) throw new Error('Cobrança Pix não encontrada.')
 
-    const remote = await getSicrediImmediateCharge(row.txid)
-    const status = mapSicrediStatus(remote.status, row.expires_at || null)
-    const { data: updated, error: updateError } = await pixChargesTable(admin)
-      .update({
-        status,
-        pix_copy_paste: remote.pixCopyPaste || row.pix_copy_paste,
-        location: remote.location || row.location,
-        paid_at: status === 'PAID' ? new Date().toISOString() : row.paid_at,
-        provider_response: remote.raw,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', row.id)
-      .select('*')
-      .single()
-    if (updateError || !updated) throw new Error('Nao foi possivel atualizar o status da cobrança Pix.')
+    const updated = await reconcileChargeWithSicredi(admin, row)
 
     revalidateInstallmentPaths(data.storeId)
     return { success: true, data: serializeCharge(updated) }
@@ -307,12 +391,21 @@ export async function refreshPixInstallmentCharge(input: z.input<typeof ChargeAc
   }
 }
 
-export async function cancelPixInstallmentCharge(input: z.input<typeof ChargeActionSchema>): Promise<ActionResult<PixInstallmentCharge>> {
+export async function cancelPixInstallmentCharge(input: z.input<typeof AuthorizedChargeActionSchema>): Promise<ActionResult<PixInstallmentCharge>> {
   try {
-    const data = ChargeActionSchema.parse(input)
-    if (!data.employeeId) throw new Error('Funcionário autorizador obrigatório.')
-    const { admin } = await requireStoreAccess(data.storeId)
-    await assertEmployeeBelongsToStore(admin, data.employeeId, data.storeId)
+    const data = AuthorizedChargeActionSchema.parse(input)
+    const { admin, userId, profile } = await requireStoreAccess(data.storeId)
+    const authorizationTenantId = profile.tenant_id
+    if (!authorizationTenantId) throw new Error('Perfil sem empresa vinculada.')
+    const authorization = verifyEmployeeAuthorization(data.authorizationToken, {
+      userId,
+      tenantId: authorizationTenantId,
+      storeId: data.storeId,
+      purpose: 'pix_charge_cancel',
+      context: String(data.chargeId),
+    })
+    if (!authorization) throw new Error('Autorizacao expirada ou invalida. Informe novamente o PIN para cancelar o Pix.')
+    await assertEmployeeBelongsToStore(admin, authorization.employeeId, data.storeId)
     const { data: row, error } = await pixChargesTable(admin)
       .select('*')
       .eq('id', data.chargeId)

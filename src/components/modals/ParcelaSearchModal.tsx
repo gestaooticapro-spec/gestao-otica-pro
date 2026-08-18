@@ -167,7 +167,9 @@ export default function ParcelaSearchModal({
     useEffect(() => {
         if (!isOpen || !selectedClientData || pixProvider !== 'sicredi') return
         const installmentIds = (selectedClientData.parcelas || []).map((item: any) => Number(item.id)).filter(Boolean)
-        void getPixChargesForInstallments(storeId, installmentIds).then(setPixCharges)
+        void getPixChargesForInstallments(storeId, installmentIds)
+            .then(setPixCharges)
+            .catch(() => toast.error('Não foi possível consultar as cobranças Pix. Tente novamente antes de gerar um novo QR Code.'))
     }, [isOpen, selectedClientData, pixProvider, storeId])
 
     useEffect(() => {

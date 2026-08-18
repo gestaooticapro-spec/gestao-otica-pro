@@ -77,21 +77,18 @@ function readSecretFile(pathValue: string | undefined, fallback: string, envLabe
 }
 
 function getSicrediPixConfig(): SicrediPixConfig {
-  const baseUrl = new URL(process.env.SICREDI_PIX_HML_BASE_URL?.trim() || DEFAULT_HML_BASE_URL)
-  if (baseUrl.protocol !== 'https:') {
-    throw new Error('A URL da API Pix Sicredi deve usar HTTPS.')
+  const configuredBaseUrl = process.env.SICREDI_PIX_HML_BASE_URL?.trim()
+  if (configuredBaseUrl) {
+    const normalizedConfiguredUrl = configuredBaseUrl.replace(/\/+$/, '')
+    if (normalizedConfiguredUrl !== DEFAULT_HML_BASE_URL) {
+      throw new Error('A integracao Pix Sicredi desta versao aceita somente o ambiente de homologacao oficial.')
+    }
   }
 
   return {
-    baseUrl,
-    clientId: required(
-      process.env.SICREDI_PIX_HML_CLIENT_ID || process.env.client_id,
-      'SICREDI_PIX_HML_CLIENT_ID',
-    ),
-    clientSecret: required(
-      process.env.SICREDI_PIX_HML_CLIENT_SECRET || process.env.client_secret,
-      'SICREDI_PIX_HML_CLIENT_SECRET',
-    ),
+    baseUrl: new URL(DEFAULT_HML_BASE_URL),
+    clientId: required(process.env.SICREDI_PIX_HML_CLIENT_ID, 'SICREDI_PIX_HML_CLIENT_ID'),
+    clientSecret: required(process.env.SICREDI_PIX_HML_CLIENT_SECRET, 'SICREDI_PIX_HML_CLIENT_SECRET'),
     certificate: readSecretFile(process.env.SICREDI_PIX_CERT_PATH, DEFAULT_CERT_PATH, 'SICREDI_PIX_CERT_PATH'),
     privateKey: readSecretFile(process.env.SICREDI_PIX_KEY_PATH, DEFAULT_KEY_PATH, 'SICREDI_PIX_KEY_PATH'),
     certificateChain: readSecretFile(process.env.SICREDI_PIX_CA_PATH, DEFAULT_CA_PATH, 'SICREDI_PIX_CA_PATH'),
