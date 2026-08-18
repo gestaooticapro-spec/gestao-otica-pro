@@ -278,7 +278,9 @@ export async function processSicrediPixWebhookPayload(payload: unknown) {
       .maybeSingle()
     if (error) throw error
     if (!row) {
-      ignored += 1
+      const { processSicrediPixSaleWebhook } = await import('@/lib/actions/pix-sale.actions')
+      if (await processSicrediPixSaleWebhook(txid)) processed += 1
+      else ignored += 1
       continue
     }
     await reconcileChargeWithSicredi(admin, row)

@@ -10,10 +10,12 @@ import {
   addPagamento,
   type SavePagamentoResult,
 } from '@/lib/actions/vendas.actions'
-import { Loader2, DollarSign, X, AlertCircle, CheckCircle2, Wallet, Info } from 'lucide-react'
+import { Loader2, DollarSign, X, AlertCircle, CheckCircle2, Wallet, Info, QrCode } from 'lucide-react'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import { toast } from 'sonner'
 import { Database } from '@/lib/database.types'
+import { getPixProviderForStore } from '@/lib/actions/pix-installment.actions'
+import PixSaleChargeModal from '@/components/modals/PixSaleChargeModal'
 
 type Employee = Database['public']['Tables']['employees']['Row']
 
@@ -76,6 +78,12 @@ export default function AddPagamentoForm({
   const [parcelas, setParcelas] = useState(1)
   const [dataPagamento, setDataPagamento] = useState(getToday())
   const [obs, setObs] = useState<string>('')
+  const [pixProvider, setPixProvider] = useState<'manual' | 'sicredi'>('manual')
+  const [isPixSaleModalOpen, setIsPixSaleModalOpen] = useState(false)
+
+  useEffect(() => {
+    void getPixProviderForStore(storeId).then(setPixProvider)
+  }, [storeId])
 
   // LÓGICA DE CONTROLE DO CAMPO PARCELAS
   const isParcelable = formaPagamento === 'Cartão Crédito' || formaPagamento === 'Cheque-Pré'
@@ -177,10 +185,15 @@ export default function AddPagamentoForm({
               <select
                 name="forma_pagamento"
                 value={formaPagamento}
-                onChange={(e) => setFormaPagamento(e.target.value)}
+                onChange={(e) => {
+                  const value = e.target.value
+                  setFormaPagamento(value)
+                  if (value === 'Pix Sicredi') setIsPixSaleModalOpen(true)
+                }}
                 className={`${inputStyle} font-bold cursor-pointer text-[10px]`}
               >
                 <option value="PIX Remoto" className="bg-slate-800">PIX Remoto</option>
+                {pixProvider === 'sicredi' && <option value="Pix Sicredi" className="bg-slate-800">Pix Sicredi</option>}
                 <option value="PIX na maquininha" className="bg-slate-800">PIX na maquininha</option>
                 <option value="Dinheiro" className="bg-slate-800">Dinheiro</option>
                 <option value="Cartão Débito" className="bg-slate-800">Cartão Débito</option>
@@ -193,7 +206,7 @@ export default function AddPagamentoForm({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          {formaPagamento !== 'Pix Sicredi' && <div className="grid grid-cols-2 gap-2">
             <div>
               <label className={labelStyle}>Parcelas</label>
               <select
@@ -217,9 +230,9 @@ export default function AddPagamentoForm({
                 className={`${inputStyle} text-[10px]`}
               />
             </div>
-          </div>
+          </div>}
 
-          <div>
+          {formaPagamento !== 'Pix Sicredi' && <div>
             <label className={labelStyle}>Observação</label>
             <input
               name="obs"
@@ -230,7 +243,7 @@ export default function AddPagamentoForm({
               className={inputStyle}
               placeholder="Ex: Sinal óculos..."
             />
-          </div>
+          </div>}
         </div>
 
         {saveState.message && !saveState.success && (
@@ -250,7 +263,11 @@ export default function AddPagamentoForm({
             </div>
           )}
           
-          {isQuitado ? (
+          {formaPagamento === 'Pix Sicredi' ? (
+            <button type="button" onClick={() => setIsPixSaleModalOpen(true)} className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs rounded-lg shadow-lg shadow-cyan-900/20 w-full bg-cyan-600 hover:bg-cyan-500 text-white border border-cyan-500/50 font-bold transition-all active:scale-95 uppercase tracking-wide">
+              <QrCode className="h-4 w-4" /> <span>ABRIR PIX DA VENDA</span>
+            </button>
+          ) : isQuitado ? (
             <div className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs rounded-lg w-full bg-white/20 text-white border border-white/30 font-bold">
               <CheckCircle2 className="h-4 w-4" />
               VENDA QUITADA
@@ -272,6 +289,14 @@ export default function AddPagamentoForm({
       </form>
 
       {isModalOpen && <EmployeeAuthModal storeId={storeId} isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSuccess={handleAuthSuccess} title="Autorizar Pagamento" description="Confirme seu PIN." />}
+      <PixSaleChargeModal
+        isOpen={isPixSaleModalOpen && formaPagamento === 'Pix Sicredi'}
+        storeId={storeId}
+        vendaId={vendaId}
+        amount={parseFloat(valorPago.replace(/\./g, '').replace(',', '.')) || 0}
+        onClose={() => setIsPixSaleModalOpen(false)}
+        onPaymentAdded={onPaymentAdded}
+      />
     </div>
   )
 }
