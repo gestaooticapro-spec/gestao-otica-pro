@@ -10,7 +10,7 @@ export const revalidate = 0
 export const fetchCache = 'force-no-store'
 
 export default async function PrintReciboPage(
-    props: { params: Promise<{ id: string }>, searchParams: Promise<{ reprint?: string }> }
+    props: { params: Promise<{ id: string }>, searchParams: Promise<{ reprint?: string, installment_receipt?: string }> }
 ) {
     const searchParams = await props.searchParams;
     const params = await props.params;
@@ -20,6 +20,7 @@ export default async function PrintReciboPage(
     if (ids.length === 0) return notFound()
 
     const isReprint = searchParams.reprint === 'true'
+    const isExperimentalInstallmentReceipt = searchParams.installment_receipt === 'true'
 
     const supabase = createAdminClient()
 
@@ -121,7 +122,11 @@ export default async function PrintReciboPage(
         store,
         isReprint,
         parcelaInfo,
-        hasInstallmentAmounts: pagamentos.some((pagamento: any) => pagamento.parcela_id != null),
+        // A primeira emissão de uma parcela é um recibo normal. A mensagem
+        // serve apenas para identificar uma segunda via/reimpressão.
+        hasInstallmentAmounts: isExperimentalInstallmentReceipt
+            && pagamentos.length > 0
+            && pagamentos.every((pagamento: any) => pagamento.parcela_id != null),
     }
 
     return (

@@ -53,7 +53,9 @@ export default function ReceiptSelectionModal({ isOpen, onClose, pagamentos, onR
             const selectedPagamentos = pagamentos.filter(p => selectedIds.includes(p.id))
             const wasAlreadyPrinted = selectedPagamentos.some(p => p.receipt_printed_at)
             const reprintParam = wasAlreadyPrinted ? '&reprint=true' : ''
-            window.open(`/print/recibo/${idsString}?t=${Date.now()}${reprintParam}`, '_blank')
+            const allSelectedAreInstallments = selectedPagamentos.length > 0 && selectedPagamentos.every(p => p.parcela_id != null)
+            const installmentReceiptParam = allSelectedAreInstallments ? '&installment_receipt=true' : ''
+            window.open(`/print/recibo/${idsString}?t=${Date.now()}${reprintParam}${installmentReceiptParam}`, '_blank')
 
             // Marca como impresso no banco
             await markPaymentsAsPrinted(selectedIds)
