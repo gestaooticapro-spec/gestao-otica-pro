@@ -261,7 +261,8 @@ function extractWebhookTxids(payload: unknown) {
 
   return Array.from(new Set(candidates
     .map((item) => item && typeof item === 'object' ? String((item as { txid?: unknown }).txid || '').trim() : '')
-    .filter(Boolean)))
+    .filter((txid) => /^[A-Za-z0-9]{26,35}$/.test(txid))
+  )).slice(0, 20)
 }
 
 export async function processSicrediPixWebhookPayload(payload: unknown) {

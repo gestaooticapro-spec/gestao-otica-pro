@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { getStoreProfile } from '@/lib/actions/store.actions'
-import { updateVendaStatus } from '@/lib/actions/vendas.actions'
+import { registrarSaidaVenda, updateVendaStatus } from '@/lib/actions/vendas.actions'
 import { isSicrediPilotStoreCnpj } from '@/lib/pix/sicredi-availability'
 import {
   cancelSicrediImmediateCharge,
@@ -32,6 +32,7 @@ export type PixSaleCharge = {
 }
 
 type Result<T> = { success: true; data: T } | { success: false; message: string }
+const CREATION_RECOVERY_DELAY_MS = 2 * 60 * 1000
 
 const CreateSchema = z.object({
   storeId: z.number().int().positive(),
@@ -129,7 +130,15 @@ export async function createPixSaleCharge(input: z.input<typeof CreateSchema>): 
     if (Number(venda.valor_restante || 0) > 0 && data.amount > Number(venda.valor_restante) + 0.01) throw new Error('O valor do Pix nao pode ser maior que o saldo da venda.')
 
     const { data: active } = await table(admin).select('*').eq('store_id', data.storeId).eq('venda_id', data.vendaId).in('status', ['CREATING', 'PENDING']).order('created_at', { ascending: false }).limit(1).maybeSingle()
-    if (active) return { success: true, data: serialize(active) }
+    if (active?.status === 'PENDING' && active.expires_at && new Date(active.expires_at).getTime() <= Date.now()) {
+      await table(admin).update({ status: 'EXPIRED', updated_at: new Date().toISOString() }).eq('id', active.id).eq('status', 'PENDING')
+    } else if (active?.status === 'PENDING') {
+      return { success: true, data: serialize(active) }
+    } else if (active?.status === 'CREATING') {
+      const stale = new Date(active.created_at).getTime() + CREATION_RECOVERY_DELAY_MS <= Date.now()
+      if (!stale) return { success: true, data: serialize(active) }
+      await table(admin).update({ status: 'ERROR', provider_response: { recovery: 'creating_timeout' }, updated_at: new Date().toISOString() }).eq('id', active.id).eq('status', 'CREATING')
+    }
 
     const expirationSeconds = 86_400
     const txid = randomUUID().replace(/-/g, '')
@@ -147,7 +156,11 @@ export async function createPixSaleCharge(input: z.input<typeof CreateSchema>): 
       created_by_user_id: userId,
       provider_response: { reservation: true },
     }).select('*').single()
-    if (reservationError || !reservation) throw new Error('Nao foi possivel reservar a cobranca Pix da venda.')
+    if (reservationError || !reservation) {
+      const { data: concurrent } = await table(admin).select('*').eq('store_id', data.storeId).eq('venda_id', data.vendaId).in('status', ['CREATING', 'PENDING']).order('created_at', { ascending: false }).limit(1).maybeSingle()
+      if (concurrent) return { success: true, data: serialize(concurrent) }
+      throw new Error('Nao foi possivel reservar a cobranca Pix da venda.')
+    }
 
     try {
       const remote = await createSicrediImmediateCharge({
@@ -165,13 +178,15 @@ export async function createPixSaleCharge(input: z.input<typeof CreateSchema>): 
         expires_at: remote.expirationSeconds ? new Date(Date.now() + remote.expirationSeconds * 1000).toISOString() : reservation.expires_at,
         provider_response: remote.raw,
         updated_at: new Date().toISOString(),
-      }).eq('id', reservation.id).select('*').single()
+      }).eq('id', reservation.id).eq('status', 'CREATING').select('*').single()
       if (error || !updated) throw new Error('Nao foi possivel registrar a cobranca Pix da venda.')
       revalidateSale(data.storeId, data.vendaId)
       return { success: true, data: serialize(updated) }
     } catch (error) {
+      const { data: current } = await table(admin).select('*').eq('id', reservation.id).maybeSingle()
+      if (current && current.status !== 'CREATING') return { success: true, data: serialize(current) }
       try { await cancelSicrediImmediateCharge(txid) } catch { /* tentativa de limpeza remota */ }
-      await table(admin).update({ status: 'ERROR', provider_response: { error: String(error).slice(0, 500) }, updated_at: new Date().toISOString() }).eq('id', reservation.id)
+      await table(admin).update({ status: 'ERROR', provider_response: { error: String(error).slice(0, 500) }, updated_at: new Date().toISOString() }).eq('id', reservation.id).eq('status', 'CREATING')
       throw new Error('Nao foi possivel gerar o QR Code da venda.')
     }
   } catch (error) {
@@ -205,7 +220,11 @@ export async function createPixSaleChargeWithExpressAuthorization(input: z.input
       purpose: 'pix_charge_create',
       context: `sale:${data.vendaId}:${data.amount.toFixed(2)}`,
     })
-    return createPixSaleCharge({ storeId: data.storeId, vendaId: data.vendaId, amount: data.amount, authorizationToken })
+    const result = await createPixSaleCharge({ storeId: data.storeId, vendaId: data.vendaId, amount: data.amount, authorizationToken })
+    if (!result.success) {
+      await admin.from('vendas').update({ status: 'Cancelada', data_fechamento: new Date().toISOString(), valor_restante: 0 }).eq('id', data.vendaId).eq('status', 'Em Aberto')
+    }
+    return result
   } catch (error) {
     return { success: false, message: error instanceof Error ? error.message : 'Nao foi possivel gerar o Pix da venda expressa.' }
   }
@@ -217,6 +236,14 @@ export async function refreshPixSaleCharge(input: z.input<typeof ChargeSchema>):
     const { admin } = await access(data.storeId)
     const { data: row } = await table(admin).select('*').eq('id', data.chargeId).eq('store_id', data.storeId).maybeSingle()
     if (!row) throw new Error('Cobranca Pix nao encontrada.')
+    if (row.status === 'PENDING' && row.expires_at && new Date(row.expires_at).getTime() <= Date.now()) {
+      const { data: expired } = await table(admin).update({ status: 'EXPIRED', updated_at: new Date().toISOString() }).eq('id', row.id).eq('status', 'PENDING').select('*').single()
+      return { success: true, data: serialize(expired || { ...row, status: 'EXPIRED' }) }
+    }
+    if (row.status === 'CREATING' && new Date(row.created_at).getTime() + CREATION_RECOVERY_DELAY_MS <= Date.now()) {
+      const { data: recovered } = await table(admin).update({ status: 'ERROR', provider_response: { recovery: 'creating_timeout' }, updated_at: new Date().toISOString() }).eq('id', row.id).eq('status', 'CREATING').select('*').single()
+      return { success: true, data: serialize(recovered || { ...row, status: 'ERROR' }) }
+    }
     if (row.status === 'PENDING') {
       const remote = await getSicrediImmediateCharge(row.txid)
       const status = remote.status === 'CONCLUIDA' ? 'PAID' : remote.status === 'REMOVIDA_PELO_USUARIO_RECEBEDOR' ? 'CANCELLED' : 'PENDING'
@@ -253,14 +280,21 @@ export async function cancelPixSaleCharge(input: z.input<typeof AuthorizedSchema
 
 async function settleSaleCharge(admin: any, row: any) {
   if (row.settlement_status === 'COMPLETED') return row
-  const obs = `Pix Sicredi venda #${row.venda_id} txid ${row.txid}`
-  const { data: existing } = await admin.from('pagamentos').select('id').eq('venda_id', row.venda_id).eq('obs', obs).maybeSingle()
+  const idempotencyKey = String(row.settlement_idempotency_key || row.txid)
+  const obs = `Pix Sicredi venda #${row.venda_id} txid ${row.txid} idempotencia ${idempotencyKey}`
+  const legacyObs = `Pix Sicredi venda #${row.venda_id} txid ${row.txid}`
+  let { data: existing } = await admin.from('pagamentos').select('id').eq('venda_id', row.venda_id).eq('obs', obs).maybeSingle()
+  if (!existing) {
+    const legacy = await admin.from('pagamentos').select('id').eq('venda_id', row.venda_id).eq('obs', legacyObs).maybeSingle()
+    existing = legacy.data
+  }
   if (existing) {
     await finalizeSaleFinancials(admin, row)
     const { data: settled } = await table(admin).update({ settlement_status: 'COMPLETED', settlement_pagamento_id: existing.id, settled_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', row.id).select('*').single()
     return settled || { ...row, settlement_status: 'COMPLETED', settlement_pagamento_id: existing.id }
   }
-  const { data: payment, error } = await admin.from('pagamentos').insert({
+  let payment: any = null
+  const { data: insertedPayment, error } = await admin.from('pagamentos').insert({
     tenant_id: row.tenant_id,
     store_id: row.store_id,
     venda_id: row.venda_id,
@@ -273,7 +307,12 @@ async function settleSaleCharge(admin: any, row: any) {
     obs,
     created_by_user_id: row.created_by_user_id,
   }).select('id').single()
-  if (error || !payment) {
+  if (insertedPayment) payment = insertedPayment
+  if (!payment && error) {
+    const { data: concurrentPayment } = await admin.from('pagamentos').select('id').eq('venda_id', row.venda_id).in('obs', [obs, legacyObs]).maybeSingle()
+    if (concurrentPayment) payment = concurrentPayment
+  }
+  if (!payment) {
     await table(admin).update({ settlement_status: 'ERROR', updated_at: new Date().toISOString() }).eq('id', row.id)
     throw new Error('Pagamento confirmado, mas a venda nao foi baixada.')
   }
@@ -294,6 +333,9 @@ async function finalizeSaleFinancials(admin: any, row: any) {
   if (shouldClose) {
     const closed = await updateVendaStatus(Number(row.venda_id), Number(row.store_id), 'Fechada', Number(row.created_by_employee_id || 0))
     if (!closed.success) throw new Error(closed.message || 'Pagamento confirmado, mas nao foi possivel fechar a venda.')
+    if (row.created_by_user_id && row.tenant_id) {
+      await registrarSaidaVenda(Number(row.venda_id), Number(row.store_id), String(row.created_by_user_id), String(row.tenant_id))
+    }
   }
 }
 

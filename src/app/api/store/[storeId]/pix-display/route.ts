@@ -19,6 +19,8 @@ export async function GET(_request: Request, context: { params: Promise<{ storeI
   }
 
   const admin: any = createAdminClient()
+  const { data: store } = await admin.from('stores').select('id, tenant_id').eq('id', storeId).maybeSingle()
+  if (!store || store.tenant_id !== profile.tenant_id) return NextResponse.json({ message: 'Acesso negado.' }, { status: 403 })
   const displayCutoff = new Date(Date.now() - DISPLAY_WINDOW_MS).toISOString()
   const [saleResult, installmentResult] = await Promise.all([
     admin.from('pix_sale_charges').select('id, venda_id, amount, pix_copy_paste, status, expires_at, created_at, updated_at').eq('store_id', storeId).in('status', ['CREATING', 'PENDING']).gte('created_at', displayCutoff).order('created_at', { ascending: true }).limit(20),
@@ -34,6 +36,19 @@ export async function GET(_request: Request, context: { params: Promise<{ storeI
   }) as Array<Record<string, unknown>>
   candidates.sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
   const charge = candidates[0]
+  let clearedStatus: string | null = null
+  if (!charge) {
+    const [latestSale, latestInstallment] = await Promise.all([
+      admin.from('pix_sale_charges').select('status, created_at, updated_at').eq('store_id', storeId).order('updated_at', { ascending: false }).limit(1).maybeSingle(),
+      admin.from('pix_installment_charges').select('status, created_at, updated_at').eq('store_id', storeId).order('updated_at', { ascending: false }).limit(1).maybeSingle(),
+    ])
+    const latest = [latestSale.data, latestInstallment.data].filter(Boolean).sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))[0] as Record<string, unknown> | undefined
+    const latestUpdatedAt = latest?.updated_at ? new Date(String(latest.updated_at)).getTime() : 0
+    if (latestUpdatedAt >= Date.now() - DISPLAY_WINDOW_MS && latest?.status === 'PAID') clearedStatus = 'PAID'
+    else if (latestUpdatedAt >= Date.now() - DISPLAY_WINDOW_MS && latest?.status === 'CANCELLED') clearedStatus = 'CANCELLED'
+    else if (latestUpdatedAt >= Date.now() - DISPLAY_WINDOW_MS && latest?.status === 'EXPIRED') clearedStatus = 'EXPIRED'
+    else if (latest?.created_at && new Date(String(latest.created_at)).getTime() < Date.now() - DISPLAY_WINDOW_MS) clearedStatus = 'DISPLAY_EXPIRED'
+  }
   return NextResponse.json({ charge: charge ? {
     kind: charge.kind,
     id: Number(charge.id),
@@ -43,5 +58,5 @@ export async function GET(_request: Request, context: { params: Promise<{ storeI
     pixCopyPaste: charge.pix_copy_paste || null,
     status: charge.status,
     expiresAt: charge.expires_at || null,
-  } : null, queuedCount: charge ? Math.max(0, candidates.length - 1) : 0 })
+  } : null, queuedCount: charge ? Math.max(0, candidates.length - 1) : 0, clearedStatus })
 }

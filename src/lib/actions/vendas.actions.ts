@@ -20,7 +20,8 @@ import {
 import { getReceiptReversalMetadata } from '@/lib/installment-reversal.server'
 import { closeOpenServiceOrdersForVenda } from '@/lib/actions/service-order-cancellation.actions'
 import { getInstallmentOutstanding } from '@/lib/installment-balance'
-import { randomUUID } from 'node:crypto'
+import { isSicrediPilotStoreCnpj } from '@/lib/pix/sicredi-availability'
+import { randomUUID, createHash } from 'node:crypto'
 
 // ================================================================
 // --- TIPOS GLOBAIS ---
@@ -2035,7 +2036,7 @@ export async function deletePagamento(
 // HELPER: REGISTRAR SAÍDA DE ESTOQUE AO FECHAR VENDA
 // Centraliza a baixa de estoque + log em stock_movements
 // ================================================================
-async function registrarSaidaVenda(vendaId: number, storeId: string | number, userId: string, tenantId: string) {
+export async function registrarSaidaVenda(vendaId: number, storeId: string | number, userId: string, tenantId: string) {
   const supabaseAdmin = createAdminClient()
 
   // Busca itens da venda que têm product_id (itens reais de estoque)
@@ -2075,6 +2076,24 @@ async function registrarSaidaVenda(vendaId: number, storeId: string | number, us
 
   for (const item of itens) {
     if (reservedProductIds.has(Number(item.product_id))) continue
+    const { data: existingMovement } = await (supabaseAdmin.from('stock_movements') as any)
+      .select('id')
+      .eq('store_id', storeId)
+      .eq('product_id', item.product_id)
+      .eq('tipo', 'Saida')
+      .eq('related_venda_id', vendaId)
+      .limit(1)
+      .maybeSingle()
+    if (existingMovement) continue
+    const { data: legacyMovement } = await (supabaseAdmin.from('stock_movements') as any)
+      .select('id')
+      .eq('store_id', storeId)
+      .eq('product_id', item.product_id)
+      .eq('tipo', 'Saida')
+      .ilike('motivo', `Venda #${vendaId}%`)
+      .limit(1)
+      .maybeSingle()
+    if (legacyMovement) continue
     // Par = 2 unidades reais de lente, Unidade = 1
     const multiplicador = item.unidade === 'Par' ? 2 : 1
     const qtdReal = (item.quantidade || 1) * multiplicador
@@ -2099,6 +2118,7 @@ async function registrarSaidaVenda(vendaId: number, storeId: string | number, us
         quantidade: qtdReal,
         motivo: `Venda #${vendaId} — ${item.descricao}`,
         custo_unitario_momento: produto.preco_custo || 0,
+        related_venda_id: vendaId,
         registrado_por_id: userId,
         created_at: new Date().toISOString()
       })
@@ -3787,6 +3807,17 @@ export async function criarVendaExpressPixPendente(input: {
   const billingGuard = await getNewSaleBillingGuard(storeId)
   if (billingGuard.blocked) return { success: false, message: billingGuard.message || 'Novas vendas estao bloqueadas para esta loja.' }
   if (!(await isStoreModuleEnabledForStore(storeId, 'quickSale'))) return { success: false, message: 'Modulo de venda rapida desativado para esta loja.' }
+  const { data: pixStore } = await (supabaseAdmin.from('stores') as any).select('cnpj, settings').eq('id', storeId).eq('tenant_id', profile.tenant_id).maybeSingle()
+  if (!pixStore || !isSicrediPilotStoreCnpj(pixStore.cnpj) || (pixStore.settings as any)?.pix_provider !== 'sicredi') {
+    return { success: false, message: 'A integracao Pix Sicredi nao esta habilitada para esta loja.' }
+  }
+
+  const tokenHash = createHash('sha256').update(input.authorizationToken, 'utf8').digest('hex')
+  const { data: previousRequest } = await (supabaseAdmin.from('pix_express_creation_requests') as any)
+    .select('venda_id')
+    .eq('token_hash', tokenHash)
+    .maybeSingle()
+  if (previousRequest?.venda_id) return { success: true, vendaId: Number(previousRequest.venda_id) }
 
   const { data: customers } = await (supabaseAdmin.from('customers') as any).select('id').eq('store_id', storeId).ilike('full_name', 'Consumidor Final').limit(1)
   let customerId = customers?.[0]?.id as number | undefined
@@ -3801,7 +3832,25 @@ export async function criarVendaExpressPixPendente(input: {
 
   const items = input.items.map((item) => ({ tenant_id: profile.tenant_id, store_id: storeId, venda_id: venda.id, item_tipo: item.type === 'armacoes' ? 'Armacao' : 'Outro', descricao: item.description, quantidade: item.quantity, valor_unitario: item.price, valor_total_item: item.price * item.quantity, product_id: item.originalId, variant_id: null }))
   const { error: itemsError } = await (supabaseAdmin.from('venda_itens') as any).insert(items)
-  if (itemsError) return { success: false, message: 'Nao foi possivel registrar os itens da venda expressa.' }
+  if (itemsError) {
+    await (supabaseAdmin.from('vendas') as any).update({ status: 'Cancelada', data_fechamento: new Date().toISOString(), valor_restante: 0 }).eq('id', venda.id).eq('status', 'Em Aberto')
+    return { success: false, message: 'Nao foi possivel registrar os itens da venda expressa.' }
+  }
+
+  const { error: requestError } = await (supabaseAdmin.from('pix_express_creation_requests') as any).insert({
+    token_hash: tokenHash,
+    tenant_id: profile.tenant_id,
+    store_id: storeId,
+    venda_id: venda.id,
+    employee_id: authorization.employeeId,
+    created_by_user_id: user.id,
+  })
+  if (requestError) {
+    await (supabaseAdmin.from('vendas') as any).update({ status: 'Cancelada', data_fechamento: new Date().toISOString(), valor_restante: 0 }).eq('id', venda.id).eq('status', 'Em Aberto')
+    const { data: concurrentRequest } = await (supabaseAdmin.from('pix_express_creation_requests') as any).select('venda_id').eq('token_hash', tokenHash).maybeSingle()
+    if (concurrentRequest?.venda_id) return { success: true, vendaId: Number(concurrentRequest.venda_id) }
+    return { success: false, message: 'Nao foi possivel registrar a tentativa Pix expressa.' }
+  }
 
   revalidatePath(`/dashboard/loja/${storeId}/vendas`)
   return { success: true, vendaId: Number(venda.id) }
