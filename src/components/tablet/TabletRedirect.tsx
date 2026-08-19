@@ -17,7 +17,7 @@ export function TabletRedirect({ storeId }: { storeId: number }) {
     // estado explícito na query. Não redirecionar esses estados de volta ao
     // menu inicial do tablet.
     const menu = searchParams.get('menu')
-    if (menu === 'atendimento' || menu === 'loja-vazia') return
+    if (menu === 'operacao' || menu === 'atendimento' || menu === 'loja-vazia') return
 
     // Permite navegar para rotas liberadas do dashboard sem loop de redirecionamento.
     const allowedTabletDashboardRoutePrefixes = [

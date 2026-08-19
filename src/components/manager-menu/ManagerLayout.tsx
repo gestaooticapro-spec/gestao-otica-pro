@@ -103,7 +103,9 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl }:
 
     const storeHomePath = `/dashboard/loja/${storeId}`;
     const effectiveManualState: ManualManagerState =
-        menuParam === 'atendimento' || menuParam === 'loja-vazia' ? 'operator' : manualState;
+        menuParam === 'operacao' || menuParam === 'atendimento' || menuParam === 'loja-vazia'
+            ? 'operator'
+            : manualState;
     const currentState: ManagerState =
         pathname !== storeHomePath && effectiveManualState !== 'operator' ? 'page' : effectiveManualState;
 
@@ -123,7 +125,7 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl }:
                 }}
                 onBackToOperatorHome={() => {
                     setManualState('operator');
-                    router.replace(`${storeHomePath}?menu=atendimento`);
+                    router.replace(`${storeHomePath}?menu=operacao`);
                 }}
                 hubLabel="Voltar ao Hub"
             >
@@ -216,7 +218,7 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl }:
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl">
                         <button
                             onClick={() => {
-                                router.replace(`${storeHomePath}?menu=atendimento`);
+                                router.replace(`${storeHomePath}?menu=operacao`);
                                 setManualState('operator');
                             }}
                             className="group relative h-72 rounded-[2rem] overflow-hidden border border-white/10 bg-black/25 backdrop-blur-md transition-all duration-300 hover:scale-[1.01] hover:shadow-2xl hover:shadow-blue-500/20"
