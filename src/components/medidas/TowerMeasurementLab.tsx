@@ -98,7 +98,7 @@ type TowerMessage =
 
 type ImageCaptureCtor = new (track: MediaStreamTrack) => { takePhoto: () => Promise<Blob> }
 
-const CARD_MM = 85.6
+const CARD_MM = 50
 const CAPTURE_GUIDE_ASPECT = 4 / 5
 const CAPTURE_GUIDE_HEIGHT_RATIO = 0.78
 const MEASUREMENT_ATTENTION_LIMITS = {

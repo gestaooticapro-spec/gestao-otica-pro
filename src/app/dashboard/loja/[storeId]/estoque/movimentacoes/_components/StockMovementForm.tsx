@@ -27,6 +27,12 @@ const inputStyle = "block w-full rounded-xl border border-white/10 bg-black/20 s
 const cardStyle = "bg-white/5 p-5 rounded-2xl shadow-lg border border-white/10 backdrop-blur-md mb-3"
 
 const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+const formatLensDegree = (value: number | string | null | undefined) => {
+    const numericValue = Number(value)
+    return Number.isFinite(numericValue)
+        ? numericValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : '0,00'
+}
 
 const typeLabels: Record<string, string> = {
     'Entrada': 'Entrada (Compra/Retorno)',
@@ -369,7 +375,23 @@ export default function StockMovementForm({ storeId, initialSearchTerm }: Props)
                             <h3 className="text-xs font-bold text-blue-400 uppercase tracking-wider mb-3 flex items-center gap-2">
                                 <PackageOpen className="h-4 w-4" /> Selecione a Variação *
                             </h3>
-                            {isLoadingVariants ? (
+                            {selectedVariantId ? (
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedVariantId(null)}
+                                    className="w-full p-3 rounded-lg border border-blue-500 bg-blue-500/20 text-left transition-all text-xs flex justify-between items-center hover:bg-blue-500/30"
+                                >
+                                    <span className="font-medium text-blue-100">
+                                        {(() => {
+                                            const v = variants.find((variant) => variant.id === selectedVariantId)
+                                            return v
+                                                ? `${v.olho ? `Olho: ${v.olho} | ` : ''}Esf ${formatLensDegree(v.esferico)} | Cil ${formatLensDegree(v.cilindrico)} | Eixo: ${v.eixo}°${v.adicao ? ` | Ad: ${formatLensDegree(v.adicao)}` : ''}`
+                                                : 'Variação selecionada'
+                                        })()}
+                                    </span>
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/30 text-blue-100">Alterar</span>
+                                </button>
+                            ) : isLoadingVariants ? (
                                 <div className="py-4 flex justify-center"><Loader2 className="h-5 w-5 animate-spin text-blue-500" /></div>
                             ) : (
                                 <div className="grid grid-cols-1 gap-2 max-h-[200px] overflow-y-auto custom-scrollbar pr-1">
@@ -385,8 +407,8 @@ export default function StockMovementForm({ storeId, initialSearchTerm }: Props)
                                         >
                                             <span className="font-medium">
                                                 {v.olho ? `Olho: ${v.olho} | ` : ''}
-                                                Esf: {v.esferico} | Cil: {v.cilindrico} | Eixo: {v.eixo}°
-                                                {v.adicao ? ` | Ad: ${v.adicao}` : ''}
+                                                Esf {formatLensDegree(v.esferico)} | Cil {formatLensDegree(v.cilindrico)} | Eixo: {v.eixo}°
+                                                {v.adicao ? ` | Ad: ${formatLensDegree(v.adicao)}` : ''}
                                             </span>
                                             <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${v.estoque_atual > 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
                                                 {v.estoque_atual} un

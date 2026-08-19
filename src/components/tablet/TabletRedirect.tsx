@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 
 /**
  * Detecta tablet por toque + largura de tela.
@@ -10,8 +10,15 @@ import { usePathname, useRouter } from 'next/navigation'
 export function TabletRedirect({ storeId }: { storeId: number }) {
   const router = useRouter()
   const pathname = usePathname()
+  const searchParams = useSearchParams()
 
   useEffect(() => {
+    // O menu operacional do tablet usa a própria rota do dashboard com um
+    // estado explícito na query. Não redirecionar esses estados de volta ao
+    // menu inicial do tablet.
+    const menu = searchParams.get('menu')
+    if (menu === 'operacao' || menu === 'atendimento' || menu === 'loja-vazia') return
+
     // Permite navegar para rotas liberadas do dashboard sem loop de redirecionamento.
     const allowedTabletDashboardRoutePrefixes = [
       `/dashboard/loja/${storeId}/tabela-precos`,
@@ -36,7 +43,7 @@ export function TabletRedirect({ storeId }: { storeId: number }) {
     if (hasTouch && isNarrow) {
       router.replace(`/tablet/${storeId}`)
     }
-  }, [storeId, router, pathname])
+  }, [storeId, router, pathname, searchParams])
 
   return null
 }
