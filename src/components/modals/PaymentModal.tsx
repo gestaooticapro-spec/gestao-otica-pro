@@ -7,6 +7,7 @@ import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import FiscalEmissionModal from '@/components/modals/FiscalEmissionModal'
 import {
     finalizarVendaExpress,
+    criarVendaExpressPixPendente,
     criarVendaParcialCarnê,
     searchCustomersByName,
     markPaymentsAsPrinted,
@@ -16,6 +17,9 @@ import { getSaleData } from '@/lib/actions/fiscal-db.actions'
 import { type CartItem } from '@/components/vendas/PdvExpressInterface'
 import { Database } from '@/lib/database.types'
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext'
+import { getPixProviderForStore } from '@/lib/actions/pix-installment.actions'
+import { createPixSaleChargeWithExpressAuthorization } from '@/lib/actions/pix-sale.actions'
+import PixSaleChargeModal from '@/components/modals/PixSaleChargeModal'
 
 // Tipo para o funcionário autenticado
 type Employee = Database['public']['Tables']['employees']['Row']
@@ -53,11 +57,13 @@ export default function PaymentModal({
     // Estados do Pagamento
     const [valorPago, setValorPago] = useState(formatCurrency(valorTotal))
     const [formaPagamento, setFormaPagamento] = useState('PIX Remoto')
+    const [pixProvider, setPixProvider] = useState<'manual' | 'sicredi'>('manual')
     const [parcelas, setParcelas] = useState(1)
     const [cpfNota, setCpfNota] = useState('')
 
     const [isProcessing, startProcess] = useTransition()
     const [isAuthOpen, setIsAuthOpen] = useState(false) // <--- 2. Estado do Modal de Auth
+    const [isPixSaleModalOpen, setIsPixSaleModalOpen] = useState(false)
 
     // Estados do Carnê
     const [customerQuery, setCustomerQuery] = useState('')
@@ -77,6 +83,10 @@ export default function PaymentModal({
             setActiveTab('pagamento')
         }
     }, [activeTab, modules.installments])
+
+    useEffect(() => {
+        void getPixProviderForStore(storeId).then(setPixProvider)
+    }, [storeId])
 
     const triggerPrint = async (pagamentoId: number): Promise<boolean> => {
         try {
@@ -104,11 +114,27 @@ export default function PaymentModal({
     }
 
     // 4. Executa o pagamento APÓS a senha correta
-    const handleAuthSuccess = (authedEmployee: Pick<Employee, 'id' | 'full_name'>) => {
+    const handleAuthSuccess = (authedEmployee: Pick<Employee, 'id' | 'full_name'> & { authorization_token?: string }) => {
         setIsAuthOpen(false)
 
         const valorLimpo = valorPago.replace(/[^\d,]/g, '').replace(',', '.')
         const valorNumerico = parseFloat(valorLimpo) || 0
+
+        if (formaPagamento === 'Pix Sicredi') {
+            const token = authedEmployee.authorization_token
+            if (!token) { alert('Nao foi possivel autorizar o Pix Sicredi.'); return }
+            startProcess(async () => {
+                const pendingSale = await criarVendaExpressPixPendente({ storeId, amount: valorNumerico, items: cartItems, authorizationToken: token })
+                if (!pendingSale.success) { alert(pendingSale.message); return }
+                const pendingVendaId = pendingSale.vendaId
+                if (!pendingVendaId) { alert('Nao foi possivel identificar a venda expressa.'); return }
+                const charge = await createPixSaleChargeWithExpressAuthorization({ storeId, vendaId: pendingVendaId, amount: valorNumerico, authorizationToken: token })
+                if (!charge.success) { alert(charge.message); return }
+                setVendaIdGerada(pendingVendaId)
+                setIsPixSaleModalOpen(true)
+            })
+            return
+        }
 
         const formData = new FormData()
         formData.append('store_id', storeId.toString())
@@ -280,7 +306,7 @@ export default function PaymentModal({
                                                     <div>
                                                         <label className={labelStyle}>Forma</label>
                                                         <select value={formaPagamento} onChange={e => setFormaPagamento(e.target.value)} className={`${inputStyle} cursor-pointer appearance-none`}>
-                                                            <option className="bg-slate-900 text-white">PIX Remoto</option><option className="bg-slate-900 text-white">PIX na maquininha</option><option className="bg-slate-900 text-white">Dinheiro</option><option className="bg-slate-900 text-white">Cartão Débito</option><option className="bg-slate-900 text-white">Cartão Crédito</option>
+                                                            <option className="bg-slate-900 text-white">PIX Remoto</option>{pixProvider === 'sicredi' && <option className="bg-slate-900 text-white">Pix Sicredi</option>}<option className="bg-slate-900 text-white">PIX na maquininha</option><option className="bg-slate-900 text-white">Dinheiro</option><option className="bg-slate-900 text-white">Cartão Débito</option><option className="bg-slate-900 text-white">Cartão Crédito</option>
                                                         </select>
                                                     </div>
                                                 </div>
@@ -377,8 +403,29 @@ export default function PaymentModal({
                     isOpen={isAuthOpen}
                     onClose={() => setIsAuthOpen(false)}
                     onSuccess={handleAuthSuccess}
-                    title="Autorizar Pagamento"
-                    description="Insira seu PIN para confirmar o recebimento."
+                    title={formaPagamento === 'Pix Sicredi' ? 'Autorizar geração do Pix' : 'Autorizar Pagamento'}
+                    description={formaPagamento === 'Pix Sicredi' ? 'Insira seu PIN para gerar o QR Code Sicredi.' : 'Insira seu PIN para confirmar o recebimento.'}
+                    purpose={formaPagamento === 'Pix Sicredi' ? 'pix_charge_create' : undefined}
+                    authorizationContext={formaPagamento === 'Pix Sicredi' ? `express:${(parseFloat(valorPago.replace(/[^\d,]/g, '').replace(',', '.')) || 0).toFixed(2)}` : undefined}
+                />
+            )}
+
+            {vendaIdGerada && isPixSaleModalOpen && (
+                <PixSaleChargeModal
+                    isOpen={isPixSaleModalOpen}
+                    storeId={storeId}
+                    vendaId={vendaIdGerada}
+                    amount={parseFloat(valorPago.replace(/[^\d,]/g, '').replace(',', '.')) || 0}
+                    onClose={() => setIsPixSaleModalOpen(false)}
+                    onPaymentAdded={async (confirmedCharge) => {
+                        setIsPixSaleModalOpen(false)
+                        setPagamentoIdGerado(confirmedCharge?.settlementPagamentoId || null)
+                        setIsCompleted(true)
+                        if (confirmedCharge?.settlementPagamentoId) {
+                            setIsPrinting(true)
+                            triggerPrint(confirmedCharge.settlementPagamentoId).finally(() => setIsPrinting(false))
+                        }
+                    }}
                 />
             )}
 

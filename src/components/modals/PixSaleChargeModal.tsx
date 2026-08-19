@@ -29,7 +29,7 @@ export default function PixSaleChargeModal({
   vendaId: number
   amount: number
   onClose: () => void
-  onPaymentAdded: () => Promise<void>
+  onPaymentAdded: (charge?: PixSaleCharge) => Promise<void>
 }) {
   const [mounted, setMounted] = useState(false)
   const [charge, setCharge] = useState<PixSaleCharge | null>(null)
@@ -76,7 +76,7 @@ export default function PixSaleChargeModal({
         return
       }
       setCharge(result.data)
-      if (result.data.settlementStatus === 'COMPLETED') await onPaymentAdded()
+      if (result.data.settlementStatus === 'COMPLETED') await onPaymentAdded(result.data)
       toast.success(result.data.settlementStatus === 'COMPLETED' ? 'Pagamento confirmado e registrado na venda.' : 'Status atualizado.')
     })
   }

@@ -13,7 +13,7 @@ import {
   createSicrediImmediateCharge,
   getSicrediImmediateCharge,
 } from '@/lib/pix/sicredi-client.server'
-import { verifyEmployeeAuthorization } from '@/lib/server/employee-authorization'
+import { issueEmployeeAuthorization, verifyEmployeeAuthorization } from '@/lib/server/employee-authorization'
 import type { StoreSettings } from '@/lib/store-modules'
 
 export type PixSaleCharge = {
@@ -28,11 +28,19 @@ export type PixSaleCharge = {
   paidAt: string | null
   settlementStatus: 'PENDING' | 'COMPLETED' | 'ERROR'
   settledAt: string | null
+  settlementPagamentoId: number | null
 }
 
 type Result<T> = { success: true; data: T } | { success: false; message: string }
 
 const CreateSchema = z.object({
+  storeId: z.number().int().positive(),
+  vendaId: z.number().int().positive(),
+  amount: z.number().positive().finite(),
+  authorizationToken: z.string().min(20),
+})
+
+const ExpressAuthorizationSchema = z.object({
   storeId: z.number().int().positive(),
   vendaId: z.number().int().positive(),
   amount: z.number().positive().finite(),
@@ -63,6 +71,7 @@ function serialize(row: any): PixSaleCharge {
     paidAt: row.paid_at || null,
     settlementStatus: row.settlement_status,
     settledAt: row.settled_at || null,
+    settlementPagamentoId: row.settlement_pagamento_id ? Number(row.settlement_pagamento_id) : null,
   }
 }
 
@@ -170,6 +179,38 @@ export async function createPixSaleCharge(input: z.input<typeof CreateSchema>): 
   }
 }
 
+export async function createPixSaleChargeWithExpressAuthorization(input: z.input<typeof ExpressAuthorizationSchema>): Promise<Result<PixSaleCharge>> {
+  try {
+    const data = ExpressAuthorizationSchema.parse(input)
+    const { admin, userId, profile } = await access(data.storeId)
+    const authorization = verifyEmployeeAuthorization(data.authorizationToken, {
+      userId,
+      tenantId: profile.tenant_id,
+      storeId: data.storeId,
+      purpose: 'pix_charge_create',
+      context: `express:${data.amount.toFixed(2)}`,
+    })
+    if (!authorization) throw new Error('Autorizacao expirada ou invalida. Informe novamente o PIN para gerar o Pix.')
+
+    const { data: venda, error } = await admin.from('vendas').select('id, status, valor_restante').eq('id', data.vendaId).eq('store_id', data.storeId).maybeSingle()
+    if (error || !venda) throw new Error('Venda expressa nao encontrada.')
+    if (venda.status === 'Fechada' || venda.status === 'Cancelada') throw new Error('Esta venda nao esta disponivel para pagamento.')
+    if (Number(venda.valor_restante || 0) + 0.01 < data.amount) throw new Error('O valor do Pix nao pode ser maior que o saldo da venda.')
+
+    const authorizationToken = issueEmployeeAuthorization({
+      userId,
+      tenantId: profile.tenant_id,
+      storeId: data.storeId,
+      employeeId: authorization.employeeId,
+      purpose: 'pix_charge_create',
+      context: `sale:${data.vendaId}:${data.amount.toFixed(2)}`,
+    })
+    return createPixSaleCharge({ storeId: data.storeId, vendaId: data.vendaId, amount: data.amount, authorizationToken })
+  } catch (error) {
+    return { success: false, message: error instanceof Error ? error.message : 'Nao foi possivel gerar o Pix da venda expressa.' }
+  }
+}
+
 export async function refreshPixSaleCharge(input: z.input<typeof ChargeSchema>): Promise<Result<PixSaleCharge>> {
   try {
     const data = ChargeSchema.parse(input)
@@ -180,8 +221,8 @@ export async function refreshPixSaleCharge(input: z.input<typeof ChargeSchema>):
       const remote = await getSicrediImmediateCharge(row.txid)
       const status = remote.status === 'CONCLUIDA' ? 'PAID' : remote.status === 'REMOVIDA_PELO_USUARIO_RECEBEDOR' ? 'CANCELLED' : 'PENDING'
       const { data: updated } = await table(admin).update({ status, paid_at: status === 'PAID' ? new Date().toISOString() : row.paid_at, provider_response: remote.raw, updated_at: new Date().toISOString() }).eq('id', row.id).select('*').single()
-      if (status === 'PAID' && updated) await settleSaleCharge(admin, updated)
-      return { success: true, data: serialize(updated || row) }
+      const settled = status === 'PAID' && updated ? await settleSaleCharge(admin, updated) : updated
+      return { success: true, data: serialize(settled || row) }
     }
     return { success: true, data: serialize(row) }
   } catch (error) {
@@ -216,8 +257,8 @@ async function settleSaleCharge(admin: any, row: any) {
   const { data: existing } = await admin.from('pagamentos').select('id').eq('venda_id', row.venda_id).eq('obs', obs).maybeSingle()
   if (existing) {
     await finalizeSaleFinancials(admin, row)
-    await table(admin).update({ settlement_status: 'COMPLETED', settlement_pagamento_id: existing.id, settled_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', row.id)
-    return row
+    const { data: settled } = await table(admin).update({ settlement_status: 'COMPLETED', settlement_pagamento_id: existing.id, settled_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', row.id).select('*').single()
+    return settled || { ...row, settlement_status: 'COMPLETED', settlement_pagamento_id: existing.id }
   }
   const { data: payment, error } = await admin.from('pagamentos').insert({
     tenant_id: row.tenant_id,
@@ -237,9 +278,9 @@ async function settleSaleCharge(admin: any, row: any) {
     throw new Error('Pagamento confirmado, mas a venda nao foi baixada.')
   }
   await finalizeSaleFinancials(admin, row)
-  await table(admin).update({ settlement_status: 'COMPLETED', settlement_pagamento_id: payment.id, settled_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', row.id)
+  const { data: settled } = await table(admin).update({ settlement_status: 'COMPLETED', settlement_pagamento_id: payment.id, settled_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', row.id).select('*').single()
   revalidateSale(Number(row.store_id), Number(row.venda_id))
-  return row
+  return settled || { ...row, settlement_status: 'COMPLETED', settlement_pagamento_id: payment.id }
 }
 
 async function finalizeSaleFinancials(admin: any, row: any) {

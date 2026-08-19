@@ -3759,6 +3759,54 @@ export async function updateVendaObs(
 // ================================================================
 // 21. ACTION: FINALIZAR VENDA EXPRESS (ATÃ”MICA) - CORRIGIDO FINAL
 // ================================================================
+export async function criarVendaExpressPixPendente(input: {
+  storeId: number
+  amount: number
+  items: Array<{ originalId: number; type: 'produtos_gerais' | 'armacoes'; description: string; price: number; quantity: number }>
+  authorizationToken: string
+}) {
+  const supabaseAdmin = createAdminClient()
+  const { data: { user } } = await createClient().auth.getUser()
+  if (!user) return { success: false, message: 'Sem permissao.' }
+  const profile = await getProfileByAdmin(user.id) as any
+  const storeId = Number(input.storeId)
+  const amount = Number(input.amount)
+  const authorization = verifyEmployeeAuthorization(input.authorizationToken, {
+    userId: user.id,
+    tenantId: profile?.tenant_id,
+    storeId,
+    purpose: 'pix_charge_create',
+    context: `express:${amount.toFixed(2)}`,
+  })
+  if (!authorization) return { success: false, message: 'Autorizacao expirada ou invalida. Informe novamente o PIN.' }
+  if (!Array.isArray(input.items) || input.items.length === 0 || !Number.isFinite(amount) || amount <= 0) return { success: false, message: 'Venda expressa invalida.' }
+
+  const total = input.items.reduce((sum, item) => sum + Number(item.price) * Number(item.quantity), 0)
+  if (!Number.isFinite(total) || Math.abs(total - amount) > 0.01) return { success: false, message: 'O total da venda mudou. Confira a cesta e tente novamente.' }
+
+  const billingGuard = await getNewSaleBillingGuard(storeId)
+  if (billingGuard.blocked) return { success: false, message: billingGuard.message || 'Novas vendas estao bloqueadas para esta loja.' }
+  if (!(await isStoreModuleEnabledForStore(storeId, 'quickSale'))) return { success: false, message: 'Modulo de venda rapida desativado para esta loja.' }
+
+  const { data: customers } = await (supabaseAdmin.from('customers') as any).select('id').eq('store_id', storeId).ilike('full_name', 'Consumidor Final').limit(1)
+  let customerId = customers?.[0]?.id as number | undefined
+  if (!customerId) {
+    const { data: customer, error: customerError } = await (supabaseAdmin.from('customers') as any).insert({ store_id: storeId, tenant_id: profile.tenant_id, full_name: 'Consumidor Final' }).select('id').single()
+    if (customerError || !customer) return { success: false, message: 'Nao foi possivel preparar o cliente da venda.' }
+    customerId = Number(customer.id)
+  }
+
+  const { data: venda, error: vendaError } = await (supabaseAdmin.from('vendas') as any).insert({ store_id: storeId, tenant_id: profile.tenant_id, customer_id: customerId, employee_id: authorization.employeeId, created_by_user_id: user.id, status: 'Em Aberto', valor_total: total, valor_final: total, valor_restante: total }).select('id').single()
+  if (vendaError || !venda) return { success: false, message: 'Nao foi possivel criar a venda expressa.' }
+
+  const items = input.items.map((item) => ({ tenant_id: profile.tenant_id, store_id: storeId, venda_id: venda.id, item_tipo: item.type === 'armacoes' ? 'Armacao' : 'Outro', descricao: item.description, quantidade: item.quantity, valor_unitario: item.price, valor_total_item: item.price * item.quantity, product_id: item.originalId, variant_id: null }))
+  const { error: itemsError } = await (supabaseAdmin.from('venda_itens') as any).insert(items)
+  if (itemsError) return { success: false, message: 'Nao foi possivel registrar os itens da venda expressa.' }
+
+  revalidatePath(`/dashboard/loja/${storeId}/vendas`)
+  return { success: true, vendaId: Number(venda.id) }
+}
+
 export async function finalizarVendaExpress(formData: FormData) {
   const supabaseAdmin = createAdminClient()
 
@@ -4008,7 +4056,7 @@ export async function autenticarFuncionarioPorPin(
         : authorizationPurpose === 'installment_receipt_reversal'
           ? /^(?:\d+|legacy:\d+)$/.test(authorizationContext)
           : authorizationPurpose === 'pix_charge_create'
-            ? /^\d+:\d+\.\d{2}:\d+\.\d{2}:(?:quitacao_total|baixa_parcial|somar_proxima)$/.test(authorizationContext)
+            ? (/^\d+:\d+\.\d{2}:\d+\.\d{2}:(?:quitacao_total|baixa_parcial|somar_proxima)$/.test(authorizationContext) || /^express:\d+\.\d{2}$/.test(authorizationContext))
             : authorizationPurpose === 'pix_charge_cancel' || authorizationPurpose === 'pix_charge_recover'
               ? /^\d+$/.test(authorizationContext)
               : true
