@@ -118,12 +118,12 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl }:
                 storeName={storeName}
                 logoUrl={logoUrl}
                 onBackToHub={() => {
-                    router.replace(`/dashboard/loja/${storeId}`);
+                    router.replace(storeHomePath);
                     setManualState('home');
                 }}
                 onBackToOperatorHome={() => {
                     setManualState('operator');
-                    router.replace(storeHomePath);
+                    router.replace(`${storeHomePath}?menu=atendimento`);
                 }}
                 hubLabel="Voltar ao Hub"
             >
@@ -216,7 +216,7 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl }:
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl">
                         <button
                             onClick={() => {
-                                router.replace(`/dashboard/loja/${storeId}`);
+                                router.replace(`${storeHomePath}?menu=atendimento`);
                                 setManualState('operator');
                             }}
                             className="group relative h-72 rounded-[2rem] overflow-hidden border border-white/10 bg-black/25 backdrop-blur-md transition-all duration-300 hover:scale-[1.01] hover:shadow-2xl hover:shadow-blue-500/20"
@@ -238,7 +238,7 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl }:
 
                         <button
                             onClick={() => {
-                                router.replace(`/dashboard/loja/${storeId}`);
+                                router.replace(storeHomePath);
                                 setManualState('gerencia');
                             }}
                             className="group relative h-72 rounded-[2rem] overflow-hidden border border-white/10 bg-black/25 backdrop-blur-md transition-all duration-300 hover:scale-[1.01] hover:shadow-2xl hover:shadow-emerald-500/20"

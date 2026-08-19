@@ -99,6 +99,7 @@ export default function OperatorLayout({
 
     const handleNavigate = (menu: 'atendimento' | 'loja-vazia') => {
         setHomeSelection(menu);
+        router.replace(`${storeHomePath}?menu=${menu}`);
     };
 
     const handleBack = () => {
@@ -107,7 +108,7 @@ export default function OperatorLayout({
             onBackToOperatorHome();
             return;
         }
-        router.push(storeHomePath);
+        router.replace(storeHomePath);
     };
 
     const handleRouteNavigate = (route: string) => {
