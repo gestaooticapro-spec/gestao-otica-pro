@@ -28,6 +28,7 @@ export default async function PrintReciboPage(
         .from('pagamentos') as any)
         .select('*')
         .in('id', ids)
+        .order('created_at', { ascending: true })
 
     // Se não encontrou por ID de pagamento, tenta buscar por ID de venda (vendaIdGerada)
     if (!pagamentos || pagamentos.length === 0) {
@@ -70,7 +71,11 @@ export default async function PrintReciboPage(
         pagamentos.map((pagamento: any) => Number(pagamento.parcela_id)).filter(Number.isFinite)
     ))
 
-    if (pagamentos.length > 0 && parcelaIds.length === 1 && pagamentos.every((pagamento: any) => Number(pagamento.parcela_id) === parcelaIds[0])) {
+    // O pagamento pode ser dividido em mais de uma alocação quando há
+    // excedente (a parcela atual é recebida e o restante abatido na próxima).
+    // Nesse caso, a parcela do primeiro pagamento é a parcela recebida e deve
+    // continuar aparecendo no recibo.
+    if (pagamentos.length > 0 && parcelaIds.length > 0) {
         const { data: parcelaRaw } = await (supabase
             .from('financiamento_parcelas') as any)
             .select('numero_parcela, data_vencimento, financiamento_id')
@@ -116,6 +121,7 @@ export default async function PrintReciboPage(
         store,
         isReprint,
         parcelaInfo,
+        hasInstallmentAmounts: pagamentos.some((pagamento: any) => pagamento.parcela_id != null),
     }
 
     return (
