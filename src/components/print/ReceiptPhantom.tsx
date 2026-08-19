@@ -16,6 +16,7 @@ interface ReceiptData {
         totalParcelas: number
         dataVencimento: string
     } | null
+    hasInstallmentAmounts?: boolean
 }
 
 // --- AJUSTE FINO (Edite aqui se precisar mover tudo) ---
@@ -54,7 +55,7 @@ const Y_PIX = 96 + OFFSET_Y
 const formatMoney = (val: number) => val.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
 
 function Via({ data, isSegundaVia }: { data: ReceiptData, isSegundaVia: boolean }) {
-    const { pagamentos, cliente, isReprint, parcelaInfo } = data
+    const { pagamentos, cliente, isReprint, parcelaInfo, hasInstallmentAmounts } = data
     const valorTotalRecibo = pagamentos.reduce((acc, p) => acc + p.valor_pago, 0)
     
     // Data mais recente
@@ -80,6 +81,7 @@ function Via({ data, isSegundaVia }: { data: ReceiptData, isSegundaVia: boolean 
     
     const labelIds = pagamentos.length > 1 ? 'Pgtos' : 'Pgto'
     const obsTexto = `Ref. ${labelIds} #${idsPagamentos} - Venda #${data.venda.id}`
+    const rastreabilidadeTexto = 'Esse recibo tem valores que representam segunda via de parcelas.'
 
     const getStyle = (topMm: number, leftMm: number, extraStyles: any = {}) => {
         return {
@@ -147,6 +149,9 @@ function Via({ data, isSegundaVia }: { data: ReceiptData, isSegundaVia: boolean 
             {/* 5. OBSERVAÇÕES */}
             <div style={getStyle(OBS_Y, OBS_X, { width: '45mm', fontSize: '13px', lineHeight: '1.2' })}>
                 {obsTexto}
+                {hasInstallmentAmounts && (
+                    <div style={{ marginTop: '2mm' }}>{rastreabilidadeTexto}</div>
+                )}
             </div>
 
             {/* 6. CHECKBOX FIXO */}

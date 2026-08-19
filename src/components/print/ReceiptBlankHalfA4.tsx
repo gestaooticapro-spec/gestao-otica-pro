@@ -18,12 +18,13 @@ export interface ReceiptDataBlank {
         totalParcelas: number
         dataVencimento: string
     } | null
+    hasInstallmentAmounts?: boolean
 }
 
 const formatMoney = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
 function Via({ data, label, isRight }: { data: ReceiptDataBlank, label: string, isRight?: boolean }) {
-    const { pagamentos, cliente, itens, store, isReprint, parcelaInfo } = data
+    const { pagamentos, cliente, itens, store, isReprint, parcelaInfo, hasInstallmentAmounts } = data
     const valorTotalRecibo = pagamentos.reduce((acc, p) => acc + p.valor_pago, 0)
 
     const resumoItens = itens.map(i => `${i.quantidade}x ${i.descricao}`).join(', ')
@@ -117,7 +118,12 @@ function Via({ data, label, isRight }: { data: ReceiptDataBlank, label: string, 
                     {cliente?.cpf && <div><strong>CPF:</strong> {cliente.cpf}</div>}
                     <div><strong>Referente a:</strong> Venda #{pagamentos[0].venda_id}</div>
                     {parcelaInfo && (
-                        <div><strong>Duplicata:</strong> {parcelaInfo.numeroParcela}/{parcelaInfo.totalParcelas} — Vencimento: {vencimentoTexto}</div>
+                        <div><strong>Parcela recebida:</strong> {parcelaInfo.numeroParcela}/{parcelaInfo.totalParcelas} — Vencimento: {vencimentoTexto}</div>
+                    )}
+                    {hasInstallmentAmounts && (
+                        <div style={{ marginTop: '4px', fontWeight: 'bold' }}>
+                            Esse recibo tem valores que representam segunda via de parcelas.
+                        </div>
                     )}
                 </div>
 
