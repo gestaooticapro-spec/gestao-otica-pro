@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import Link from 'next/link'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
     ArrowLeft,
     Calendar,
@@ -24,6 +24,7 @@ import {
 import { toast } from 'sonner'
 import { BackgroundToggle, useBackgroundPreference } from '@/components/ui/BackgroundToggle'
 import { sendManualWhatsAppFromClient } from '@/lib/whatsapp/manual-client'
+import { currentPathWithSearch, withReturnTo } from '@/lib/return-navigation'
 import {
     EmployeeSimple,
     LabOSResult,
@@ -143,6 +144,9 @@ function getRegressField(currentStage: LabStage, item?: LabOSResult): 'dt_pedido
 export default function LaboratorioPage() {
     const params = useParams()
     const router = useRouter()
+    const pathname = usePathname()
+    const searchParams = useSearchParams()
+    const currentLabUrl = currentPathWithSearch(pathname, searchParams)
     const storeId = parseInt(params.storeId as string, 10)
     const { preference } = useBackgroundPreference()
 
@@ -800,7 +804,10 @@ export default function LaboratorioPage() {
                                                 if (getLabStage(selectedOS) === 'oculos_montado') {
                                                     router.push(`/dashboard/loja/${storeId}/entrega`)
                                                 } else if (selectedOS.venda_id) {
-                                                    router.push(`/dashboard/loja/${storeId}/vendas/${selectedOS.venda_id}/os?os_id=${selectedOS.id}`)
+                                                    router.push(withReturnTo(
+                                                        `/dashboard/loja/${storeId}/vendas/${selectedOS.venda_id}/os?os_id=${selectedOS.id}`,
+                                                        currentLabUrl
+                                                    ))
                                                 }
                                             }}
                                             className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-white/5 text-slate-300 hover:bg-white/10 border border-white/10 transition-all"
