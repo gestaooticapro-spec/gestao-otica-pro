@@ -128,7 +128,7 @@ export default function PriceTableHeader({
               >
                 <Building2 className="h-4 w-4" />
               </span>
-              <span className="text-xs font-black uppercase tracking-[0.18em]">Por laboratório</span>
+              <span className="text-xs font-black uppercase tracking-[0.18em]"><span className="sm:hidden">Por lab</span><span className="hidden sm:inline">Por laboratório</span></span>
             </Link>
 
             <Link
