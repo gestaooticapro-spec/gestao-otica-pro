@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
-import { CheckCircle2, Clock3, Maximize2, QrCode, Smartphone } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Clock3, Maximize2, QrCode, Smartphone } from 'lucide-react'
 
 type DisplayCharge = {
   kind: 'sale' | 'installment'
@@ -18,6 +19,7 @@ type DisplayCharge = {
 const money = (value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
 export default function PixMaquininhaClient({ storeId, storeName }: { storeId: number; storeName: string }) {
+  const router = useRouter()
   const [charge, setCharge] = useState<DisplayCharge | null>(null)
   const [lastChargeKey, setLastChargeKey] = useState<string | null>(null)
   const [paidNotice, setPaidNotice] = useState(false)
@@ -56,6 +58,7 @@ export default function PixMaquininhaClient({ storeId, storeName }: { storeId: n
   return (
     <main className="min-h-screen bg-slate-950 px-5 py-6 text-white sm:px-10">
       <header className="mx-auto flex max-w-3xl items-center justify-between gap-4">
+        <button type="button" onClick={() => router.back()} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold uppercase tracking-wide text-slate-300 hover:bg-white/10 hover:text-white"><ArrowLeft className="h-4 w-4" /> Voltar</button>
         <div className="flex items-center gap-3"><div className="rounded-xl bg-cyan-500/15 p-3 text-cyan-300"><Smartphone className="h-6 w-6" /></div><div><p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-400">Modo Maquininha Pix</p><h1 className="text-xl font-black">{storeName}</h1></div></div>
         <button type="button" onClick={enterFullscreen} className="rounded-xl border border-white/10 bg-white/5 p-3 text-slate-300 hover:bg-white/10" title="Tela cheia"><Maximize2 className="h-5 w-5" /></button>
       </header>
