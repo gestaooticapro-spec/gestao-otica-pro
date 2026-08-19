@@ -27,7 +27,7 @@ export default function OperatorMenuHome({
     const { preference } = useBackgroundPreference();
 
     return (
-        <div className="min-h-screen relative flex flex-col items-center justify-center p-6 overflow-hidden bg-slate-950 font-sans transition-colors duration-500">
+        <div className="min-h-screen relative flex flex-col items-center justify-center p-6 overflow-y-auto md:overflow-hidden bg-slate-950 font-sans transition-colors duration-500">
             <div className="absolute top-6 right-6 z-50 flex items-center gap-3">
                 <FullscreenToggleButton className="right-20 top-6" />
                 <BackgroundToggle />
@@ -72,7 +72,7 @@ export default function OperatorMenuHome({
                 <div className="flex flex-col md:flex-row gap-12 md:gap-16 w-full max-w-4xl justify-center px-4">
                     <button
                         onClick={() => onNavigate('atendimento')}
-                        className="group relative flex-1 h-64 md:h-80 rounded-[2rem] overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-blue-500/20 border border-white/10 bg-black/20 backdrop-blur-md"
+                        className="group relative flex-none h-64 md:flex-1 md:h-80 rounded-[2rem] overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-blue-500/20 border border-white/10 bg-black/20 backdrop-blur-md"
                     >
                         <div className="absolute inset-0 bg-gradient-to-br from-blue-600/20 via-blue-900/40 to-slate-900/60 group-hover:opacity-80 transition-opacity" />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
@@ -99,7 +99,7 @@ export default function OperatorMenuHome({
 
                     <button
                         onClick={() => onNavigate('loja-vazia')}
-                        className="group relative flex-1 h-64 md:h-80 rounded-[2rem] overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-amber-500/20 border border-white/10 bg-black/20 backdrop-blur-md"
+                        className="group relative flex-none h-64 md:flex-1 md:h-80 rounded-[2rem] overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-amber-500/20 border border-white/10 bg-black/20 backdrop-blur-md"
                     >
                         <div className="absolute inset-0 bg-gradient-to-br from-amber-600/20 via-orange-900/40 to-slate-900/60 group-hover:opacity-80 transition-opacity" />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
