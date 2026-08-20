@@ -993,6 +993,7 @@ export async function deleteServiceOrder(id: number, storeId: number, vendaId: n
 // ================================================================
 
 export type CustomerSearchResult = Pick<Customer, 'id' | 'full_name' | 'cpf' | 'fone_movel' | 'obs_debito'> & {
+  birth_date?: string | null
   tem_pendencia?: boolean
 }
 
@@ -1041,7 +1042,7 @@ export async function fetchDefaultCustomers(storeId: number): Promise<SearchCust
   const supabaseAdmin = createAdminClient()
   const { data, error } = await supabaseAdmin
     .from('customers')
-    .select('id, full_name, cpf, fone_movel, obs_debito')
+    .select('id, full_name, cpf, fone_movel, obs_debito, birth_date')
     .eq('store_id', storeId)
     .order('created_at', { ascending: false })
     .limit(20)
@@ -4063,6 +4064,10 @@ export type CustomerSaleHistory = {
   status_venda: string
   paciente_nome: string
   itens: {
+    id: number
+    product_id: number | null
+    variant_id: number | null
+    item_tipo: string | null
     descricao: string
     quantidade: number
     valor_unitario: number
@@ -4110,7 +4115,7 @@ export async function getLastSalesForCustomer(storeId: number, customerId: numbe
 
     // 2. Busca dados relacionados
     const [itensRes, osRes, financRes, clienteRes, pagtosRes] = await Promise.all([
-      supabaseAdmin.from('venda_itens').select('venda_id, descricao, quantity:quantidade, unit_price:valor_unitario, total:valor_total_item').in('venda_id', vendasIds),
+      supabaseAdmin.from('venda_itens').select('id, venda_id, product_id, variant_id, item_tipo, descricao, detalhes_avulsos, quantity:quantidade, unit_price:valor_unitario, total:valor_total_item').in('venda_id', vendasIds),
       supabaseAdmin.from('service_orders').select('*, dependentes(full_name), oftalmologistas(nome_completo)').in('venda_id', vendasIds),
       supabaseAdmin.from('financiamento_loja').select('*, financiamento_parcelas(numero_parcela, valor_parcela, data_vencimento, status)').in('venda_id', vendasIds),
       supabaseAdmin.from('customers').select('full_name').eq('id', customerId).single(),
@@ -4129,6 +4134,10 @@ export async function getLastSalesForCustomer(storeId: number, customerId: numbe
       const rawItens = (itensRes.data as any[])?.filter(i => i.venda_id === v.id) || []
 
       const itensFormatados = rawItens.map((i: any) => ({
+        id: i.id,
+        product_id: i.product_id ?? null,
+        variant_id: i.variant_id ?? null,
+        item_tipo: i.item_tipo ?? null,
         descricao: i.descricao,
         quantidade: i.quantity,
         valor_unitario: i.unit_price,

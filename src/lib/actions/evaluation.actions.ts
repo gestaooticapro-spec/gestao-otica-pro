@@ -109,6 +109,9 @@ export type OpticalEvaluationRow = {
   outcome_status: 'venda_fechada' | 'cliente_pesquisa' | 'perdido_preco' | 'perdido_produto' | 'perdido_prazo' | null
   panic_reason: string | null
   recommended_items: unknown | null
+  interview_snapshot: unknown | null
+  recommendation_input: unknown | null
+  selected_recommendation: unknown | null
   exported_venda_id: number | null
 }
 
@@ -237,6 +240,9 @@ const SaveEvaluationSchema = z
     recommendedLensName: z.string().nullable().optional(),
     commercialRecommendationRaw: z.string().nullable().optional(),
     recommendedItems: z.array(z.unknown()).nullable().optional(),
+    interviewSnapshot: z.record(z.string(), z.unknown()).nullable().optional(),
+    recommendationInput: z.record(z.string(), z.unknown()).nullable().optional(),
+    selectedRecommendation: z.record(z.string(), z.unknown()).nullable().optional(),
     extractedText: z.string().nullable().optional(),
     rawPayloadJson: z.record(z.string(), z.unknown()).nullable().optional(),
     parseWarning: z.string().nullable().optional(),
@@ -334,6 +340,53 @@ export async function isPreSaleAnalysisEnabled(storeId: number): Promise<boolean
   return settings.pre_sale_analysis_enabled === true
 }
 
+export async function searchLensFamiliesForEvaluation(storeId: number, query: string): Promise<string[]> {
+  const auth = await getAuthorizedContext(storeId)
+  const term = query.trim()
+  if (!auth.ok || term.length < 2) return []
+  const normalizeSearchText = (value: string) => value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+  const tokens = normalizeSearchText(term).split(/\s+/).filter(Boolean)
+  if (tokens.length === 0) return []
+  // Tipos gerados ainda nao incluem integralmente o catalogo global.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabaseAdmin = createAdminClient() as any
+  const { data: activations, error: activationError } = await supabaseAdmin
+    .from('tenant_catalog_activations')
+    .select('global_version_id')
+    .eq('store_id', storeId)
+    .eq('status', 'active')
+  if (activationError || !Array.isArray(activations) || activations.length === 0) return []
+  const versionIds = [...new Set(activations.map((row: { global_version_id?: unknown }) => String(row.global_version_id || '')).filter(Boolean))]
+  const [{ data: families, error: familiesError }, { data: versions, error: versionsError }] = await Promise.all([
+    supabaseAdmin.from('global_lens_families').select('nome,version_id').in('version_id', versionIds).limit(2000),
+    supabaseAdmin.from('global_catalog_versions').select('id,laboratorio,versao').in('id', versionIds),
+  ])
+  if (familiesError || versionsError || !Array.isArray(families)) return []
+  const versionLabels = new Map<string, string>((versions || []).map((row: { id?: unknown; laboratorio?: unknown; versao?: unknown }) => [
+    String(row.id || ''),
+    `${String(row.laboratorio || '')} ${String(row.versao || '')}`,
+  ]))
+  const matches = families
+    .map((row: { nome?: unknown; version_id?: unknown }) => {
+      const name = typeof row.nome === 'string' ? row.nome.trim() : ''
+      const searchable = normalizeSearchText(`${versionLabels.get(String(row.version_id || '')) || ''} ${name}`)
+      return { name, searchable }
+    })
+    .filter((entry: { name: string; searchable: string }) => entry.name && tokens.every((token) => entry.searchable.includes(token)))
+    .sort((left: { name: string; searchable: string }, right: { name: string; searchable: string }) => {
+      const normalizedTerm = tokens.join(' ')
+      const leftStarts = left.searchable.startsWith(normalizedTerm) ? 0 : 1
+      const rightStarts = right.searchable.startsWith(normalizedTerm) ? 0 : 1
+      return leftStarts - rightStarts || left.name.localeCompare(right.name, 'pt-BR')
+    })
+  return [...new Set(matches.map((entry: { name: string }) => entry.name))].slice(0, 12)
+}
+
 export async function saveOpticalEvaluation(
   input: z.infer<typeof SaveEvaluationSchema>
 ): Promise<EvaluationActionResult<OpticalEvaluationRow>> {
@@ -404,6 +457,9 @@ export async function saveOpticalEvaluation(
     commercial_recommendation_raw: normalizeText(data.commercialRecommendationRaw),
     extracted_text: normalizeText(data.extractedText),
     raw_payload_json: (data.rawPayloadJson || {}) as EvaluationJson,
+    interview_snapshot: (data.interviewSnapshot ?? null) as EvaluationJson,
+    recommendation_input: (data.recommendationInput ?? null) as EvaluationJson,
+    selected_recommendation: (data.selectedRecommendation ?? null) as EvaluationJson,
     parse_warning: normalizeText(data.parseWarning),
     document_hash: normalizeText(data.documentHash),
     updated_at: new Date().toISOString()
@@ -714,6 +770,9 @@ export async function upsertOpticalEvaluation(
     recommended_lens_name: normalizeText(data.recommendedLensName),
     commercial_recommendation_raw: normalizeText(data.commercialRecommendationRaw),
     recommended_items: (data.recommendedItems ?? null) as any,
+    interview_snapshot: (data.interviewSnapshot ?? null) as EvaluationJson,
+    recommendation_input: (data.recommendationInput ?? null) as EvaluationJson,
+    selected_recommendation: (data.selectedRecommendation ?? null) as EvaluationJson,
     extracted_text: normalizeText(data.extractedText),
     raw_payload_json: (data.rawPayloadJson || {}) as EvaluationJson,
     parse_warning: normalizeText(data.parseWarning),
