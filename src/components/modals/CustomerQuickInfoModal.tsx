@@ -49,7 +49,11 @@ export default function CustomerQuickInfoModal({ isOpen, onClose, customer, stor
             setUf(customer.uf ?? '')
             setCep(formatCep(customer.cep?.toString() ?? ''))
         }
-    }, [isOpen, customer])
+        // O objeto `customer` pode ser recriado pelo componente pai em uma
+        // renderização sem que o cliente tenha mudado. Depender dele inteiro
+        // aqui resetava `editing` logo após clicar em Editar.
+        // A carga inicial só precisa reagir à abertura ou à troca de cliente.
+    }, [isOpen, customer.id])
 
     if (!isOpen) return null
 
