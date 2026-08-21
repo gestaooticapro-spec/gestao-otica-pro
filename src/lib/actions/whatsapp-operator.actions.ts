@@ -670,6 +670,51 @@ async function getViewContext(storeId: number) {
   }
 }
 
+export type WhatsAppLatestInboundMessageResult = {
+  success: boolean
+  message: string
+  latestMessageId: number | null
+  latestMessageAt: string | null
+}
+
+/**
+ * Lightweight cursor used by the operational radar to detect a new customer
+ * message. It deliberately returns no message content or phone number.
+ */
+export async function getWhatsAppLatestInboundMessage(storeIdInput: number): Promise<WhatsAppLatestInboundMessageResult> {
+  try {
+    const storeId = Number(storeIdInput)
+    if (!Number.isFinite(storeId) || storeId <= 0) {
+      return { success: false, message: 'Loja invalida.', latestMessageId: null, latestMessageAt: null }
+    }
+
+    const { supabaseAdmin } = await getViewContext(storeId)
+    const { data, error } = await (supabaseAdmin.from('whatsapp_inbound_messages') as any)
+      .select('id, created_at')
+      .eq('store_id', storeId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (error) throw error
+
+    return {
+      success: true,
+      message: '',
+      latestMessageId: typeof data?.id === 'number' ? data.id : null,
+      latestMessageAt: typeof data?.created_at === 'string' ? data.created_at : null,
+    }
+  } catch (error) {
+    console.error('[WhatsApp Operator] Failed to read latest inbound message:', error)
+    return {
+      success: false,
+      message: formatActionError(error, 'Nao foi possivel verificar novas mensagens do WhatsApp.'),
+      latestMessageId: null,
+      latestMessageAt: null,
+    }
+  }
+}
+
 async function loadStoreCustomers(storeId: number) {
   const supabaseAdmin = createAdminClient()
   const { data, error } = await (supabaseAdmin.from('customers') as any)

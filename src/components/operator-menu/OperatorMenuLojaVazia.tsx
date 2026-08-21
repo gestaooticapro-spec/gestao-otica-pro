@@ -817,6 +817,7 @@ export default function OperatorMenuLojaVazia({
                                             </button>
                                         )}
                                         <WidgetWhatsAppPendencias
+                                            storeId={storeId}
                                             pendencias={radar.whatsAppPendencias}
                                             humanOverrides={radar.whatsAppHumanOverrides}
                                             isConnected={radar.isWhatsAppConnected}
