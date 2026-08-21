@@ -274,7 +274,7 @@ export default function WidgetWhatsAppPendencias({
               </p>
             ) : (
               <p className="mt-2 text-[10px] leading-relaxed text-slate-400">
-                Enquanto este sistema estiver aberto, novas mensagens recebem um sinal sonoro. Em segundo plano, o navegador tambem exibira uma notificacao quando permitido.
+                Enquanto este sistema estiver aberto, novas mensagens recebem um sinal sonoro. Em segundo plano, o navegador também exibirá uma notificação quando permitido.
               </p>
             )}
           </div>
