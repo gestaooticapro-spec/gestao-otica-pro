@@ -447,9 +447,15 @@ export async function createPixInstallmentCharge(input: z.input<typeof CreateCha
       return { success: true, data: serializeCharge(recovered) }
     }
     if (pending) {
-      const current = pending.status === 'PENDING' && (!pending.expires_at || new Date(pending.expires_at).getTime() > Date.now())
-        ? pending
-        : await reconcileChargeWithSicredi(admin, pending)
+      // Uma cobranca que ja venceu localmente nao pode voltar a ficar ativa.
+      // Nao dependemos de uma nova consulta ao Sicredi para liberar a proxima
+      // emissao: em HML o QR vencido pode deixar de ser consultavel.
+      const locallyExpired = await expireLocalChargeIfNeeded(admin, pending)
+      const current = locallyExpired.status === 'EXPIRED'
+        ? locallyExpired
+        : locallyExpired.status === 'PENDING'
+          ? await reconcileChargeWithSicredi(admin, locallyExpired)
+          : locallyExpired
       if (current.status === 'PENDING') return { success: true, data: serializeCharge(current) }
       if (current.status === 'PAID') throw new Error('Esta cobranca Pix ja foi paga. Faca a baixa manual antes de gerar outro QR Code.')
     }
@@ -471,6 +477,7 @@ export async function createPixInstallmentCharge(input: z.input<typeof CreateCha
         provider: 'sicredi',
         txid: reservationTxid,
         status: 'CREATING',
+        settlement_idempotency_key: randomUUID(),
         amount: data.amount.toFixed(2),
         interest_amount: data.interestAmount.toFixed(2),
         strategy: data.strategy,
@@ -541,7 +548,37 @@ export async function refreshPixInstallmentCharge(input: z.input<typeof ChargeAc
       .maybeSingle()
     if (error || !row) throw new Error('Cobrança Pix não encontrada.')
 
-    const updated = await reconcileChargeWithSicredi(admin, row)
+    const locallyExpired = await expireLocalChargeIfNeeded(admin, row)
+    if (locallyExpired.status === 'EXPIRED') {
+      revalidateInstallmentPaths(data.storeId)
+      return { success: true, data: serializeCharge(locallyExpired) }
+    }
+
+    let updated: any
+    try {
+      updated = await reconcileChargeWithSicredi(admin, locallyExpired)
+    } catch (error) {
+      // Uma reserva que falhou pode nunca ter chegado ao Sicredi. So liberamos
+      // nova emissao quando o banco confirma que aquele txid nao existe.
+      if (locallyExpired.status !== 'ERROR' || !(error instanceof SicrediPixHttpError) || error.statusCode !== 404) throw error
+
+      const { data: cancelled, error: cancelError } = await pixChargesTable(admin)
+        .update({
+          status: 'CANCELLED',
+          cancelled_at: new Date().toISOString(),
+          provider_response: {
+            ...(locallyExpired.provider_response || {}),
+            recovery: 'Cobrança não localizada no Sicredi; reserva local liberada para nova emissão.',
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', locallyExpired.id)
+        .eq('status', 'ERROR')
+        .select('*')
+        .single()
+      if (cancelError || !cancelled) throw new Error('Não foi possível liberar a reserva local da cobrança com erro.')
+      updated = cancelled
+    }
 
     revalidateInstallmentPaths(data.storeId)
     return { success: true, data: serializeCharge(updated) }
