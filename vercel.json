@@ -11,6 +11,10 @@
     {
       "path": "/api/internal/daily-store-health",
       "schedule": "30 8 * * *"
+    },
+    {
+      "path": "/api/whatsapp/post-sale-followups",
+      "schedule": "*/15 12-20 * * *"
     }
   ]
 }

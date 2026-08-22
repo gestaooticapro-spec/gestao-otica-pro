@@ -160,13 +160,14 @@ test('recuperacao de PIN autentica o dispositivo e consome codigo de uso unico',
 })
 
 test('publicacao de relatorio usa dispositivo, escopo, hash e expiracao sem alterar o sync', async () => {
-  const [prepare, upload, finalize, publicRoute, publicPage, share] = await Promise.all([
+  const [prepare, upload, finalize, publicRoute, publicPage, share, lensSimulation] = await Promise.all([
     read('src/app/api/tower/device/customer-reports/route.ts'),
     read('src/app/api/tower/device/customer-reports/[reportId]/assets/[assetId]/route.ts'),
     read('src/app/api/tower/device/customer-reports/[reportId]/finalize/route.ts'),
     read('src/app/api/public/tower-reports/[token]/route.ts'),
     read('src/app/relatorio/[token]/page.tsx'),
     read('src/lib/server/tower-customer-report-share.ts'),
+    read('src/components/tower/TowerReportLensSimulation.tsx'),
   ])
 
   for (const route of [prepare, upload, finalize]) assert.match(route, /authenticateTowerDevice/)
@@ -195,7 +196,12 @@ test('publicacao de relatorio usa dispositivo, escopo, hash e expiracao sem alte
   assert.match(publicPage, /robots: \{ index: false, follow: false, nocache: true \}/)
   assert.doesNotMatch(publicPage, /JSON\.stringify/)
   assert.match(publicPage, /lensGeometry/)
+  assert.match(publicPage, /displayFrontSag/)
+  assert.match(publicPage, /savedRotation=/)
   assert.match(publicPage, /assetCaption/)
+  assert.match(lensSimulation, /LensPhysicalView/)
+  assert.match(lensSimulation, /view="edge"/)
+  assert.doesNotMatch(lensSimulation, /sampleCount/)
 })
 
 test('limpeza de relatorios usa cron autenticado e so neutraliza depois de remover o storage', async () => {

@@ -13,7 +13,7 @@ async function allowed(storeId: number) {
   if (!user) return false
   const profile = await getProfileByAdmin(user.id) as { role?: string; store_id?: number | null } | null
   if (!profile || (profile.role !== 'admin' && Number(profile.store_id) !== storeId)) return false
-  return profile.role === 'admin' || await hasDailyHealthManagerGrant(storeId)
+  return await hasDailyHealthManagerGrant(storeId)
 }
 
 export async function GET(request: Request) {

@@ -22,14 +22,18 @@ function record(value: unknown): UnknownRecord {
 }
 function lensGeometry(value: unknown): TowerReportLensGeometry | null {
   const source = record(value)
-  const points = (input: unknown, includeThickness: boolean) => Array.isArray(input) ? input.map((item) => {
+  const contour = Array.isArray(source.contour) ? source.contour.flatMap((item) => {
     const point = record(item)
-    const x = Number(point.x); const y = Number(point.y); const thickness = Number(point.thickness)
-    if (!Number.isFinite(x) || !Number.isFinite(y) || (includeThickness && !Number.isFinite(thickness))) return null
-    return includeThickness ? { x, y, thickness } : { x, y }
-  }).filter((point): point is { x: number; y: number; thickness?: number } => Boolean(point)) : []
-  const contour = points(source.contour, false).map(({ x, y }) => ({ x, y }))
-  const rim = points(source.rim, true).map(({ x, y, thickness }) => ({ x, y, thickness: thickness! }))
+    const x = Number(point.x); const y = Number(point.y)
+    return Number.isFinite(x) && Number.isFinite(y) ? [{ x, y }] : []
+  }) : []
+  const rim = Array.isArray(source.rim) ? source.rim.flatMap((item) => {
+    const point = record(item)
+    const x = Number(point.x); const y = Number(point.y); const thickness = Number(point.thickness); const displayFrontSag = Number(point.displayFrontSag)
+    return Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(thickness)
+      ? [{ x, y, thickness, displayFrontSag: Number.isFinite(displayFrontSag) ? displayFrontSag : 0 }]
+      : []
+  }) : []
   return rim.length >= 3 ? { contour, rim } : null
 }
 function scalar(value: unknown): string {
@@ -110,9 +114,9 @@ function SectionContent({ id, snapshot, heatmapAssets = [] }: {
     return <div className="space-y-3"><Values value={{ formatoDoRosto: analysis.faceShape, tomDePele: visagismo.detectedSkinTone }} />{scalar(frame.name) && <p className="rounded-xl bg-violet-50 p-3 text-sm text-violet-950">Armação selecionada: <strong>{scalar(frame.name)}</strong></p>}</div>
   }
   if (id === 'thickness') {
-    const thickness = record(snapshot.thickness); const lens = record(thickness.lens); const frame = record(thickness.frame); const geometry = lensGeometry(thickness.geometry)
+    const thickness = record(snapshot.thickness); const lens = record(thickness.lens); const frame = record(thickness.frame); const opticalCenter = record(thickness.opticalCenter); const geometry = lensGeometry(thickness.geometry)
     const minimum = Number(lens.minimumThicknessMm); const maximum = Number(lens.maximumThicknessMm)
-    return <div><Values value={{ indice: lens.index, espessuraMinima: lens.minimumThicknessMm ? `${scalar(lens.minimumThicknessMm)} mm` : '', espessuraMaxima: lens.maximumThicknessMm ? `${scalar(lens.maximumThicknessMm)} mm` : '', armacao: frame.name, montagem: frame.mount }} />{[minimum, maximum].every(Number.isFinite) && <TowerReportLensSimulation minimumThicknessMm={minimum} maximumThicknessMm={maximum} geometry={geometry} />}</div>
+    return <div><Values value={{ indice: lens.index, espessuraMinima: lens.minimumThicknessMm ? `${scalar(lens.minimumThicknessMm)} mm` : '', espessuraMaxima: lens.maximumThicknessMm ? `${scalar(lens.maximumThicknessMm)} mm` : '', armacao: frame.name, montagem: frame.mount }} />{[minimum, maximum].every(Number.isFinite) && <TowerReportLensSimulation minimumThicknessMm={minimum} maximumThicknessMm={maximum} geometry={geometry} widthMm={Number(frame.widthMm)} heightMm={Number(frame.heightMm)} focalX={Number(opticalCenter.horizontalMm)} focalY={Number(opticalCenter.verticalMm)} savedRotation={Number(opticalCenter.rotationAngle)} index={Number(lens.index)} />}</div>
   }
   return null
 }

@@ -14,7 +14,7 @@ export default async function StoreHealthPage({ params }: { params: Promise<{ st
   if (!user) redirect('/login')
   const profile = await getProfileByAdmin(user.id) as { role?: string; store_id?: number | null } | null
   if (!profile || (profile.role !== 'admin' && Number(profile.store_id) !== storeId)) redirect('/dashboard')
-  const needsPin = profile.role !== 'admin' && !(await hasDailyHealthManagerGrant(storeId))
+  const needsPin = !(await hasDailyHealthManagerGrant(storeId))
   const report = needsPin ? null : await getLatestDailyStoreHealthReport(storeId)
   return <DailyHealthClient storeId={storeId} report={report} needsPin={needsPin} canConfigure={profile.role === 'admin'} />
 }

@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 import { cookies } from 'next/headers'
 
 const COOKIE_PREFIX = 'daily_health_manager_'
-const MAX_AGE_SECONDS = 8 * 60 * 60
+const MAX_AGE_SECONDS = 15 * 60
 
 type ManagerGrant = { storeId: number; employeeId: number; expiresAt: number }
 
@@ -30,7 +30,9 @@ export function verifyDailyHealthGrant(value: string | undefined, storeId: numbe
   if (left.length !== right.length || !timingSafeEqual(left, right)) return false
   try {
     const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as ManagerGrant
-    return payload.storeId === storeId && payload.expiresAt > Date.now()
+    return payload.storeId === storeId
+      && payload.expiresAt > Date.now()
+      && payload.expiresAt <= Date.now() + MAX_AGE_SECONDS * 1000
   } catch {
     return false
   }

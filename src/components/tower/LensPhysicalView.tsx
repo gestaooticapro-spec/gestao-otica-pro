@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type * as Three from 'three'
 
-type LensPoint = {
+export type LensPhysicalPoint = {
   x: number
   y: number
   thickness: number
@@ -23,8 +23,8 @@ type Runtime = {
 }
 
 type LensPhysicalViewProps = {
-  rim: LensPoint[]
-  samples: LensPoint[]
+  rim: LensPhysicalPoint[]
+  samples: LensPhysicalPoint[]
   widthMm: number
   heightMm: number
   focalX: number
@@ -37,13 +37,13 @@ type LensPhysicalViewProps = {
 
 const BASE_PX_PER_MM = 4.1
 
-function centerSample(samples: LensPoint[], focalX: number, focalY: number) {
+function centerSample(samples: LensPhysicalPoint[], focalX: number, focalY: number) {
   return samples
     .filter((sample) => sample.withinLens)
     .reduce((closest, sample) => Math.hypot(sample.x - focalX, sample.y - focalY) < Math.hypot(closest.x - focalX, closest.y - focalY) ? sample : closest, samples[0])
 }
 
-function nearestSample(samples: LensPoint[], x: number, y: number, fallback: LensPoint) {
+function nearestSample(samples: LensPhysicalPoint[], x: number, y: number, fallback: LensPhysicalPoint) {
   return samples
     .filter((sample) => sample.withinLens)
     .reduce((closest, sample) => Math.hypot(sample.x - x, sample.y - y) < Math.hypot(closest.x - x, closest.y - y) ? sample : closest, fallback)
@@ -58,6 +58,8 @@ function disposeObject(object: Three.Object3D) {
   })
 }
 
+// Port fiel do renderizador fisico da Torre. O relatorio publico tambem usa a
+// malha 3D calculada, nunca uma aproximacao SVG da borda.
 export function LensPhysicalView({ rim, samples, widthMm, heightMm, focalX, focalY, index, calibrationScale, showCalibrator, view }: LensPhysicalViewProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const runtimeRef = useRef<Runtime | null>(null)
@@ -71,20 +73,17 @@ export function LensPhysicalView({ rim, samples, widthMm, heightMm, focalX, foca
 
     void import('three').then((THREE) => {
       if (cancelled || !host) return
-
       const scene = new THREE.Scene()
       const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, .1, 500)
       camera.up.set(0, 0, 1)
       camera.position.set(0, -160, 0)
       camera.lookAt(0, 0, -2)
-
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' })
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
       renderer.outputColorSpace = THREE.SRGBColorSpace
       renderer.toneMapping = THREE.ACESFilmicToneMapping
       renderer.toneMappingExposure = 1.15
       host.replaceChildren(renderer.domElement)
-
       scene.add(new THREE.HemisphereLight(0xcffafe, 0x020617, 2.6))
       const key = new THREE.DirectionalLight(0xffffff, 4.5)
       key.position.set(-35, -42, 80)
@@ -95,13 +94,9 @@ export function LensPhysicalView({ rim, samples, widthMm, heightMm, focalX, foca
       const fill = new THREE.DirectionalLight(0xe0f2fe, 2)
       fill.position.set(-10, 45, -12)
       scene.add(fill)
-
       const lensGroup = new THREE.Group()
-      // O perfil matemático abaixo é espelhado para a comparação com a lente
-      // real; a vista física precisa usar a mesma orientação de rotação.
       lensGroup.scale.x = -1
       scene.add(lensGroup)
-
       const resize = () => {
         const bounds = host.getBoundingClientRect()
         const activePxPerMm = runtimeRef.current?.pxPerMm ?? BASE_PX_PER_MM * calibrationScale / 100
@@ -118,7 +113,6 @@ export function LensPhysicalView({ rim, samples, widthMm, heightMm, focalX, foca
       const resizeObserver = new ResizeObserver(resize)
       resizeObserver.observe(host)
       resize()
-
       runtimeRef.current = { THREE, host, scene, camera, renderer, resizeObserver, lensGroup, pxPerMm: BASE_PX_PER_MM * calibrationScale / 100 }
       setReady(true)
     })
@@ -134,7 +128,7 @@ export function LensPhysicalView({ rim, samples, widthMm, heightMm, focalX, foca
       runtime.host.replaceChildren()
       runtimeRef.current = null
     }
-  // O renderizador e as luzes sao criados somente uma vez; a malha abaixo e atualizada pelos dados calculados.
+  // The renderer is created once; the mesh is rebuilt below from persisted data.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -143,13 +137,14 @@ export function LensPhysicalView({ rim, samples, widthMm, heightMm, focalX, foca
     if (!ready || !runtime || rim.length < 3 || !samples.length) return
     const { THREE, lensGroup, scene, camera, renderer, host } = runtime
     runtime.pxPerMm = BASE_PX_PER_MM * calibrationScale / 100
-
     while (lensGroup.children.length) {
       const child = lensGroup.children[0]
       lensGroup.remove(child)
       disposeObject(child)
     }
-
+    const rimMinimumX = Math.min(...rim.map((sample) => sample.x))
+    const rimMaximumX = Math.max(...rim.map((sample) => sample.x))
+    lensGroup.position.x = (rimMinimumX + rimMaximumX) / 2
     const interior = samples.filter((sample) => sample.withinLens)
     const center = centerSample(interior, focalX, focalY)
     const segments = rim.length
@@ -157,12 +152,10 @@ export function LensPhysicalView({ rim, samples, widthMm, heightMm, focalX, foca
     const verticesPerSurface = 1 + rings * segments
     const positions: number[] = []
     const indices: number[] = []
-
-    const addVertex = (point: LensPoint, isBack: boolean) => {
+    const addVertex = (point: LensPhysicalPoint, isBack: boolean) => {
       const frontZ = -point.displayFrontSag
       positions.push(point.x, point.y, isBack ? frontZ - point.thickness : frontZ)
     }
-
     const surfaceRings = Array.from({ length: rings }, (_, ringOffset) => {
       const ringIndex = ringOffset + 1
       const radial = ringIndex / rings
@@ -173,75 +166,50 @@ export function LensPhysicalView({ rim, samples, widthMm, heightMm, focalX, foca
         return nearestSample(interior, x, y, edge)
       })
     })
-
     addVertex(center, false)
     surfaceRings.forEach((ring) => ring.forEach((point) => addVertex(point, false)))
     addVertex(center, true)
     surfaceRings.forEach((ring) => ring.forEach((point) => addVertex(point, true)))
-
     const ringOffset = (surface: 0 | 1, ringIndex: number) => surface * verticesPerSurface + 1 + (ringIndex - 1) * segments
-    for (let index = 0; index < segments; index += 1) {
-      const next = (index + 1) % segments
-      indices.push(0, ringOffset(0, 1) + next, ringOffset(0, 1) + index)
-      indices.push(verticesPerSurface, verticesPerSurface + ringOffset(0, 1) + index, verticesPerSurface + ringOffset(0, 1) + next)
+    for (let pointIndex = 0; pointIndex < segments; pointIndex += 1) {
+      const next = (pointIndex + 1) % segments
+      indices.push(0, ringOffset(0, 1) + next, ringOffset(0, 1) + pointIndex)
+      indices.push(verticesPerSurface, verticesPerSurface + ringOffset(0, 1) + pointIndex, verticesPerSurface + ringOffset(0, 1) + next)
     }
     for (let ringIndex = 1; ringIndex < rings; ringIndex += 1) {
       const frontInner = ringOffset(0, ringIndex)
       const frontOuter = ringOffset(0, ringIndex + 1)
       const backInner = verticesPerSurface + ringOffset(0, ringIndex)
       const backOuter = verticesPerSurface + ringOffset(0, ringIndex + 1)
-      for (let index = 0; index < segments; index += 1) {
-        const next = (index + 1) % segments
-        indices.push(frontInner + index, frontOuter + index, frontInner + next, frontInner + next, frontOuter + index, frontOuter + next)
-        indices.push(backInner + index, backInner + next, backOuter + index, backInner + next, backOuter + next, backOuter + index)
+      for (let pointIndex = 0; pointIndex < segments; pointIndex += 1) {
+        const next = (pointIndex + 1) % segments
+        indices.push(frontInner + pointIndex, frontOuter + pointIndex, frontInner + next, frontInner + next, frontOuter + pointIndex, frontOuter + next)
+        indices.push(backInner + pointIndex, backInner + next, backOuter + pointIndex, backInner + next, backOuter + next, backOuter + pointIndex)
       }
     }
     const frontEdge = ringOffset(0, rings)
     const backEdge = verticesPerSurface + ringOffset(0, rings)
-    for (let index = 0; index < segments; index += 1) {
-      const next = (index + 1) % segments
-      indices.push(frontEdge + index, backEdge + index, frontEdge + next, frontEdge + next, backEdge + index, backEdge + next)
+    for (let pointIndex = 0; pointIndex < segments; pointIndex += 1) {
+      const next = (pointIndex + 1) % segments
+      indices.push(frontEdge + pointIndex, backEdge + pointIndex, frontEdge + next, frontEdge + next, backEdge + pointIndex, backEdge + next)
     }
-
     const geometry = new THREE.BufferGeometry()
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
     geometry.setIndex(indices)
     geometry.computeVertexNormals()
-
     const averageThickness = rim.reduce((total, sample) => total + sample.thickness, 0) / rim.length
-    const material = new THREE.MeshPhysicalMaterial({
-      color: new THREE.Color(0xcffafe),
-      roughness: .05,
-      transmission: .9,
-      thickness: Math.max(averageThickness, .8),
-      ior: index,
-      clearcoat: 1,
-      clearcoatRoughness: .04,
-      attenuationColor: new THREE.Color(0x67e8f9),
-      attenuationDistance: 95,
-      specularIntensity: 1,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: .58,
-    })
+    const material = new THREE.MeshPhysicalMaterial({ color: new THREE.Color(0xcffafe), roughness: .05, transmission: .9, thickness: Math.max(averageThickness, .8), ior: index, clearcoat: 1, clearcoatRoughness: .04, attenuationColor: new THREE.Color(0x67e8f9), attenuationDistance: 95, specularIntensity: 1, side: THREE.DoubleSide, transparent: true, opacity: .58 })
     lensGroup.add(new THREE.Mesh(geometry, material))
-
     const outlinePoints = rim.map((sample) => new THREE.Vector3(sample.x, sample.y, -sample.displayFrontSag + .025))
-    const outline = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(outlinePoints), new THREE.LineBasicMaterial({ color: 0xa5f3fc, transparent: true, opacity: .45 }))
-    lensGroup.add(outline)
-
+    lensGroup.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(outlinePoints), new THREE.LineBasicMaterial({ color: 0xa5f3fc, transparent: true, opacity: .45 })))
     const backOutlinePoints = rim.map((sample) => new THREE.Vector3(sample.x, sample.y, -sample.displayFrontSag - sample.thickness - .025))
-    const backOutline = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(backOutlinePoints), new THREE.LineBasicMaterial({ color: 0x67e8f9, transparent: true, opacity: .66 }))
-    lensGroup.add(backOutline)
-
+    lensGroup.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(backOutlinePoints), new THREE.LineBasicMaterial({ color: 0x67e8f9, transparent: true, opacity: .66 })))
     const bounds = host.getBoundingClientRect()
     const activePxPerMm = BASE_PX_PER_MM * calibrationScale / 100
-    const halfWidth = bounds.width / activePxPerMm / 2
-    const halfHeight = bounds.height / activePxPerMm / 2
-    camera.left = -halfWidth
-    camera.right = halfWidth
-    camera.top = halfHeight
-    camera.bottom = -halfHeight
+    camera.left = -(bounds.width / activePxPerMm / 2)
+    camera.right = bounds.width / activePxPerMm / 2
+    camera.top = bounds.height / activePxPerMm / 2
+    camera.bottom = -(bounds.height / activePxPerMm / 2)
     camera.updateProjectionMatrix()
     renderer.render(scene, camera)
   }, [calibrationScale, focalX, focalY, heightMm, index, ready, rim, samples, view, widthMm])
