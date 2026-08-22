@@ -15,6 +15,7 @@ import {
     Percent,
     Settings,
     BarChart3,
+    HeartPulse,
     Store
 } from 'lucide-react';
 
@@ -35,6 +36,15 @@ interface ManagerLayoutProps {
 }
 
 const GERENCIA_LINKS = [
+    {
+        id: 'saude-da-loja',
+        title: 'Saúde da Loja',
+        subtitle: 'Resumo diário',
+        icon: HeartPulse,
+        route: (storeId: number) => `/dashboard/loja/${storeId}/saude-da-loja`,
+        tone: 'from-emerald-600/15 via-emerald-900/25 to-slate-900/60 hover:border-emerald-400/30',
+        colSpan: true
+    },
     {
         id: 'contas',
         title: 'Contas a Pagar',

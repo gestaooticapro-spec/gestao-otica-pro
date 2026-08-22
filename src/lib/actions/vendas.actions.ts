@@ -21,6 +21,8 @@ import { getReceiptReversalMetadata } from '@/lib/installment-reversal.server'
 import { closeOpenServiceOrdersForVenda } from '@/lib/actions/service-order-cancellation.actions'
 import { getInstallmentOutstanding } from '@/lib/installment-balance'
 import { randomUUID } from 'node:crypto'
+import { cookies } from 'next/headers'
+import { createDailyHealthGrant, dailyHealthCookieName, dailyHealthGrantMaxAge } from '@/lib/daily-health-access'
 
 // ================================================================
 // --- TIPOS GLOBAIS ---
@@ -3963,7 +3965,7 @@ export async function autenticarFuncionarioPorPin(
   const requestedPurpose = String(formData.get('authorization_purpose') || '')
   const authorizationContext = String(formData.get('authorization_context') || '')
   const authorizationPurpose: EmployeeAuthorizationPurpose | null =
-    requestedPurpose === 'evaluation_unlink' || requestedPurpose === 'installment_receipt_reversal'
+    requestedPurpose === 'evaluation_unlink' || requestedPurpose === 'installment_receipt_reversal' || requestedPurpose === 'daily_health_access'
       ? requestedPurpose
       : null
 
@@ -4020,8 +4022,17 @@ export async function autenticarFuncionarioPorPin(
 
     if (employee) {
       const emp: any = employee
-      if (authorizationPurpose === 'installment_receipt_reversal' && emp.role !== 'gerente') {
+      if ((authorizationPurpose === 'installment_receipt_reversal' || authorizationPurpose === 'daily_health_access') && emp.role !== 'gerente') {
         return { success: false, message: 'Esta acao exige o PIN de um gerente ativo.' }
+      }
+      if (authorizationPurpose === 'daily_health_access') {
+        cookies().set(dailyHealthCookieName(storeId), createDailyHealthGrant(storeId, emp.id), {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          path: '/',
+          maxAge: dailyHealthGrantMaxAge,
+        })
       }
       const authorizationToken = authorizationPurpose
         ? issueEmployeeAuthorization({

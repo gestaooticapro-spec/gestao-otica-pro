@@ -1158,6 +1158,141 @@ async function dispatchScheduledFollowups(now: Date, limit = DEFAULT_DISPATCH_LI
   }
 }
 
+export type ManualPostSaleRequeueResult = {
+  requeuedFailures: number
+  scheduledMissingAttempts: number
+  skipped: number
+}
+
+export async function requeuePostSalesForDailyHealth(storeId: number): Promise<ManualPostSaleRequeueResult> {
+  const supabase = createAdminClient()
+  const now = new Date()
+  const channels = (await loadActiveChannels())
+    .filter((channel) => channel.store_id === storeId && followupEnabledFromStoreSettings(channel.stores?.settings))
+  const channel = channels[0]
+  if (!channel) throw new Error('Nao ha um canal de WhatsApp conectado com o pos-venda automatico habilitado.')
+
+  const { data: postSales, error: postSalesError } = await (supabase.from('post_sales') as any)
+    .select('id,service_order_id,status')
+    .eq('store_id', storeId)
+    .eq('status', 'Em Acompanhamento')
+  if (postSalesError) throw postSalesError
+
+  const openPostSales = postSales || []
+  if (!openPostSales.length) return { requeuedFailures: 0, scheduledMissingAttempts: 0, skipped: 0 }
+
+  const postSaleIds = openPostSales.map((postSale: { id: number }) => postSale.id)
+  const { data: followups, error: followupsError } = await (supabase.from('whatsapp_post_sale_followups') as any)
+    .select('id,post_sales_id,channel_id,status,scheduled_for,error_message,payload')
+    .eq('store_id', storeId)
+    .in('post_sales_id', postSaleIds)
+    .order('created_at', { ascending: false })
+  if (followupsError) throw followupsError
+
+  const latestFollowupByPostSale = new Map<number, any>()
+  for (const followup of followups || []) {
+    if (followup.post_sales_id && !latestFollowupByPostSale.has(followup.post_sales_id)) {
+      latestFollowupByPostSale.set(followup.post_sales_id, followup)
+    }
+  }
+
+  let requeuedFailures = 0
+  let scheduledMissingAttempts = 0
+  let skipped = 0
+  let slotOffset = 0
+
+  for (const postSale of openPostSales) {
+    const followup = latestFollowupByPostSale.get(postSale.id)
+    if (followup?.status === 'failed') {
+      const scheduledFor = addPostSaleSlots(nextPostSaleBusinessSlotForSettings(now, channel.stores?.settings), slotOffset, channel.stores?.settings)
+      const previousPayload = followup.payload && typeof followup.payload === 'object' && !Array.isArray(followup.payload) ? followup.payload : {}
+      const { data, error } = await (supabase.from('whatsapp_post_sale_followups') as any)
+        .update({
+          status: 'scheduled',
+          scheduled_for: scheduledFor.toISOString(),
+          error_message: followup.error_message ? `Reagendado manualmente. Erro anterior: ${followup.error_message}` : 'Reagendado manualmente pela Central Diaria.',
+          payload: { ...previousPayload, manualRequeueAt: now.toISOString() },
+          updated_at: now.toISOString(),
+        })
+        .eq('id', followup.id)
+        .eq('status', 'failed')
+        .select('id')
+        .maybeSingle()
+      if (error) throw error
+      if (data?.id) {
+        requeuedFailures += 1
+        slotOffset += 1
+      } else {
+        skipped += 1
+      }
+      continue
+    }
+
+    if (followup) continue
+
+    const { data: serviceOrder, error: serviceOrderError } = await (supabase.from('service_orders') as any)
+      .select('id,tenant_id,store_id,customer_id,dependente_id,dt_entregue_em,customers(id,full_name,phone,fone_movel),dependentes(id,full_name),vendas(id,status)')
+      .eq('id', postSale.service_order_id)
+      .eq('store_id', storeId)
+      .maybeSingle()
+    if (serviceOrderError) throw serviceOrderError
+
+    const saleStatus = serviceOrder?.vendas?.status || null
+    const deliveredAt = String(serviceOrder?.dt_entregue_em || '')
+    const deliveredMs = new Date(deliveredAt).getTime()
+    const settings = followupSettingsFromChannel(channel)
+    const daysSinceDelivery = Number.isFinite(deliveredMs) ? Math.floor((now.getTime() - deliveredMs) / 86_400_000) : -1
+    const phone = toEvolutionNumber(serviceOrder?.customers?.fone_movel || serviceOrder?.customers?.phone)
+    if (!serviceOrder || !settings || !phone || !deliveredAt || daysSinceDelivery < settings.days_after_delivery || saleStatus === 'Devolvida' || saleStatus === 'Cancelada') {
+      skipped += 1
+      continue
+    }
+
+    const { data: existingCoverage, error: coverageError } = await (supabase.from('whatsapp_post_sale_followups') as any)
+      .select('id')
+      .eq('store_id', storeId)
+      .overlaps('covered_service_order_ids', [serviceOrder.id])
+      .limit(1)
+    if (coverageError) throw coverageError
+    if (existingCoverage?.length) {
+      skipped += 1
+      continue
+    }
+
+    const scheduledFor = addPostSaleSlots(nextPostSaleBusinessSlotForSettings(now, channel.stores?.settings), slotOffset, channel.stores?.settings)
+    const messageText = buildPostSaleFollowupMessage({
+      template: settings.template,
+      customerName: serviceOrder.customers?.full_name || 'Cliente',
+      dependentName: serviceOrder.dependentes?.full_name ?? null,
+      daysSinceDelivery: Math.max(1, daysSinceDelivery),
+    })
+    const { error: insertError } = await (supabase.from('whatsapp_post_sale_followups') as any).insert({
+      tenant_id: serviceOrder.tenant_id,
+      store_id: storeId,
+      channel_id: channel.id,
+      service_order_id: serviceOrder.id,
+      covered_service_order_ids: [serviceOrder.id],
+      customer_id: serviceOrder.customer_id,
+      post_sales_id: postSale.id,
+      remote_phone: phone,
+      delivered_at: deliveredAt.slice(0, 10),
+      scheduled_for: scheduledFor.toISOString(),
+      status: 'scheduled',
+      message_text: messageText,
+      payload: { deliveryDate: deliveredAt.slice(0, 10), daysSinceDelivery, manualRequeueAt: now.toISOString() },
+    })
+    if (insertError?.code === '23505') {
+      skipped += 1
+      continue
+    }
+    if (insertError) throw insertError
+    scheduledMissingAttempts += 1
+    slotOffset += 1
+  }
+
+  return { requeuedFailures, scheduledMissingAttempts, skipped }
+}
+
 export type PostSaleFollowupJobResult = {
   ok: true
   scheduled: number
