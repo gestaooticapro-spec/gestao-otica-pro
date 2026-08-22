@@ -26,6 +26,8 @@ export const DEFAULT_INSTALLMENT_DUE_REMINDER_TEMPLATE = [
   'Passando para lembrar que a parcela {numero_parcela} do {paciente} vence em {data_vencimento}.',
   '',
   'Se já estiver tudo certo, pode desconsiderar esta mensagem. Qualquer dúvida, nossa equipe está por aqui para ajudar.',
+  '',
+  'Para não receber mais lembretes de vencimento por WhatsApp, responda PARAR.',
 ].join('\n')
 
 type ChannelRow = {
@@ -115,6 +117,20 @@ async function loadForcedHumanPhones(channelId: number): Promise<string[]> {
 async function isCustomerForcedToHuman(channelId: number, phone: string) {
   const forcedHumanPhones = await loadForcedHumanPhones(channelId)
   return forcedHumanPhones.some((forcedPhone: string) => phonesMatch(forcedPhone, phone))
+}
+
+async function loadInstallmentReminderOptOutPhones(storeId: number): Promise<string[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await (supabase.from('whatsapp_message_preferences') as any)
+    .select('remote_phone')
+    .eq('store_id', storeId)
+    .eq('installment_reminders_enabled', false)
+
+  if (error) throw error
+
+  return (data ?? [])
+    .map((row: { remote_phone?: string | null }) => row.remote_phone)
+    .filter((phone: string | null | undefined): phone is string => Boolean(phone))
 }
 
 function reminderExpiresAt(ms: number) {
@@ -428,6 +444,7 @@ async function scheduleReminders(now: Date) {
     const settings = reminderSettingsFromChannel(channel)
     if (!settings) continue
     const forcedHumanPhones = await loadForcedHumanPhones(channel.id)
+    const optedOutPhones = await loadInstallmentReminderOptOutPhones(channel.store_id)
 
     const reminderDays = [...new Set([settings.days_before_due, 1].filter((days) => days > 0))]
     const installmentsWithTargetDate: Array<InstallmentRow & { reminderTargetDate: string }> = []
@@ -459,6 +476,7 @@ async function scheduleReminders(now: Date) {
       const phone = toEvolutionNumber(installment.customers?.fone_movel || installment.customers?.phone)
       if (!phone) continue
       if (forcedHumanPhones.some((forcedPhone: string) => phonesMatch(forcedPhone, phone))) continue
+      if (optedOutPhones.some((optedOutPhone) => phonesMatch(optedOutPhone, phone))) continue
 
       const scheduledFor = new Date(now.getTime() + channelSequence * SCHEDULE_SPACING_MINUTES * 60 * 1000)
       const vendaId = installment.financiamento_loja?.venda_id ?? null
@@ -650,6 +668,18 @@ async function dispatchDueReminders(now: Date, limit = DEFAULT_DISPATCH_LIMIT) {
         .update({ status: 'failed', error_message: 'Canal WhatsApp sem instance_key.' })
         .eq('id', reminder.id)
       failed += 1
+      continue
+    }
+
+    const optedOutPhones = await loadInstallmentReminderOptOutPhones(reminder.store_id)
+    if (optedOutPhones.some((optedOutPhone) => phonesMatch(optedOutPhone, reminder.remote_phone))) {
+      await (supabase.from('whatsapp_installment_reminders') as any)
+        .update({
+          status: 'cancelled',
+          error_message: 'Cliente solicitou não receber lembretes de vencimento por WhatsApp.',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', reminder.id)
       continue
     }
 
