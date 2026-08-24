@@ -14,6 +14,7 @@ import { StoreSettings, getStoreModules } from '@/lib/store-modules';
 import { getStoreLogoPublicUrl } from '@/lib/store-logo';
 import BillingStatusBanner from '@/components/billing/BillingStatusBanner';
 import { syncStoreWithBillingGateway } from '@/lib/billing/integracao-asaas';
+import WhatsAppSoundAlertMonitor from '@/components/whatsapp/WhatsAppSoundAlertMonitor';
 
 type Role = 'admin' | 'manager' | 'store_operator' | 'vendedor' | 'tecnico';
 type StoreProfile = {
@@ -103,6 +104,7 @@ export default async function StoreLayout(
     return (
       <StoreModulesProvider modules={storeModules}>
         <ModalsProvider storeId={storeIdParam}>
+          <WhatsAppSoundAlertMonitor storeId={storeIdParam} />
           <BillingStatusBanner storeId={storeIdParam} />
           <TabletRedirect storeId={storeIdParam} />
           <TabletModeButton storeId={storeIdParam} />
@@ -118,6 +120,7 @@ export default async function StoreLayout(
     return (
       <StoreModulesProvider modules={storeModules}>
         <ModalsProvider storeId={storeIdParam}>
+          <WhatsAppSoundAlertMonitor storeId={storeIdParam} />
           <BillingStatusBanner storeId={storeIdParam} />
           <TabletRedirect storeId={storeIdParam} />
           <TabletModeButton storeId={storeIdParam} />
@@ -132,6 +135,7 @@ export default async function StoreLayout(
   return (
     <StoreModulesProvider modules={storeModules}>
       <ModalsProvider storeId={storeIdParam}>
+        <WhatsAppSoundAlertMonitor storeId={storeIdParam} />
         <BillingStatusBanner storeId={storeIdParam} />
         <TabletRedirect storeId={storeIdParam} />
         <TabletModeButton storeId={storeIdParam} />

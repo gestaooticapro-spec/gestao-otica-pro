@@ -1,10 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import { ShoppingCart, Archive, LogOut, ArrowRight, Store, ArrowLeft } from 'lucide-react';
 import Image from 'next/image';
 
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import FullscreenToggleButton from '@/components/FullscreenToggleButton';
+import VersionHistoryModal from '@/components/VersionHistoryModal';
+import { CURRENT_VERSION } from '@/lib/release-history';
 
 interface OperatorMenuHomeProps {
     storeId: number;
@@ -25,6 +28,7 @@ export default function OperatorMenuHome({
     backLabel = 'Voltar'
 }: OperatorMenuHomeProps) {
     const { preference } = useBackgroundPreference();
+    const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false);
 
     return (
         <div className="min-h-screen relative flex flex-col items-center justify-center p-6 overflow-hidden bg-slate-950 font-sans transition-colors duration-500">
@@ -127,6 +131,15 @@ export default function OperatorMenuHome({
                 <div className="text-center opacity-40 hover:opacity-100 transition-opacity duration-300 mt-8 mb-8 md:mb-0">
                     <p className="text-[10px] text-slate-300 font-medium uppercase tracking-[0.3em]">
                         Powered by <span className="font-bold text-white">MBOptical</span>
+                        <span className="mx-2 text-slate-500">-</span>
+                        <button
+                            type="button"
+                            onClick={() => setIsVersionHistoryOpen(true)}
+                            className="normal-case tracking-normal text-slate-300 underline-offset-4 transition hover:text-white hover:underline"
+                            aria-label={`Abrir historico da versao ${CURRENT_VERSION}`}
+                        >
+                            Versão {CURRENT_VERSION}
+                        </button>
                     </p>
                 </div>
             </div>
@@ -148,6 +161,7 @@ export default function OperatorMenuHome({
                     <span className="text-xs font-bold uppercase tracking-wider">{backLabel}</span>
                 </button>
             )}
+            <VersionHistoryModal isOpen={isVersionHistoryOpen} onClose={() => setIsVersionHistoryOpen(false)} />
         </div>
     );
 }

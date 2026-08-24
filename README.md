@@ -136,6 +136,15 @@ Antes de considerar um deploy completo de WhatsApp, normalmente precisamos valid
 - Para mudancas de configuracao por loja, a fonte canonica costuma ficar em `stores.settings`.
 - Em mudancas operacionais, priorize comportamento confiavel e auditavel antes de sofisticacao.
 
+## Versionamento de deploy
+
+O rodape da Central de Operacoes exibe a versao atual e permite abrir o historico dos tres ultimos deploys. O registro versionado fica em `src/lib/release-history.ts` e deve ser atualizado ao concluir cada implementacao que gere deploy.
+
+- Incrementar somente o ultimo bloco a cada deploy: `1.02.01` -> `1.02.02` -> `1.02.03`.
+- Alterar a linha/minor, como `1.02.xx` -> `1.03.00`, somente mediante solicitacao expressa do usuario.
+- Inserir a nova versao no inicio do historico, mantendo apenas os tres deploys mais recentes.
+- Registrar data e lista objetiva de alteracoes tecnicas aplicadas no `main`.
+
 ## Arquivos de contexto util
 
 - [WHATSAPP_VPS_EVOLUTION_PLAN.md](/G:/projetos/gestao-otica-pro/WHATSAPP_VPS_EVOLUTION_PLAN.md:1)
