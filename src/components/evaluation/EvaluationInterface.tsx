@@ -27,18 +27,19 @@ import {
   Baby,
   UserRound,
   Briefcase,
-  Trash2, ShoppingCart, ArrowLeft, Minus
+  Trash2, ShoppingCart, ArrowLeft
 } from 'lucide-react'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import QuickCustomerModal from '@/components/modals/QuickCustomerModal'
 import AddDependenteModal from '@/components/modals/AddDependenteModal'
 import { getDependentes } from '@/lib/actions/dependents.actions'
-import { searchCustomersByName, type CustomerSearchResult } from '@/lib/actions/vendas.actions'
+import { getLastSalesForCustomer, searchCustomersByName, type CustomerSearchResult } from '@/lib/actions/vendas.actions'
 import {
   getOpticalEvaluationsForSubject,
   createSaleAndServiceOrderFromEvaluation,
   upsertOpticalEvaluation,
   getRecentEvaluationsForStore,
+  searchLensFamiliesForEvaluation,
   type OpticalEvaluationListItem
 } from '@/lib/actions/evaluation.actions'
 import {
@@ -145,7 +146,7 @@ const LENS_ENGINE_DIAGNOSTIC_SUITE_RESTORE_KEY = 'dossie_triplice_motor'
 const LENS_DEMO_QUICK_FILL_RESTORE_KEY = 'demo_quick_fill_profiles'
 // Painel de debug usado apenas em testes/calibracao do motor de recomendacao.
 // Durante a calibração do motor, deixe o dossiê e os payloads copiáveis na UI.
-const SHOW_LENS_ENGINE_DIAGNOSTIC_SUITE = true
+const SHOW_LENS_ENGINE_DIAGNOSTIC_SUITE = false
 // Preserve os perfis demo para calibracao futura, mas mantenha o card fora da UI.
 const SHOW_LENS_DEMO_QUICK_FILL = false
 
@@ -161,7 +162,7 @@ type QuickRetentionIntent =
 
 const labelStyle = 'block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-[0.2em]'
 const inputStyle = 'block w-full rounded-xl border border-white/20 bg-slate-900/60 shadow-inner text-slate-100 h-10 text-sm px-3 focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50 font-bold placeholder:font-normal placeholder:text-slate-500 disabled:opacity-50 transition-all outline-none'
-const selectStyle = 'hidden'
+const selectStyle = 'block h-12 w-full cursor-pointer rounded-xl border border-white/20 bg-slate-900/80 px-3 text-sm font-bold text-slate-100 shadow-inner outline-none transition-all focus:border-indigo-400/60 focus:ring-1 focus:ring-indigo-400/40 disabled:cursor-not-allowed disabled:opacity-40'
 const cardStyle = 'bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl shadow-xl'
 
 const AI_SEARCH_STEPS = [
@@ -2370,38 +2371,29 @@ function AgeStepper({
   value: string
   onChange: (value: string) => void
 }) {
-  const rawValue = Number.isFinite(Number(value)) && value !== '' ? Number(value) : 0
+  const rawValue = Number.isFinite(Number(value)) && value !== '' ? Number(value) : 40
   const numericValue = Math.max(0, Math.min(120, rawValue))
   const updateAge = (nextValue: number) => {
     onChange(String(Math.max(0, Math.min(120, nextValue))))
   }
 
   return (
-    <div className="flex h-12 overflow-hidden rounded-xl border border-white/20 bg-slate-900/60 shadow-inner">
-      <button
-        type="button"
-        onClick={() => updateAge(numericValue - 1)}
-        className="flex w-12 shrink-0 items-center justify-center border-r border-white/10 text-slate-300 transition-colors hover:bg-white/10 active:bg-white/15"
-        title="Diminuir idade"
-      >
-        <Minus className="h-4 w-4" />
-      </button>
+    <div className="rounded-xl border border-white/20 bg-slate-900/60 px-3 py-2 shadow-inner">
+      <div className="mb-1 flex items-center justify-between">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">0</span>
+        <span className="rounded-lg border border-indigo-400/25 bg-indigo-500/15 px-3 py-1 text-base font-black text-indigo-100">{numericValue} anos</span>
+        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">100+</span>
+      </div>
       <input
-        type="number"
+        type="range"
         min="0"
-        max="120"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-full min-w-0 flex-1 border-0 bg-transparent px-3 text-center text-base font-black text-slate-100 outline-none"
+        max="100"
+        step="1"
+        value={Math.min(numericValue, 100)}
+        onChange={(event) => updateAge(Number(event.target.value))}
+        className="h-6 w-full cursor-pointer accent-indigo-400"
+        aria-label="Idade confirmada"
       />
-      <button
-        type="button"
-        onClick={() => updateAge(numericValue + 1)}
-        className="flex w-12 shrink-0 items-center justify-center border-l border-white/10 text-slate-300 transition-colors hover:bg-white/10 active:bg-white/15"
-        title="Aumentar idade"
-      >
-        <Plus className="h-4 w-4" />
-      </button>
     </div>
   )
 }
@@ -2582,6 +2574,18 @@ const IMPORTANCE_OPTIONS: TabletChoiceOption[] = [
   { value: 'alta', label: 'Alta' },
 ]
 
+const CURRENT_LENS_IMPROVEMENT_OPTIONS: TabletChoiceOption[] = [
+  { value: 'adaptacao_conforto', label: 'Adaptação / conforto' },
+  { value: 'longe', label: 'Visão de longe' },
+  { value: 'perto', label: 'Visão de perto' },
+  { value: 'intermediario', label: 'Computador / intermediário' },
+  { value: 'reflexos_noite', label: 'Reflexos / direção noturna' },
+  { value: 'luz_sol', label: 'Luz / sol' },
+  { value: 'espessura_peso', label: 'Espessura / peso' },
+  { value: 'durabilidade', label: 'Durabilidade' },
+  { value: 'preco', label: 'Preço' },
+]
+
 const createEmptyForm = () => ({
   sourceUrl: '',
   sourceSystem: 'manual' as EvaluationSourceSystem,
@@ -2593,6 +2597,7 @@ const createEmptyForm = () => ({
   sourceExamDatetime: '',
   patientNameRaw: '',
   ageYears: '',
+  prescriptionDate: '',
   estiloVidaUsoComputadorHoras: '0',
   estiloVidaDirigirHoras: '0',
   estiloVidaLeituraHoras: '0',
@@ -2601,14 +2606,33 @@ const createEmptyForm = () => ({
   estiloVidaAmbienteInternoHoras: '0',
   estiloVidaAmbienteExternoHoras: '0',
   estiloVidaAssistirTvHoras: '0',
+  routinePrimary: 'nao_informado',
+  routinePrimaryIntensity: 'moderada',
+  routineSecondary: 'nao_informado',
+  routineSecondaryIntensity: 'moderada',
   olhosUtilizaveis: 'ambos' as 'ambos' | 'od' | 'oe',
   marcaAtual: '',
+  currentLensSatisfaction: 'nao_informado',
+  currentLensSource: 'free_text',
+  currentLensImprovements: '',
+  additionUse: 'nao_informado',
+  digitalFatigueSymptom: 'nao_informado',
+  myopiaControlIntent: 'nao_informado',
+  solarPrimaryObjective: 'nao',
+  rejectMultifocal: 'nao',
+  rejectBifocal: 'nao',
+  rejectOccupational: 'nao',
+  rejectTransitions: 'nao',
+  rejectAntireflexo: 'nao',
+  rejectBlueUv: 'nao',
+  rejectedBrands: '',
+  rejectedLabs: '',
   dificuldadeAdaptacao: 'nao_informado',
-  queixaDirigirNoite: 'nao',
-  queixaSensibilidadeLuz: 'nao',
-  queixaQuebraOculos: 'nao',
-  queixaCriancaAtiva: 'nao',
-  queixaProgressaoRapida: 'nao',
+  queixaDirigirNoite: 'nao_informado',
+  queixaSensibilidadeLuz: 'nao_informado',
+  queixaQuebraOculos: 'nao_informado',
+  queixaCriancaAtiva: 'nao_informado',
+  queixaProgressaoRapida: 'nao_informado',
   prioridadePrincipal: 'equilibrio',
   tipoLenteAtual: 'nao_informado',
   usaMultifocalHoje: 'nao_informado',
@@ -2648,6 +2672,103 @@ const createEmptyForm = () => ({
   rawPayloadJson: {} as Record<string, unknown>
 })
 
+const INTERVIEW_SCHEMA_VERSION = 2
+const LENS_ENGINE_VERSION = 'optical-v2'
+
+function buildInterviewSnapshot(form: ReturnType<typeof createEmptyForm>) {
+  return {
+    schemaVersion: INTERVIEW_SCHEMA_VERSION,
+    answers: {
+      ageYears: form.ageYears || null,
+      prescriptionDate: form.prescriptionDate || null,
+      routinePrimary: form.routinePrimary,
+      routinePrimaryIntensity: form.routinePrimaryIntensity,
+      routineSecondary: form.routineSecondary,
+      routineSecondaryIntensity: form.routineSecondaryIntensity,
+      currentLensName: form.marcaAtual || null,
+      currentLensType: form.tipoLenteAtual,
+      currentLensSatisfaction: form.currentLensSatisfaction,
+      currentLensSource: form.currentLensSource,
+      currentLensImprovements: form.currentLensImprovements ? form.currentLensImprovements.split(',').filter(Boolean) : [],
+      additionUse: form.additionUse,
+      digitalFatigueSymptom: form.digitalFatigueSymptom,
+      myopiaControlIntent: form.myopiaControlIntent,
+      solarPrimaryObjective: form.solarPrimaryObjective,
+      needs: {
+        nightDriving: form.queixaDirigirNoite,
+        lightSensitivity: form.queixaSensibilidadeLuz,
+        durability: form.queixaQuebraOculos,
+        activeChild: form.queixaCriancaAtiva,
+        fastProgression: form.queixaProgressaoRapida,
+      },
+      refusals: {
+        multifocal: form.rejectMultifocal === 'sim',
+        bifocal: form.rejectBifocal === 'sim',
+        occupational: form.rejectOccupational === 'sim',
+        transitions: form.rejectTransitions === 'sim',
+        antireflexo: form.rejectAntireflexo === 'sim',
+        blueUv: form.rejectBlueUv === 'sim',
+        brands: form.rejectedBrands.split(',').map((value) => value.trim()).filter(Boolean),
+        labs: form.rejectedLabs.split(',').map((value) => value.trim()).filter(Boolean),
+      },
+      budgetTarget: form.budgetTarget || null,
+      consultantNotes: form.observacoesConsultor || null,
+    },
+  }
+}
+
+function restoreInterviewSnapshot(snapshot: unknown): Partial<ReturnType<typeof createEmptyForm>> {
+  if (!snapshot || typeof snapshot !== 'object') return {}
+  const value = snapshot as { schemaVersion?: number; answers?: Record<string, unknown> }
+  if (value.schemaVersion !== INTERVIEW_SCHEMA_VERSION || !value.answers) return {}
+  const answers = value.answers
+  const refusals = (answers.refusals && typeof answers.refusals === 'object' ? answers.refusals : {}) as Record<string, unknown>
+  const needs = (answers.needs && typeof answers.needs === 'object' ? answers.needs : {}) as Record<string, unknown>
+  const text = (key: string, fallback = '') => typeof answers[key] === 'string' ? String(answers[key]) : fallback
+  return {
+    ageYears: text('ageYears'),
+    prescriptionDate: text('prescriptionDate'),
+    routinePrimary: text('routinePrimary', 'nao_informado'),
+    routinePrimaryIntensity: text('routinePrimaryIntensity', 'moderada'),
+    routineSecondary: text('routineSecondary', 'nao_informado'),
+    routineSecondaryIntensity: text('routineSecondaryIntensity', 'moderada'),
+    marcaAtual: text('currentLensName'),
+    tipoLenteAtual: text('currentLensType', 'nao_informado'),
+    currentLensSatisfaction: text('currentLensSatisfaction', 'nao_informado'),
+    currentLensSource: text('currentLensSource', 'free_text'),
+    currentLensImprovements: Array.isArray(answers.currentLensImprovements) ? answers.currentLensImprovements.join(',') : '',
+    additionUse: text('additionUse', 'nao_informado'),
+    digitalFatigueSymptom: text('digitalFatigueSymptom', 'nao_informado'),
+    myopiaControlIntent: text('myopiaControlIntent', 'nao_informado'),
+    solarPrimaryObjective: text('solarPrimaryObjective', 'nao'),
+    queixaDirigirNoite: typeof needs.nightDriving === 'string' ? needs.nightDriving : 'nao_informado',
+    queixaSensibilidadeLuz: typeof needs.lightSensitivity === 'string' ? needs.lightSensitivity : 'nao_informado',
+    queixaQuebraOculos: typeof needs.durability === 'string' ? needs.durability : 'nao_informado',
+    queixaCriancaAtiva: typeof needs.activeChild === 'string' ? needs.activeChild : 'nao_informado',
+    queixaProgressaoRapida: typeof needs.fastProgression === 'string' ? needs.fastProgression : 'nao_informado',
+    rejectMultifocal: refusals.multifocal === true ? 'sim' : 'nao',
+    rejectBifocal: refusals.bifocal === true ? 'sim' : 'nao',
+    rejectOccupational: refusals.occupational === true ? 'sim' : 'nao',
+    rejectTransitions: refusals.transitions === true ? 'sim' : 'nao',
+    rejectAntireflexo: refusals.antireflexo === true ? 'sim' : 'nao',
+    rejectBlueUv: refusals.blueUv === true ? 'sim' : 'nao',
+    rejectedBrands: Array.isArray(refusals.brands) ? refusals.brands.join(', ') : '',
+    rejectedLabs: Array.isArray(refusals.labs) ? refusals.labs.join(', ') : '',
+    budgetTarget: text('budgetTarget'),
+    observacoesConsultor: text('consultantNotes'),
+  }
+}
+
+function ageFromBirthDate(birthDate: string | null | undefined): number | null {
+  if (!birthDate) return null
+  const born = new Date(`${birthDate.slice(0, 10)}T12:00:00`)
+  if (Number.isNaN(born.getTime())) return null
+  const today = new Date()
+  let age = today.getFullYear() - born.getFullYear()
+  if (today.getMonth() < born.getMonth() || (today.getMonth() === born.getMonth() && today.getDate() < born.getDate())) age -= 1
+  return age >= 0 && age <= 120 ? age : null
+}
+
 type RecommendationConsistencyIssue = {
   severity: 'blocker' | 'warning'
   message: string
@@ -2662,20 +2783,35 @@ function validateRecommendationFormConsistency(form: ReturnType<typeof createEmp
   const cylinder = parseNullableNumber(form.receitaLongeOdCilindrico) ?? parseNullableNumber(form.receitaLongeOeCilindrico)
   const add = parseNullableNumber(form.receitaAdicao)
   const targetBudget = parseNullableNumber(form.budgetTarget)
+  const odCylinder = parseNullableNumber(form.receitaLongeOdCilindrico)
+  const oeCylinder = parseNullableNumber(form.receitaLongeOeCilindrico)
+  const declaredUses = [form.routinePrimary, form.routineSecondary]
+  const usesOccupationalGlasses = !declaredUses.includes('geral') && (
+    (declaredUses.includes('computador_escritorio') && ['especifico_perto_computador', 'exclusivo_computador'].includes(form.additionUse)) ||
+    (declaredUses.includes('leitura_perto') && form.additionUse === 'exclusivo_perto') ||
+    (declaredUses.includes('dirigir') && form.additionUse === 'especifico_direcao')
+  )
+
+  if (odCylinder !== null && odCylinder !== 0 && parseNullableNumber(form.receitaLongeOdEixo) === null) {
+    issues.push({ severity: 'blocker', message: 'Informe o eixo do OD porque há cilindro.', suggestion: 'Preencha um eixo entre 0 e 180.' })
+  }
+  if (oeCylinder !== null && oeCylinder !== 0 && parseNullableNumber(form.receitaLongeOeEixo) === null) {
+    issues.push({ severity: 'blocker', message: 'Informe o eixo do OE porque há cilindro.', suggestion: 'Preencha um eixo entre 0 e 180.' })
+  }
+  if ((parseNullableNumber(form.receitaAdicao) ?? 0) > 0 && form.rejectMultifocal === 'sim' && form.rejectBifocal === 'sim' && !usesOccupationalGlasses) {
+    issues.push({ severity: 'blocker', message: 'O cliente recusou multifocal e bifocal, mas a receita exige longe e perto.', suggestion: 'Revise a recusa; o sistema não criará dois óculos como substituição automática.' })
+  }
+  if ((parseNullableNumber(form.receitaAdicao) ?? 0) > 0 && usesOccupationalGlasses && form.rejectOccupational === 'sim') {
+    issues.push({ severity: 'blocker', message: 'O uso escolhido exige lente ocupacional, mas o cliente recusou essa categoria.', suggestion: 'Revise o uso específico ou a recusa antes de gerar a indicação.' })
+  }
+  if (form.prescriptionDate) {
+    const issued = new Date(`${form.prescriptionDate}T12:00:00`)
+    const ageInDays = (Date.now() - issued.getTime()) / 86400000
+    if (Number.isFinite(ageInDays) && ageInDays > 365) issues.push({ severity: 'warning', message: 'A receita tem mais de 12 meses.', suggestion: 'Confirme se o cliente possui uma receita mais recente; a indicação não será bloqueada.' })
+  }
   const wantsFirstMultifocal = form.objetivoCompra === 'primeira_multifocal'
   const wantsOfficeLens = form.objetivoCompra === 'oculos_escritorio' || form.objetivoCompra === 'ocupacional_escritorio'
   const wantsSolar = form.objetivoCompra === 'oculos_sol_grau'
-  const hasNearOrIntermediateComplaint =
-    form.principalIncomodoAtual === 'perto' ||
-    form.principalIncomodoAtual === 'intermediario' ||
-    form.principalIncomodoAtual === 'adaptacao'
-  const hasPresbyopicContext =
-    form.usaMultifocalHoje === 'sim' ||
-    form.tipoLenteAtual === 'multifocal' ||
-    form.tipoLenteAtual === 'bifocal' ||
-    wantsFirstMultifocal ||
-    wantsOfficeLens ||
-    hasNearOrIntermediateComplaint
   const wantsPremium =
     form.prioridadePrincipal === 'premium' ||
     form.aceitaPremium === 'sim' ||
@@ -2706,14 +2842,6 @@ function validateRecommendationFormConsistency(form: ReturnType<typeof createEmp
         ? 'Óculos de escritório/ocupacional precisam de adição positiva para o motor avaliar corretamente.'
         : 'Primeira multifocal precisa de adição positiva.',
       suggestion: 'Preencha uma adição acima de zero ou altere o objetivo da compra.',
-    })
-  }
-
-  if (add !== null && add > 0 && !hasPresbyopicContext) {
-    issues.push({
-      severity: 'warning',
-      message: 'Há adição preenchida, mas o restante do formulário ainda não indica claramente necessidade de multifocal ou ocupacional.',
-      suggestion: 'Confirme se o cliente precisa de lente para perto/intermediário, primeira multifocal ou óculos de escritório.',
     })
   }
 
@@ -2819,6 +2947,10 @@ export default function EvaluationInterface({
   const [selectedSubjectType, setSelectedSubjectType] = useState<SubjectType | null>(null)
   const [selectedDependenteId, setSelectedDependenteId] = useState<string>('')
   const [history, setHistory] = useState<OpticalEvaluationListItem[]>([])
+  const [previousLensNames, setPreviousLensNames] = useState<string[]>([])
+  const [catalogLensNames, setCatalogLensNames] = useState<string[]>([])
+  const [isCurrentLensSearchOpen, setIsCurrentLensSearchOpen] = useState(false)
+  const [isSearchingCurrentLens, setIsSearchingCurrentLens] = useState(false)
   const [form, setForm] = useState(createEmptyForm())
   const [evaluationId, setEvaluationId] = useState<number | null>(null)
   const evaluationIdRef = useRef<number | null>(null)
@@ -2866,6 +2998,13 @@ export default function EvaluationInterface({
   )
 
   useEffect(() => {
+    if (form.ageYears || form.sourceSystem === 'ivision') return
+    const birthDate = selectedSubjectType === 'dependente' ? selectedDependente?.birth_date : selectedCustomer?.birth_date
+    const derivedAge = ageFromBirthDate(birthDate)
+    if (derivedAge !== null) setForm((current) => ({ ...current, ageYears: String(derivedAge) }))
+  }, [form.ageYears, form.sourceSystem, selectedCustomer?.birth_date, selectedDependente?.birth_date, selectedSubjectType])
+
+  useEffect(() => {
     evaluationIdRef.current = evaluationId
   }, [evaluationId])
 
@@ -2899,7 +3038,32 @@ export default function EvaluationInterface({
     if (!selectedCustomer) return
 
     getDependentes(selectedCustomer.id).then((data) => setDependentes(data))
-  }, [selectedCustomer])
+    getLastSalesForCustomer(storeId, selectedCustomer.id).then((result) => {
+      const names = (result.data || []).flatMap((sale) => sale.itens)
+        .filter((item) => item.item_tipo === 'lente' || /lente|varilux|hoya|zeiss|essilor|kodak|progress/i.test(item.descricao || ''))
+        .map((item) => item.descricao?.trim())
+        .filter((name): name is string => !!name)
+      setPreviousLensNames([...new Set(names)])
+    })
+  }, [selectedCustomer, storeId])
+
+  useEffect(() => {
+    if (form.marcaAtual.trim().length < 2) {
+      setCatalogLensNames([])
+      setIsSearchingCurrentLens(false)
+      return
+    }
+    let cancelled = false
+    setIsSearchingCurrentLens(true)
+    const timer = window.setTimeout(() => {
+      searchLensFamiliesForEvaluation(storeId, form.marcaAtual).then((names) => {
+        if (cancelled) return
+        setCatalogLensNames(names)
+        setIsSearchingCurrentLens(false)
+      })
+    }, 300)
+    return () => { cancelled = true; window.clearTimeout(timer) }
+  }, [form.marcaAtual, storeId])
 
   useEffect(() => {
     if (!selectedCustomer) return
@@ -2956,8 +3120,8 @@ export default function EvaluationInterface({
     const childNow = age !== null && age <= 14
     if (!childNow) {
       setForm(prev => {
-        if (prev.queixaCriancaAtiva === 'nao' && prev.queixaProgressaoRapida === 'nao') return prev
-        return { ...prev, queixaCriancaAtiva: 'nao', queixaProgressaoRapida: 'nao' }
+        if (prev.queixaCriancaAtiva === 'nao_informado' && prev.queixaProgressaoRapida === 'nao_informado' && prev.myopiaControlIntent === 'nao_informado') return prev
+        return { ...prev, queixaCriancaAtiva: 'nao_informado', queixaProgressaoRapida: 'nao_informado', myopiaControlIntent: 'nao_informado' }
       })
     }
   }, [form.ageYears])
@@ -2970,6 +3134,10 @@ export default function EvaluationInterface({
     setQuery('')
     setCustomerResults([])
     setHistory([])
+    setPreviousLensNames([])
+    setCatalogLensNames([])
+    setIsCurrentLensSearchOpen(false)
+    setIsSearchingCurrentLens(false)
     setForm(createEmptyForm())
     setCurrentEvaluationId(null)
     setSyncStatus('idle')
@@ -2982,6 +3150,7 @@ export default function EvaluationInterface({
     setLensAudit(null)
     setLensAuditPayload(null)
     setLensSalesAssist(null)
+    setIsGeneratingSalesAssist(false)
     setIsGeneratingAudit(false)
     setIsGeneratingSalesAssist(false)
     setIvisionReferenceSuggestion(null)
@@ -3010,13 +3179,14 @@ export default function EvaluationInterface({
        setSelectedCustomer({
            id: ev.responsible_customer_id || ev.evaluated_customer_id || 0,
            full_name: ev.responsible_customer_name || ev.evaluated_patient_name,
-           cpf: '', fone_movel: '', tem_pendencia: false, obs_debito: ''
+           cpf: '', fone_movel: '', birth_date: null, tem_pendencia: false, obs_debito: ''
        })
     }
     
     // Restaurar forms
     setForm({
       ...createEmptyForm(),
+      ...restoreInterviewSnapshot(ev.interview_snapshot),
       sourceSystem: ev.source_system,
       status: ev.status,
       sourceUrl: ev.source_document_url || '',
@@ -3132,6 +3302,14 @@ export default function EvaluationInterface({
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
+  const toggleCurrentLensImprovement = (value: string) => {
+    const selected = form.currentLensImprovements.split(',').filter(Boolean)
+    const next = selected.includes(value)
+      ? selected.filter((item) => item !== value)
+      : selected.length < 2 ? [...selected, value] : selected
+    handleFormChange('currentLensImprovements', next.join(','))
+  }
+
   const generateManualSuggestionResult = (): SuggestionGenerationResult => {
     if (!hasAnyDegreeData(form)) {
       setFormError('Preencha pelo menos os campos principais do grau antes de gerar a sugestão.')
@@ -3147,7 +3325,7 @@ export default function EvaluationInterface({
     return { success: true, suggestion }
   }
 
-  const applyManualSuggestion = (suggestion: ManualSuggestion, feedbackMessage: string) => {
+  const applyManualSuggestion = (suggestion: ManualSuggestion, feedbackMessage: string | null) => {
     setManualSuggestion(suggestion)
     setFormError(null)
     setFeedback(feedbackMessage)
@@ -3178,9 +3356,38 @@ export default function EvaluationInterface({
     setLensAudit(null)
     setLensAuditPayload(null)
     setLensSalesAssist(null)
-    setAiFeedback('Sugestão comercial gerada com base nos dados da avaliação.')
-    applyManualSuggestion(result.suggestion, 'Sugestão comercial gerada com base nos dados da avaliação.')
+    setAiFeedback(null)
+    applyManualSuggestion(result.suggestion, null)
     return true
+  }
+
+  const requestLensSalesAssist = (
+    recommendations: RecommendationOption[],
+    motorInput: RecommendationCaseInput,
+    patientContext: PatientAuditContext,
+    technicalTriage: LensTechnicalTriage | null
+  ) => {
+    if (recommendations.length === 0) {
+      setLensSalesAssist(null)
+      setIsGeneratingSalesAssist(false)
+      return
+    }
+
+    setLensSalesAssist(null)
+    setIsGeneratingSalesAssist(true)
+
+    generateLensSalesAssistAction({ patientContext, technicalTriage, motorInput, recommendations })
+      .then((assistResult) => {
+        if (assistResult.success && assistResult.assist) {
+          setLensSalesAssist(assistResult.assist)
+        } else {
+          setLensSalesAssist(null)
+        }
+      })
+      .catch(() => {
+        setLensSalesAssist(null)
+      })
+      .finally(() => setIsGeneratingSalesAssist(false))
   }
 
   const handleGenerateAiRecommendation = () => {
@@ -3248,18 +3455,30 @@ export default function EvaluationInterface({
       }
 
       const payload = result.data as LensRecommendationActionPayload
+
+      if (payload.recommendations.length === 0) {
+        const usedFallback = fallbackToSystemSuggestion()
+        if (usedFallback) {
+          setAiFeedback('O catálogo ativo não retornou uma lente válida para este caso. Exibindo a indicação clínica segura do sistema.')
+        } else {
+          setAiRecommendations([])
+          setAiState(null)
+          setAiFeedback(null)
+          setFormError('Nenhuma lente válida foi encontrada no catálogo ativo para os dados e recusas informados.')
+        }
+        return
+      }
+
       setAiState(payload.state)
       setAiRecommendations(payload.recommendations)
       setSyncStatus(evaluationIdRef.current ? 'saved' : 'idle')
       setManualSuggestion(null)
-      setAiFeedback('Sugestões geradas sem triagem IA.')
+      setAiFeedback(null)
 
         // Debug preservado: payload + Auditoria IA + Sales Assist.
         if (payload.recommendations.length > 0) {
         setLensAudit(null)
-        setLensSalesAssist(null)
         setIsGeneratingAudit(false)
-        setIsGeneratingSalesAssist(true)
         const auditDebugPayload = {
           debugProfileName: form.patientNameRaw || selectedSubjectName || null,
           patient: auditPatientContext,
@@ -3268,33 +3487,28 @@ export default function EvaluationInterface({
           presentationStrategy: payload.presentationStrategy || null,
           recommendations: payload.recommendations,
         }
-        setLensAuditPayload(auditDebugPayload)
-        setIsGeneratingAudit(true)
-        generateLensAuditAction(auditPatientContext, payload.recommendations, auditDebugPayload).then((auditResult) => {
-          if (auditResult.success && auditResult.audit) {
-            setLensAudit(auditResult.audit)
-          }
+        if (SHOW_LENS_ENGINE_DIAGNOSTIC_SUITE) {
+          setLensAuditPayload(auditDebugPayload)
+          setIsGeneratingAudit(true)
+          generateLensAuditAction(auditPatientContext, payload.recommendations, auditDebugPayload).then((auditResult) => {
+            if (auditResult.success && auditResult.audit) setLensAudit(auditResult.audit)
+            setIsGeneratingAudit(false)
+          }).catch(() => setIsGeneratingAudit(false))
+        } else {
+          setLensAuditPayload(null)
           setIsGeneratingAudit(false)
-        }).catch(() => {
-          setIsGeneratingAudit(false)
-        })
-        generateLensSalesAssistAction({
-          patientContext: auditPatientContext,
-          technicalTriage,
-          motorInput: recommendationCaseInput,
-          recommendations: payload.recommendations,
-        }).then((assistResult) => {
-          if (assistResult.success && assistResult.assist) {
-            setLensSalesAssist(assistResult.assist)
-          }
-          setIsGeneratingSalesAssist(false)
-        }).catch(() => {
-          setIsGeneratingSalesAssist(false)
-        })
+        }
+        requestLensSalesAssist(
+          payload.recommendations,
+          recommendationCaseInput,
+          auditPatientContext,
+          technicalTriage
+        )
       } else {
         setLensAuditPayload(null)
         setLensSalesAssist(null)
         setIsGeneratingAudit(false)
+        setIsGeneratingSalesAssist(false)
       }
     })
   }
@@ -3326,9 +3540,14 @@ export default function EvaluationInterface({
       }
       setAiState(payload.nextState)
       setAiRecommendations(payload.recommendations)
-      setLensSalesAssist(null)
       setSyncStatus(evaluationIdRef.current ? 'saved' : 'idle')
       setManualSuggestion(null)
+      requestLensSalesAssist(
+        payload.recommendations,
+        payload.nextState.caseInput,
+        buildPatientAuditContext(form, payload.nextState.caseInput),
+        lensTechnicalTriage
+      )
       setAiFeedback(`Sugestão refinada para: "${currentInput}"`)
     })
   }
@@ -3357,6 +3576,7 @@ export default function EvaluationInterface({
     displayName: string
     commercialSummary: string | null
     recommendedItems: unknown[] | null
+    selectedRecommendation?: Record<string, unknown> | null
   }) => {
     if (!selectedCustomer) {
       setFormError('Selecione o titular antes de criar a venda.')
@@ -3420,6 +3640,13 @@ export default function EvaluationInterface({
       recommendedLensName: recommendation.displayName,
       commercialRecommendationRaw: recommendation.commercialSummary,
       recommendedItems: recommendation.recommendedItems,
+      interviewSnapshot: buildInterviewSnapshot(form),
+      recommendationInput: { engineVersion: LENS_ENGINE_VERSION, ...inferRecommendationCaseInput(form) },
+      selectedRecommendation: recommendation.selectedRecommendation ? {
+        ...recommendation.selectedRecommendation,
+        selectedAt: new Date().toISOString(),
+        selectedByEmployeeId: authenticatedEmployee?.id ?? null,
+      } : null,
       extractedText: form.extractedText || null,
       rawPayloadJson: form.rawPayloadJson,
       parseWarning: form.parseWarning || null,
@@ -3488,7 +3715,10 @@ export default function EvaluationInterface({
         const evaluationIdForSale = await persistEvaluationForSale({
           displayName: isDeferredLens ? (form.recommendedLensName || recommendation.displayName) : recommendation.displayName,
           commercialSummary: recommendation.commercialSummary || null,
-          recommendedItems: isDeferredLens ? null : recommendation.optionSnapshot ? [recommendation.optionSnapshot] : null,
+          recommendedItems: recommendation.source === 'ivision'
+            ? (recommendation.optionSnapshot ? [recommendation.optionSnapshot] : null)
+            : (aiRecommendations.length > 0 ? aiRecommendations : null),
+          selectedRecommendation: isDeferredLens ? null : recommendation.optionSnapshot || null,
         })
         if (!evaluationIdForSale) return
 
@@ -3752,6 +3982,8 @@ export default function EvaluationInterface({
         commercialRecommendationRaw: form.commercialRecommendationRaw || null,
         extractedText: form.extractedText || null,
         rawPayloadJson: form.rawPayloadJson,
+        interviewSnapshot: buildInterviewSnapshot(form),
+        recommendationInput: { engineVersion: LENS_ENGINE_VERSION, ...inferRecommendationCaseInput(form) },
         parseWarning: form.parseWarning || null,
         documentHash: form.documentHash || null
       })
@@ -3847,7 +4079,8 @@ export default function EvaluationInterface({
   // CRM Auto-save
   useEffect(() => {
     // Só salva automaticamente se tiver paciente escolhido E funcionário autenticado
-    if (!isSubjectChosen || !authenticatedEmployee) {
+    const hasSphere = parseNullableNumber(form.receitaLongeOdEsferico) !== null || parseNullableNumber(form.receitaLongeOeEsferico) !== null
+    if (!isSubjectChosen || !authenticatedEmployee || (form.sourceSystem === 'manual' && !hasSphere)) {
       return
     }
 
@@ -3907,6 +4140,8 @@ export default function EvaluationInterface({
             recommendedItems: aiRecommendations.length > 0 ? aiRecommendations : null,
             extractedText: form.extractedText || null,
             rawPayloadJson: form.rawPayloadJson,
+            interviewSnapshot: buildInterviewSnapshot(form),
+            recommendationInput: { engineVersion: LENS_ENGINE_VERSION, ...inferRecommendationCaseInput(form) },
             parseWarning: form.parseWarning || null,
             documentHash: form.documentHash || null
           }
@@ -3933,6 +4168,27 @@ export default function EvaluationInterface({
   const isIvisionMode = form.sourceSystem === 'ivision'
   const hasCatalogForAi = activeCatalogs.length > 0 || !!activeCatalog
   const aiCaseInput = inferRecommendationCaseInput(form)
+  const declaredRoutineUses = [form.routinePrimary, form.routineSecondary]
+    .filter((use) => use && use !== 'nao_informado')
+  const hasGeneralRoutineUse = declaredRoutineUses.includes('geral')
+  const specificGlassesUseOptions = [
+    declaredRoutineUses.includes('computador_escritorio')
+      ? { value: 'exclusivo_computador', label: 'Somente para computador / escritório' }
+      : null,
+    declaredRoutineUses.includes('leitura_perto')
+      ? { value: 'exclusivo_perto', label: 'Somente para leitura / perto' }
+      : null,
+    declaredRoutineUses.includes('dirigir')
+      ? { value: 'especifico_direcao', label: 'Óculos específico para dirigir' }
+      : null,
+    declaredRoutineUses.includes('externo_sol')
+      ? { value: 'solar_exclusivo', label: 'Óculos solar com grau exclusivo' }
+      : null,
+  ].filter((option): option is { value: string; label: string } => option !== null)
+  const shouldAskGlassesUse =
+    (aiCaseInput.adicao ?? 0) > 0 &&
+    !hasGeneralRoutineUse &&
+    specificGlassesUseOptions.length > 0
   const recommendationConsistencyIssues = useMemo(
     () => validateRecommendationFormConsistency(form),
     [form]
@@ -3945,6 +4201,7 @@ export default function EvaluationInterface({
     hasCatalogForAi &&
     isSubjectChosen &&
     aiCaseInput.esferico !== null &&
+    (!isIvisionMode || !ivisionReferenceSuggestion) &&
     recommendationBlockingIssues.length === 0
   const showManualSuggestionBlock = !hasCatalogForAi
   const aiTopRecommendation = aiRecommendations[0] || null
@@ -4583,7 +4840,114 @@ export default function EvaluationInterface({
                   </div>
                 </div>
 
-                <div className={`${cardStyle} overflow-hidden`}>
+                {!isIvisionMode && (
+                <div className={`${cardStyle} p-5`}>
+                  <h3 className="text-sm font-black uppercase tracking-[0.2em] text-indigo-300">Entrevista essencial</h3>
+                  <p className="mt-1 text-xs text-slate-400">Somente respostas que mudam a indicação. Campos em branco permanecem neutros.</p>
+                  <div className="mt-5 grid grid-cols-12 gap-4">
+                    <div className="col-span-12 md:col-span-3">
+                      <label className={labelStyle}>Idade confirmada</label>
+                      <AgeStepper value={form.ageYears} onChange={(value) => handleFormChange('ageYears', value)} />
+                    </div>
+                    {[['routinePrimary', 'routinePrimaryIntensity', 'Uso principal'], ['routineSecondary', 'routineSecondaryIntensity', 'Segundo uso (opcional)']].map(([useField, intensityField, label]) => (
+                      <React.Fragment key={useField}>
+                        <div className="col-span-12 md:col-span-3">
+                          <label className={labelStyle}>{label}</label>
+                          <select value={String(form[useField as keyof typeof form])} onChange={(e) => handleFormChange(useField as keyof typeof form, e.target.value)} className={selectStyle}>
+                            <option value="nao_informado">Não informado</option><option value="geral">Uso geral</option><option value="computador_escritorio">Computador / escritório</option><option value="leitura_perto">Leitura / perto</option><option value="dirigir">Direção</option><option value="externo_sol">Ambiente externo / sol</option>
+                          </select>
+                        </div>
+                        <div className="col-span-12 md:col-span-3">
+                          <label className={labelStyle}>Intensidade</label>
+                          <select value={String(form[intensityField as keyof typeof form])} disabled={form[useField as keyof typeof form] === 'nao_informado'} onChange={(e) => handleFormChange(intensityField as keyof typeof form, e.target.value)} className={selectStyle}>
+                            <option value="baixa">Baixa</option><option value="moderada">Moderada</option><option value="alta">Alta</option>
+                          </select>
+                        </div>
+                      </React.Fragment>
+                    ))}
+                    <div className="relative col-span-12 md:col-span-4">
+                      <label className={labelStyle}>Lente atual</label>
+                      <input
+                        value={form.marcaAtual}
+                        onFocus={() => setIsCurrentLensSearchOpen(true)}
+                        onBlur={() => window.setTimeout(() => setIsCurrentLensSearchOpen(false), 150)}
+                        onChange={(e) => {
+                          setIsCurrentLensSearchOpen(true)
+                          setForm((current) => ({ ...current, marcaAtual: e.target.value, currentLensSource: 'free_text' }))
+                        }}
+                        className={inputStyle}
+                        placeholder="Digite ao menos 2 letras"
+                        autoComplete="off"
+                      />
+                      {isCurrentLensSearchOpen && form.marcaAtual.trim().length >= 2 && (
+                        <div className="absolute inset-x-0 top-[66px] z-40 max-h-64 overflow-y-auto overscroll-contain rounded-xl border border-indigo-400/30 bg-slate-950 p-1 shadow-2xl shadow-black/60" onWheel={(event) => event.stopPropagation()}>
+                          {previousLensNames.filter((name) => name.toLowerCase().includes(form.marcaAtual.trim().toLowerCase())).map((name) => (
+                            <button key={`history-${name}`} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { setForm((current) => ({ ...current, marcaAtual: name, currentLensSource: 'history' })); setIsCurrentLensSearchOpen(false) }} className="block w-full rounded-lg px-3 py-2 text-left text-sm font-bold text-cyan-100 hover:bg-cyan-500/15"><span className="mr-2 text-[9px] uppercase tracking-wider text-cyan-400">Histórico</span>{name}</button>
+                          ))}
+                          {catalogLensNames.filter((name) => !previousLensNames.includes(name)).map((name) => (
+                            <button key={`catalog-${name}`} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { setForm((current) => ({ ...current, marcaAtual: name, currentLensSource: 'catalog' })); setIsCurrentLensSearchOpen(false) }} className="block w-full rounded-lg px-3 py-2 text-left text-sm font-bold text-indigo-100 hover:bg-indigo-500/15"><span className="mr-2 text-[9px] uppercase tracking-wider text-indigo-400">Catálogo</span>{name}</button>
+                          ))}
+                          {isSearchingCurrentLens && <p className="flex items-center gap-2 px-3 py-3 text-xs text-indigo-200"><Loader2 className="h-3 w-3 animate-spin" />Buscando nos catálogos ativos...</p>}
+                          {!isSearchingCurrentLens && catalogLensNames.length === 0 && previousLensNames.filter((name) => name.toLowerCase().includes(form.marcaAtual.trim().toLowerCase())).length === 0 && <p className="px-3 py-3 text-xs text-slate-400">Nenhuma lente encontrada nos catálogos ativos. O texto digitado será mantido.</p>}
+                        </div>
+                      )}
+                      <p className="mt-1 text-[10px] text-slate-500">Histórico da loja primeiro; depois famílias dos catálogos ativos.</p>
+                    </div>
+                    <div className="col-span-12 md:col-span-4"><label className={labelStyle}>Satisfação com a lente atual</label><select value={form.currentLensSatisfaction} onChange={(e) => handleFormChange('currentLensSatisfaction', e.target.value)} className={selectStyle}><option value="nao_informado">Não informado</option><option value="satisfeito">Satisfeito</option><option value="parcial">Parcialmente satisfeito</option><option value="insatisfeito">Insatisfeito</option></select></div>
+                    {['parcial', 'insatisfeito'].includes(form.currentLensSatisfaction) && (
+                      <div className="col-span-12 flex flex-col md:col-span-4">
+                        <label className={`${labelStyle} flex min-h-8 items-end`}>O que precisa melhorar? (até 2)</label>
+                        <div
+                          className="flex min-h-28 flex-wrap content-start gap-2 overflow-hidden overscroll-contain rounded-xl border border-white/20 bg-slate-900/60 p-2 shadow-inner"
+                          onWheel={(event) => event.stopPropagation()}
+                        >
+                          {CURRENT_LENS_IMPROVEMENT_OPTIONS.map((option) => {
+                            const selected = form.currentLensImprovements.split(',').filter(Boolean)
+                            const active = selected.includes(option.value)
+                            const blocked = !active && selected.length >= 2
+                            return (
+                              <button
+                                key={option.value}
+                                type="button"
+                                disabled={blocked}
+                                onClick={() => toggleCurrentLensImprovement(option.value)}
+                                className={`rounded-lg border px-2.5 py-1.5 text-xs font-bold transition-colors ${active ? 'border-indigo-300/60 bg-indigo-500 text-white' : 'border-white/10 bg-white/5 text-slate-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35'}`}
+                              >
+                                {active ? '✓ ' : ''}{option.label}
+                              </button>
+                            )
+                          })}
+                        </div>
+                        <p className="mt-1 text-[10px] font-bold text-slate-500">{form.currentLensImprovements.split(',').filter(Boolean).length}/2 selecionadas</p>
+                      </div>
+                    )}
+                    {['dirigir'].some((use) => use === form.routinePrimary || use === form.routineSecondary) && <div className="col-span-12 md:col-span-4"><label className={labelStyle}>Reflexos ao dirigir à noite?</label><select value={form.queixaDirigirNoite} onChange={(e) => handleFormChange('queixaDirigirNoite', e.target.value)} className={selectStyle}><option value="nao_informado">Não informado</option><option value="sim">Sim</option><option value="nao">Não</option></select></div>}
+                    {['externo_sol'].some((use) => use === form.routinePrimary || use === form.routineSecondary) && <><div className="col-span-12 md:col-span-4"><label className={labelStyle}>Sensibilidade ou desconforto com luz?</label><select value={form.queixaSensibilidadeLuz} onChange={(e) => handleFormChange('queixaSensibilidadeLuz', e.target.value)} className={selectStyle}><option value="nao_informado">Não informado</option><option value="sim">Sim</option><option value="nao">Não</option></select></div>{form.queixaSensibilidadeLuz === 'sim' && <div className="col-span-12 md:col-span-4"><label className={labelStyle}>Aceita considerar fotossensível?</label><select value={form.prefereTransitions} onChange={(e) => handleFormChange('prefereTransitions', e.target.value)} className={selectStyle}><option value="nao_informado">Não confirmado</option><option value="sim">Sim</option><option value="nao">Não como preferência</option></select></div>}</>}
+                    {['externo_sol'].some((use) => use === form.routinePrimary || use === form.routineSecondary) && !aiCaseInput.adicao && <label className="col-span-12 md:col-span-4 flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-200"><input type="checkbox" checked={form.solarPrimaryObjective === 'sim'} onChange={(e) => handleFormChange('solarPrimaryObjective', e.target.checked ? 'sim' : 'nao')} />Óculos solar com grau é o objetivo principal</label>}
+                    <div className="col-span-12 flex flex-col md:col-span-4"><label className={`${labelStyle} flex min-h-8 items-end`}>Quebra ou risca os óculos com frequência?</label><select value={form.queixaQuebraOculos} onChange={(e) => handleFormChange('queixaQuebraOculos', e.target.value)} className={selectStyle}><option value="nao_informado">Não informado</option><option value="sim">Sim</option><option value="nao">Não</option></select></div>
+                    {shouldAskGlassesUse && (
+                      <div className="col-span-12 flex flex-col md:col-span-4">
+                        <label className={`${labelStyle} flex min-h-8 items-end`}>Como estes óculos serão usados?</label>
+                        <select value={form.additionUse === 'geral_dia_todo' || specificGlassesUseOptions.some((option) => option.value === form.additionUse) ? form.additionUse : 'nao_informado'} onChange={(e) => handleFormChange('additionUse', e.target.value)} className={selectStyle}>
+                          <option value="nao_informado">Selecione</option>
+                          <option value="geral_dia_todo">Usar o dia todo</option>
+                          {specificGlassesUseOptions.map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    {patientAge !== null && patientAge >= 30 && patientAge <= 44 && !aiCaseInput.adicao && ['computador_escritorio', 'leitura_perto'].some((use) => use === form.routinePrimary || use === form.routineSecondary) && <div className="col-span-12 md:col-span-4"><label className={labelStyle}>Fadiga em telas/perto?</label><select value={form.digitalFatigueSymptom} onChange={(e) => handleFormChange('digitalFatigueSymptom', e.target.value)} className={selectStyle}><option value="nao_informado">Não informado</option><option value="sim">Sim</option><option value="nao">Não</option></select></div>}
+                    {patientAge !== null && patientAge <= 17 && <><div className="col-span-12 md:col-span-4"><label className={labelStyle}>Progressão confirmada?</label><select value={form.queixaProgressaoRapida} onChange={(e) => handleFormChange('queixaProgressaoRapida', e.target.value)} className={selectStyle}><option value="nao_informado">Não informado</option><option value="sim">Sim</option><option value="nao">Não</option></select></div>{form.queixaProgressaoRapida === 'sim' && <div className="col-span-12 md:col-span-4"><label className={labelStyle}>Deseja avaliar controle de miopia?</label><select value={form.myopiaControlIntent} onChange={(e) => handleFormChange('myopiaControlIntent', e.target.value)} className={selectStyle}><option value="nao_informado">Não informado</option><option value="sim">Sim</option><option value="nao">Não</option></select></div>}</>}
+                    <div className="col-span-12 rounded-2xl border border-rose-500/20 bg-rose-500/5 p-4"><h4 className="border-b border-rose-400/20 pb-2 text-sm font-black uppercase tracking-[0.16em] text-rose-300">Não aceita <span className="text-xs text-rose-300/70">(recusa firme)</span></h4><p className="mt-2 text-xs text-rose-100/70">Marque apenas o que o cliente rejeita de forma absoluta.</p><div className="mt-3 flex flex-wrap gap-3">{[['rejectMultifocal','Multifocal'],['rejectBifocal','Bifocal'],['rejectOccupational','Ocupacional'],['rejectTransitions','Transitions'],['rejectAntireflexo','Antirreflexo'],['rejectBlueUv','Proteção para telas']].map(([field,label]) => <label key={field} className="flex items-center gap-2 rounded-xl border border-rose-400/20 bg-black/20 px-3 py-2 text-sm font-bold text-rose-100"><input type="checkbox" className="accent-rose-500" checked={form[field as keyof typeof form] === 'sim'} onChange={(e) => handleFormChange(field as keyof typeof form, e.target.checked ? 'sim' : 'nao')} />{label}</label>)}</div></div>
+                    <div className="col-span-12 md:col-span-4"><label className={labelStyle}>Marcas recusadas</label><input value={form.rejectedBrands} onChange={(e) => handleFormChange('rejectedBrands', e.target.value)} className={inputStyle} placeholder="Separe por vírgulas" /></div>
+                    <div className="col-span-12 md:col-span-4"><label className={labelStyle}>Laboratórios recusados</label><input value={form.rejectedLabs} onChange={(e) => handleFormChange('rejectedLabs', e.target.value)} className={inputStyle} placeholder="Separe por vírgulas" /></div>
+                    <div className="col-span-12 md:col-span-4"><label className={labelStyle}>Orçamento máximo (opcional)</label><input type="number" min="0" step="500" value={form.budgetTarget} onChange={(e) => handleFormChange('budgetTarget', e.target.value)} className={inputStyle} /></div>
+                  </div>
+                </div>
+                )}
+
+                <div className={`${cardStyle} hidden overflow-hidden`}>
                   <button
                     type="button"
                     onClick={() => {
@@ -4674,7 +5038,7 @@ export default function EvaluationInterface({
                   )}
                 </div>
 
-                <div className={`${cardStyle} overflow-hidden`}>
+                <div className={`${cardStyle} hidden overflow-hidden`}>
                   <button
                     type="button"
                     onClick={() => {
@@ -5036,8 +5400,20 @@ export default function EvaluationInterface({
                   <h3 className="mb-4 text-sm font-black uppercase tracking-[0.2em] text-indigo-300">
                     Receita e Medidas
                   </h3>
-                  <div className="grid grid-cols-12 gap-4">
-                    <div className="col-span-12 md:col-span-3">
+                  <fieldset disabled={isIvisionMode && !!ivisionReferenceSuggestion} className="grid grid-cols-12 gap-4 disabled:opacity-75">
+                    {isIvisionMode && ivisionReferenceSuggestion && (
+                      <div className="col-span-12 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-emerald-100">
+                        <p className="text-xs font-black uppercase tracking-[0.18em]">Indicação iVision preservada</p>
+                        <p className="mt-2 text-sm">O motor interno está desabilitado. Use esta indicação como snapshot para iniciar a venda/OS.</p>
+                      </div>
+                    )}
+                    {isIvisionMode && !ivisionReferenceSuggestion && (
+                      <div className="col-span-12 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-100">
+                        <p className="text-xs font-black uppercase tracking-[0.18em]">Indicação não reconhecida no PDF</p>
+                        <p className="mt-2 text-sm">Os dados importados foram mantidos e o motor interno está disponível.</p>
+                      </div>
+                    )}
+                    <div className="col-span-12 md:col-span-6">
                       <label className={labelStyle}>Olhos usados nesta receita</label>
                       <select value={form.olhosUtilizaveis} onChange={(e) => handleFormChange('olhosUtilizaveis', e.target.value as 'ambos' | 'od' | 'oe')} className={inputStyle}>
                         <option value="ambos">OD e OE</option>
@@ -5045,50 +5421,46 @@ export default function EvaluationInterface({
                         <option value="oe">Somente OE</option>
                       </select>
                     </div>
-                    <div className="col-span-12 md:col-span-2">
-                      <label className={labelStyle}>OD ESF</label>
-                      <DegreeInput value={form.receitaLongeOdEsferico} onChange={(value) => handleFormChange('receitaLongeOdEsferico', value)} className={inputStyle} />
+                    {!isIvisionMode && <div className="col-span-12 md:col-span-6"><label className={labelStyle}>Data da receita</label><input type="date" value={form.prescriptionDate} onChange={(e) => handleFormChange('prescriptionDate', e.target.value)} className={inputStyle} /></div>}
+                    <div className="col-span-12 rounded-2xl border border-white/10 bg-black/15 p-3 md:p-4">
+                      <div className="mb-2 hidden grid-cols-[56px_repeat(4,minmax(0,1fr))] gap-3 px-1 md:grid">
+                        <span />
+                        <span className={labelStyle}>Esférico</span>
+                        <span className={labelStyle}>Cilíndrico</span>
+                        <span className={labelStyle}>Eixo</span>
+                        <span className={labelStyle}>DNP</span>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-2 gap-3 rounded-xl border border-cyan-400/10 bg-cyan-500/5 p-3 md:grid-cols-[56px_repeat(4,minmax(0,1fr))] md:items-end md:border-0 md:bg-transparent md:p-0">
+                          <div className="col-span-2 flex h-10 items-center text-sm font-black tracking-[0.14em] text-cyan-200 md:col-span-1">OD</div>
+                          <div><label className={`${labelStyle} md:sr-only`}>OD esférico</label><DegreeInput value={form.receitaLongeOdEsferico} onChange={(value) => handleFormChange('receitaLongeOdEsferico', value)} className={inputStyle} /></div>
+                          <div><label className={`${labelStyle} md:sr-only`}>OD cilíndrico</label><DegreeInput value={form.receitaLongeOdCilindrico} onChange={(value) => handleFormChange('receitaLongeOdCilindrico', value)} className={inputStyle} /></div>
+                          <div><label className={`${labelStyle} md:sr-only`}>OD eixo</label><input value={form.receitaLongeOdEixo} onChange={(e) => handleFormChange('receitaLongeOdEixo', e.target.value)} className={inputStyle} /></div>
+                          <div><label className={`${labelStyle} md:sr-only`}>DNP OD</label><input value={form.medidaDnpOd} onChange={(e) => handleFormChange('medidaDnpOd', e.target.value)} className={inputStyle} /></div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 rounded-xl border border-fuchsia-400/10 bg-fuchsia-500/5 p-3 md:grid-cols-[56px_repeat(4,minmax(0,1fr))] md:items-end md:border-0 md:bg-transparent md:p-0">
+                          <div className="col-span-2 flex h-10 items-center text-sm font-black tracking-[0.14em] text-fuchsia-200 md:col-span-1">OE</div>
+                          <div><label className={`${labelStyle} md:sr-only`}>OE esférico</label><DegreeInput value={form.receitaLongeOeEsferico} onChange={(value) => handleFormChange('receitaLongeOeEsferico', value)} className={inputStyle} /></div>
+                          <div><label className={`${labelStyle} md:sr-only`}>OE cilíndrico</label><DegreeInput value={form.receitaLongeOeCilindrico} onChange={(value) => handleFormChange('receitaLongeOeCilindrico', value)} className={inputStyle} /></div>
+                          <div><label className={`${labelStyle} md:sr-only`}>OE eixo</label><input value={form.receitaLongeOeEixo} onChange={(e) => handleFormChange('receitaLongeOeEixo', e.target.value)} className={inputStyle} /></div>
+                          <div><label className={`${labelStyle} md:sr-only`}>DNP OE</label><input value={form.medidaDnpOe} onChange={(e) => handleFormChange('medidaDnpOe', e.target.value)} className={inputStyle} /></div>
+                      </div>
                     </div>
-                    <div className="col-span-12 md:col-span-2">
-                      <label className={labelStyle}>OD CIL</label>
-                      <DegreeInput value={form.receitaLongeOdCilindrico} onChange={(value) => handleFormChange('receitaLongeOdCilindrico', value)} className={inputStyle} />
                     </div>
-                    <div className="col-span-12 md:col-span-2">
-                      <label className={labelStyle}>OD EIXO</label>
-                      <input value={form.receitaLongeOdEixo} onChange={(e) => handleFormChange('receitaLongeOdEixo', e.target.value)} className={inputStyle} />
-                    </div>
-                    <div className="col-span-12 md:col-span-2">
-                      <label className={labelStyle}>OE ESF</label>
-                      <DegreeInput value={form.receitaLongeOeEsferico} onChange={(value) => handleFormChange('receitaLongeOeEsferico', value)} className={inputStyle} />
-                    </div>
-                    <div className="col-span-12 md:col-span-2">
-                      <label className={labelStyle}>OE CIL</label>
-                      <DegreeInput value={form.receitaLongeOeCilindrico} onChange={(value) => handleFormChange('receitaLongeOeCilindrico', value)} className={inputStyle} />
-                    </div>
-                    <div className="col-span-12 md:col-span-2">
-                      <label className={labelStyle}>OE EIXO</label>
-                      <input value={form.receitaLongeOeEixo} onChange={(e) => handleFormChange('receitaLongeOeEixo', e.target.value)} className={inputStyle} />
-                    </div>
-                    <div className="col-span-12 md:col-span-3">
+
+                    <div className="col-span-12 md:col-span-4">
                       <label className={labelStyle}>Adição</label>
                       <DegreeInput value={form.receitaAdicao} onChange={(value) => handleFormChange('receitaAdicao', value)} className={inputStyle} />
                     </div>
-                    <div className="col-span-12 md:col-span-3">
-                      <label className={labelStyle}>DNP OD</label>
-                      <input value={form.medidaDnpOd} onChange={(e) => handleFormChange('medidaDnpOd', e.target.value)} className={inputStyle} />
-                    </div>
-                    <div className="col-span-12 md:col-span-3">
-                      <label className={labelStyle}>DNP OE</label>
-                      <input value={form.medidaDnpOe} onChange={(e) => handleFormChange('medidaDnpOe', e.target.value)} className={inputStyle} />
-                    </div>
-                    <div className="col-span-12 md:col-span-3">
+
+                    <div className="col-span-12 md:col-span-4">
                       <label className={labelStyle}>Altura OD / OE</label>
                       <div className="grid grid-cols-2 gap-2">
-                        <input value={form.medidaAlturaOd} onChange={(e) => handleFormChange('medidaAlturaOd', e.target.value)} className={inputStyle} />
-                        <input value={form.medidaAlturaOe} onChange={(e) => handleFormChange('medidaAlturaOe', e.target.value)} className={inputStyle} />
+                        <input aria-label="Altura OD" value={form.medidaAlturaOd} onChange={(e) => handleFormChange('medidaAlturaOd', e.target.value)} className={inputStyle} placeholder="OD" />
+                        <input aria-label="Altura OE" value={form.medidaAlturaOe} onChange={(e) => handleFormChange('medidaAlturaOe', e.target.value)} className={inputStyle} placeholder="OE" />
                       </div>
                     </div>
-                  </div>
+                  </fieldset>
                 </div>
 
                 <div className={`${cardStyle} p-5`}>
@@ -5168,6 +5540,12 @@ export default function EvaluationInterface({
                               <Loader2 className="h-3 w-3 animate-spin" />
                               Preparando argumentos de venda para as lentes indicadas...
                             </span>
+                          </div>
+                        )}
+
+                        {!isGeneratingSalesAssist && !lensSalesAssist && aiRecommendations.length > 0 && (
+                          <div className="mt-4 rounded-2xl border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                            A IA não respondeu com argumentos válidos. Exibindo a orientação segura do sistema.
                           </div>
                         )}
 
@@ -5311,14 +5689,14 @@ export default function EvaluationInterface({
                                 className="mt-4 inline-flex items-center gap-2 rounded-xl bg-indigo-500 px-4 py-2 text-xs font-black uppercase tracking-[0.15em] text-white hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 {isCreatingVenda ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                                Aplicar opção iVision
+                                Usar indicação iVision e iniciar venda/OS
                               </button>
                             </div>
                             <div className="col-span-12 lg:col-span-6 rounded-2xl border border-fuchsia-500/20 bg-fuchsia-500/10 p-4">
                               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-300">
                                 Sugestão IA
                               </p>
-                              {aiTopRecommendation ? (
+                              {aiTopRecommendation && !isGeneratingSalesAssist ? (
                                 <div className="mt-2 flex h-full flex-col">
                                   <div className="flex items-start justify-between gap-3">
                                     <div>
@@ -5343,6 +5721,11 @@ export default function EvaluationInterface({
                                     {isCreatingVenda ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                                     Aplicar esta opção
                                   </button>
+                                </div>
+                              ) : isGeneratingSalesAssist && aiTopRecommendation ? (
+                                <div className="mt-3 inline-flex items-center gap-2 text-sm text-fuchsia-100">
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                  Aguardando os argumentos personalizados da IA...
                                 </div>
                               ) : manualSuggestion ? (
                                 <>
@@ -5379,7 +5762,7 @@ export default function EvaluationInterface({
                           </div>
                         )}
 
-                        {!showIvisionReference && aiRecommendations.length > 0 && (
+                        {!showIvisionReference && aiRecommendations.length > 0 && !isGeneratingSalesAssist && (
                           <div className="mt-4 grid grid-cols-12 gap-4">
                             {aiRecommendations.map((option, index) => (
                               <div
@@ -5391,12 +5774,17 @@ export default function EvaluationInterface({
                                     <div className="flex items-start justify-between gap-3">
                                       <div>
                                         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-                                          Opção {index + 1}
+                                          {option.presentationLabel || `Opção ${index + 1}`}
                                         </p>
                                         <p className="mt-2 text-lg font-black text-white">{buildAiRecommendationLabel(option)}</p>
                                         <p className="mt-2 text-sm font-bold text-fuchsia-100">
                                           {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(option.finalPrice)}
                                         </p>
+                                        {option.budgetDelta != null && option.budgetDelta > 0 && (
+                                          <p className="mt-1 text-xs font-bold text-amber-300">
+                                            Acima do orçamento em {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(option.budgetDelta)}
+                                          </p>
+                                        )}
                                       </div>
                                       <AiOptionInfoButton option={option} />
                                     </div>
@@ -5604,12 +5992,13 @@ export default function EvaluationInterface({
                     )}
                     <div className="col-span-12">
                       <label className={labelStyle}>Lente recomendada</label>
-                      <input value={form.recommendedLensName} onChange={(e) => handleFormChange('recommendedLensName', e.target.value)} className={inputStyle} />
+                      <input value={form.recommendedLensName} readOnly={isIvisionMode && !!ivisionReferenceSuggestion} onChange={(e) => handleFormChange('recommendedLensName', e.target.value)} className={inputStyle} />
                     </div>
                     <div className="col-span-12">
                       <label className={labelStyle}>Resumo comercial</label>
                       <textarea
                         value={form.commercialRecommendationRaw}
+                        readOnly={isIvisionMode && !!ivisionReferenceSuggestion}
                         onChange={(e) => handleFormChange('commercialRecommendationRaw', e.target.value)}
                         className="block min-h-[92px] w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm font-bold text-slate-100 shadow-inner outline-none transition-all placeholder:font-normal placeholder:text-slate-500 focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50"
                         placeholder="Tratamento sugerido, material, observações comerciais..."

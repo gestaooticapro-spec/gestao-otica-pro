@@ -528,6 +528,7 @@ export default function ActionMenuDashboard({
                     )}
                     <div className="rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">
                       <WidgetWhatsAppPendencias
+                        storeId={storeId}
                         pendencias={whatsAppPendencias}
                         humanOverrides={whatsAppHumanOverrides}
                         onOpen={() => setIsWhatsAppModalOpen(true)}

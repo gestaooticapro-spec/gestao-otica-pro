@@ -2,9 +2,9 @@ import type { Json } from '@/lib/database.types'
 
 export const DEFAULT_POST_SALE_FOLLOWUP_DAYS = 7
 export const DEFAULT_POST_SALE_FOLLOWUP_TEMPLATE = [
-  'Ola, {nome}! Aqui e da otica.',
+  'Olá, {nome}! Aqui é da ótica.',
   '',
-  'Ja faz {dias} dias que {paciente} foi retirado e queriamos saber como esta a adaptacao.',
+  'A retirada de {paciente} aconteceu há {dias} dias e queríamos saber como está a adaptação.',
 ].join('\n')
 
 export type WhatsAppPostSaleFollowupSettings = {
@@ -78,8 +78,8 @@ function firstName(fullName: string) {
 }
 
 function patientText(customerName: string, dependentName: string | null) {
-  if (!dependentName || dependentName.trim() === customerName.trim()) return 'seus oculos'
-  return `os oculos de ${dependentName.trim()}`
+  if (!dependentName || dependentName.trim() === customerName.trim()) return 'seus óculos'
+  return `óculos de ${dependentName.trim()}`
 }
 
 function replaceMarkers(template: string, values: Record<string, string>) {
@@ -94,13 +94,27 @@ export function buildPostSaleFollowupMessage(input: {
   customerName: string
   dependentName: string | null
   daysSinceDelivery: number
+  groupedServiceOrderCount?: number
 }) {
-  return replaceMarkers(input.template, {
+  const count = Math.max(1, Number(input.groupedServiceOrderCount || 1))
+  let message = replaceMarkers(input.template, {
     nome: firstName(input.customerName),
     titular: input.customerName,
-    paciente: patientText(input.customerName, input.dependentName),
+    paciente: input.dependentName
+      ? (count > 1 ? `${count} pares de óculos de ${input.dependentName.trim()}` : patientText(input.customerName, input.dependentName))
+      : (count > 1 ? `seus ${count} pares de óculos` : patientText(input.customerName, input.dependentName)),
     dias: `${Math.max(1, input.daysSinceDelivery)}`,
   })
+
+  if (count > 1) {
+    message = message.replace(/\bfoi retirad[oa]\b/gi, 'foram retirados')
+  }
+
+  message = message
+    .replace(/\boculos\b/gi, 'óculos')
+    .replace(/\bqueriamos\b/gi, 'queríamos')
+
+  return message
 }
 
 export function extractPostSaleRating(message: string | null | undefined) {

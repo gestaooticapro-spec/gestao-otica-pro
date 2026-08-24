@@ -10,10 +10,10 @@ export type WhatsAppTemplateContext = {
 }
 
 export const DEFAULT_WHATSAPP_OS_REPLY_TEMPLATES: Record<WhatsAppOsStatusCode, string> = {
-  lens_in_production: 'Oi, {nome}! Seu pedido{paciente} esta em producao no laboratorio no momento.',
-  lens_arrived_needs_frame: 'Oi, {nome}! Boa noticia: a lente{paciente} ja chegou. Quando puder, traga a armacao na loja para fazermos a montagem.',
-  lens_arrived_assembling: 'Oi, {nome}! A lente{paciente} ja chegou e seu oculos entrou na fila de montagem.',
-  ready_for_pickup: 'Oi, {nome}! Seu oculos{paciente} ficou pronto e ja pode ser retirado na loja.',
+  lens_in_production: 'Oi, {nome}! Seu pedido{paciente} está em produção no laboratório no momento.',
+  lens_arrived_needs_frame: 'Oi, {nome}! Boa notícia: a lente{paciente} já chegou. Quando puder, traga a armação na loja para fazermos a montagem.',
+  lens_arrived_assembling: 'Oi, {nome}! A lente{paciente} já chegou e seu óculos entrou na fila de montagem.',
+  ready_for_pickup: 'Oi, {nome}! Seu óculos{paciente} ficou pronto e já pode ser retirado na loja.',
 }
 
 export type WhatsAppOpenOs = {

@@ -3,6 +3,11 @@ import CarnePhantom from '@/components/print/CarnePhantom'
 import { notFound } from 'next/navigation'
 import { isStoreModuleEnabledForStore } from '@/lib/store-modules.server'
 
+// O carnê precisa sempre refletir as parcelas mais recentes, inclusive depois
+// de uma renegociação de vencimento.
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 type FinanciamentoPrint = {
     store?: { settings?: unknown } | null
 }

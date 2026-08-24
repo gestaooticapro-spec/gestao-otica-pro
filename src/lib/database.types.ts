@@ -1336,6 +1336,9 @@ export interface Database {
           outcome_status: 'venda_fechada' | 'cliente_pesquisa' | 'perdido_preco' | 'perdido_produto' | 'perdido_prazo' | null
           panic_reason: string | null
           recommended_items: Json | null
+          interview_snapshot: Json | null
+          recommendation_input: Json | null
+          selected_recommendation: Json | null
           exported_venda_id: number | null
         }
         Insert: {
@@ -1354,6 +1357,9 @@ export interface Database {
           outcome_status?: 'venda_fechada' | 'cliente_pesquisa' | 'perdido_preco' | 'perdido_produto' | 'perdido_prazo' | null
           panic_reason?: string | null
           recommended_items?: Json | null
+          interview_snapshot?: Json | null
+          recommendation_input?: Json | null
+          selected_recommendation?: Json | null
           exported_venda_id?: number | null
           source_document_url?: string | null
           source_document_host?: string | null
@@ -1417,6 +1423,9 @@ export interface Database {
           outcome_status?: 'venda_fechada' | 'cliente_pesquisa' | 'perdido_preco' | 'perdido_produto' | 'perdido_prazo' | null
           panic_reason?: string | null
           recommended_items?: Json | null
+          interview_snapshot?: Json | null
+          recommendation_input?: Json | null
+          selected_recommendation?: Json | null
           exported_venda_id?: number | null
           source_document_url?: string | null
           source_document_host?: string | null

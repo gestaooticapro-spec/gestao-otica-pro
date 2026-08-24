@@ -42,6 +42,7 @@ type EligibleServiceOrderRow = {
   tenant_id: string
   store_id: number
   customer_id: number
+  dependente_id: number | null
   dt_entregue_em: string
   customers?: {
     id: number
@@ -50,6 +51,7 @@ type EligibleServiceOrderRow = {
     fone_movel: string | null
   } | null
   dependentes?: {
+    id: number
     full_name: string | null
   } | null
   post_sales?: Array<{
@@ -57,8 +59,14 @@ type EligibleServiceOrderRow = {
     status: string
   }> | null
   vendas?: {
+    id: number
     status: string | null
   } | null
+}
+
+type PostSaleOrderGroup = {
+  orders: EligibleServiceOrderRow[]
+  representative: EligibleServiceOrderRow
 }
 
 type FollowupRow = {
@@ -67,6 +75,7 @@ type FollowupRow = {
   store_id: number
   channel_id: number
   service_order_id: number
+  covered_service_order_ids: number[]
   customer_id: number
   post_sales_id: number | null
   remote_phone: string
@@ -288,11 +297,12 @@ async function loadEligibleServiceOrders(storeId: number, deliveredUntil: string
       tenant_id,
       store_id,
       customer_id,
+      dependente_id,
       dt_entregue_em,
       customers ( id, full_name, phone, fone_movel ),
-      dependentes ( full_name ),
+      dependentes ( id, full_name ),
       post_sales ( id, status ),
-      vendas ( status )
+      vendas ( id, status )
     `)
     .eq('store_id', storeId)
     .not('dt_entregue_em', 'is', null)
@@ -301,6 +311,44 @@ async function loadEligibleServiceOrders(storeId: number, deliveredUntil: string
 
   if (error) throw error
   return (data ?? []) as EligibleServiceOrderRow[]
+}
+
+function orderBeneficiaryKey(order: EligibleServiceOrderRow) {
+  return order.dependente_id ? `dependent:${order.dependente_id}` : 'customer'
+}
+
+function ordersCanBeGrouped(left: EligibleServiceOrderRow, right: EligibleServiceOrderRow) {
+  if (left.customer_id !== right.customer_id) return false
+  if (orderBeneficiaryKey(left) !== orderBeneficiaryKey(right)) return false
+
+  const leftDelivered = new Date(left.dt_entregue_em).getTime()
+  const rightDelivered = new Date(right.dt_entregue_em).getTime()
+  const withinDeliveryWindow = Number.isFinite(leftDelivered) && Number.isFinite(rightDelivered)
+    && Math.abs(leftDelivered - rightDelivered) <= 14 * 24 * 60 * 60 * 1000
+  const sameSale = Boolean(left.vendas?.id && right.vendas?.id && left.vendas.id === right.vendas.id)
+
+  return sameSale || withinDeliveryWindow
+}
+
+function groupEligibleServiceOrders(orders: EligibleServiceOrderRow[]) {
+  const groups: PostSaleOrderGroup[] = []
+
+  for (const order of orders) {
+    // A primeira OS e a ancora do grupo. Isso impede o encadeamento
+    // transitive de entregas 0/13/26 dias em um grupo de 26 dias.
+    const group = groups.find((candidate) => ordersCanBeGrouped(candidate.orders[0], order))
+    if (group) {
+      group.orders.push(order)
+      group.representative = [...group.orders].sort((left, right) =>
+        new Date(right.dt_entregue_em).getTime() - new Date(left.dt_entregue_em).getTime()
+      )[0]
+      continue
+    }
+
+    groups.push({ orders: [order], representative: order })
+  }
+
+  return groups
 }
 
 async function hasActiveHumanBlock(channelId: number, phone: string) {
@@ -333,7 +381,7 @@ async function closeExpiredPostSaleFollowups(now: Date) {
   const supabase = createAdminClient()
   const deadlineIso = new Date(now.getTime() - POST_SALE_CONTEXT_MS).toISOString()
   const { data: followups, error } = await (supabase.from('whatsapp_post_sale_followups') as any)
-    .select('id, tenant_id, store_id, channel_id, remote_phone, post_sales_id, sent_at')
+    .select('id, tenant_id, store_id, channel_id, remote_phone, post_sales_id, covered_service_order_ids, sent_at')
     .eq('status', 'sent')
     .not('post_sales_id', 'is', null)
     .not('sent_at', 'is', null)
@@ -345,29 +393,28 @@ async function closeExpiredPostSaleFollowups(now: Date) {
   let closedWith4 = 0
   let keptHuman = 0
 
-  for (const followup of (followups ?? []) as Array<Pick<FollowupRow, 'id' | 'tenant_id' | 'store_id' | 'channel_id' | 'remote_phone' | 'post_sales_id' | 'sent_at'>>) {
-    const postSalesId = Number(followup.post_sales_id || 0)
-    if (!postSalesId) continue
+  for (const followup of (followups ?? []) as Array<Pick<FollowupRow, 'id' | 'tenant_id' | 'store_id' | 'channel_id' | 'service_order_id' | 'covered_service_order_ids' | 'remote_phone' | 'post_sales_id' | 'sent_at'>>) {
+    const serviceOrderIds = coveredServiceOrderIds(followup)
 
     if (await hasActiveHumanBlock(followup.channel_id, followup.remote_phone)) {
       keptHuman += 1
       continue
     }
 
-    const [{ data: postSale, error: postSaleError }, { data: interactions, error: interactionsError }] = await Promise.all([
-      (supabase.from('post_sales') as any)
-        .select('id, status')
-        .eq('id', postSalesId)
-        .eq('tenant_id', followup.tenant_id)
-        .eq('store_id', followup.store_id)
-        .maybeSingle(),
-      (supabase.from('post_sales_interactions') as any)
-        .select('resumo')
-        .eq('post_sales_id', postSalesId),
-    ])
-    if (postSaleError) throw postSaleError
+    const { data: postSales, error: postSalesError } = await (supabase.from('post_sales') as any)
+      .select('id, status, service_order_id')
+      .eq('tenant_id', followup.tenant_id)
+      .eq('store_id', followup.store_id)
+      .in('service_order_id', serviceOrderIds)
+    if (postSalesError) throw postSalesError
+    const postSalesIds = (postSales || []).map((postSale: { id: number }) => postSale.id)
+    if (postSalesIds.length === 0) continue
+    const { data: interactions, error: interactionsError } = await (supabase.from('post_sales_interactions') as any)
+      .select('resumo')
+      .in('post_sales_id', postSalesIds)
     if (interactionsError) throw interactionsError
-    if (!postSale?.id || postSale.status !== 'Em Acompanhamento') continue
+    const activePostSales = (postSales || []).filter((postSale: { status: string }) => postSale.status === 'Em Acompanhamento')
+    if (activePostSales.length === 0) continue
 
     const outcome = decidePostSaleDeadlineOutcome((interactions ?? []).map((interaction: { resumo?: string | null }) => interaction.resumo))
     if (outcome === 'keep_human') {
@@ -380,16 +427,18 @@ async function closeExpiredPostSaleFollowups(now: Date) {
       ? 'Nota 4 atribuída automaticamente: cliente respondeu positivamente ao pós-venda via WhatsApp, mas não informou uma nota numérica em 7 dias.'
       : 'Sem resposta ao pós-venda via WhatsApp.'
 
-    const closed = await concludePostSaleAutomatically({
-      tenantId: followup.tenant_id,
-      storeId: followup.store_id,
-      postSalesId,
-      rating,
-      finalObservation,
-    })
-    if (closed) {
-      if (rating === 4) closedWith4 += 1
-      else closedWith3 += 1
+    for (const postSale of activePostSales as Array<{ id: number }>) {
+      const closed = await concludePostSaleAutomatically({
+        tenantId: followup.tenant_id,
+        storeId: followup.store_id,
+        postSalesId: postSale.id,
+        rating,
+        finalObservation,
+      })
+      if (closed) {
+        if (rating === 4) closedWith4 += 1
+        else closedWith3 += 1
+      }
     }
   }
 
@@ -462,13 +511,38 @@ async function scheduleFollowups(now: Date) {
 
     const deliveredUntil = daysAgoDateString(now, settings.days_after_delivery || DEFAULT_POST_SALE_FOLLOWUP_DAYS)
     const serviceOrders = await loadEligibleServiceOrders(channel.store_id, deliveredUntil)
-    let channelSequence = 0
+    const serviceOrderIds = serviceOrders.map((serviceOrder) => serviceOrder.id)
+    const existingFollowupOrderIds = new Set<number>()
+    if (serviceOrderIds.length > 0) {
+      const { data: existingFollowups, error: existingFollowupsError } = await (supabase.from('whatsapp_post_sale_followups') as any)
+        .select('covered_service_order_ids')
+        .eq('store_id', channel.store_id)
+        .overlaps('covered_service_order_ids', serviceOrderIds)
 
-    for (const serviceOrder of serviceOrders) {
+      if (existingFollowupsError) throw existingFollowupsError
+      for (const existing of existingFollowups || []) {
+        for (const serviceOrderId of Array.isArray(existing.covered_service_order_ids) ? existing.covered_service_order_ids : []) {
+          if (Number.isFinite(serviceOrderId)) existingFollowupOrderIds.add(Number(serviceOrderId))
+        }
+      }
+    }
+
+    const eligibleOrders = serviceOrders.filter((serviceOrder) => {
       const postSale = serviceOrder.post_sales?.[0]
       const saleStatus = serviceOrder.vendas?.status || null
-      if (saleStatus === 'Devolvida' || saleStatus === 'Cancelada') continue
-      if (postSale?.status === 'Concluido' || postSale?.status === 'Em Acompanhamento') continue
+      return saleStatus !== 'Devolvida'
+        && saleStatus !== 'Cancelada'
+        && postSale?.status !== 'Concluido'
+        && postSale?.status !== 'Em Acompanhamento'
+        && !existingFollowupOrderIds.has(serviceOrder.id)
+    })
+
+    const groupedOrders = groupEligibleServiceOrders(eligibleOrders)
+    let channelSequence = 0
+
+    for (const group of groupedOrders) {
+      const serviceOrder = group.representative
+      const postSale = serviceOrder.post_sales?.[0]
 
       const customerName = serviceOrder.customers?.full_name || 'Cliente'
       const phone = toEvolutionNumber(serviceOrder.customers?.fone_movel || serviceOrder.customers?.phone)
@@ -486,6 +560,7 @@ async function scheduleFollowups(now: Date) {
         customerName,
         dependentName: serviceOrder.dependentes?.full_name ?? null,
         daysSinceDelivery: diffDays,
+        groupedServiceOrderCount: group.orders.length,
       })
 
       const scheduledFor = addPostSaleSlots(firstSlot, channelSequence, channel.stores?.settings)
@@ -495,6 +570,7 @@ async function scheduleFollowups(now: Date) {
           store_id: channel.store_id,
           channel_id: channel.id,
           service_order_id: serviceOrder.id,
+          covered_service_order_ids: group.orders.map((item) => item.id),
           customer_id: serviceOrder.customer_id,
           post_sales_id: postSale?.id || null,
           remote_phone: phone,
@@ -505,6 +581,11 @@ async function scheduleFollowups(now: Date) {
           payload: {
             deliveryDate: deliveredAt,
             daysSinceDelivery: diffDays,
+            groupedServiceOrderIds: group.orders.map((item) => item.id),
+            groupedServiceOrderCount: group.orders.length,
+            groupedBeneficiary: serviceOrder.dependente_id
+              ? { type: 'dependent', id: serviceOrder.dependente_id, name: serviceOrder.dependentes?.full_name ?? null }
+              : { type: 'customer', id: serviceOrder.customer_id, name: customerName },
           },
         })
 
@@ -577,19 +658,40 @@ async function ensureSentInteraction(input: {
   if (error) throw error
 }
 
+function coveredServiceOrderIds(followup: Pick<FollowupRow, 'service_order_id' | 'covered_service_order_ids'>) {
+  const ids = Array.isArray(followup.covered_service_order_ids) && followup.covered_service_order_ids.length > 0
+    ? followup.covered_service_order_ids
+    : [followup.service_order_id]
+  return [...new Set(ids.map(Number).filter((id) => Number.isFinite(id) && id > 0))]
+}
+
+async function ensureGroupPostSaleTrackings(followup: FollowupRow) {
+  const postSalesIds: number[] = []
+  for (const serviceOrderId of coveredServiceOrderIds(followup)) {
+    const tracking = await ensurePostSaleTracking({
+      tenantId: followup.tenant_id,
+      storeId: followup.store_id,
+      serviceOrderId,
+      interactionSummary: 'Disparo automatico de pos-venda via WhatsApp.',
+      skipInteraction: true,
+    })
+    postSalesIds.push(tracking.postSalesId)
+  }
+  return [...new Set(postSalesIds)]
+}
+
 async function finalizeSentFollowup(input: {
   supabase: ReturnType<typeof createAdminClient>
   followup: FollowupRow
   instanceKey: string
   postSalesId: number
+  groupedPostSalesIds?: number[]
   sentAtIso: string
   fromStatuses?: Array<FollowupRow['status']>
 }) {
-  await ensureSentInteraction({
-    supabase: input.supabase,
-    followup: input.followup,
-    postSalesId: input.postSalesId,
-  })
+  for (const postSalesId of [...new Set([input.postSalesId, ...(input.groupedPostSalesIds || [])])]) {
+    await ensureSentInteraction({ supabase: input.supabase, followup: input.followup, postSalesId })
+  }
 
   const humanBlockActive = await hasActiveHumanBlock(input.followup.channel_id, input.followup.remote_phone)
   if (!humanBlockActive) {
@@ -637,7 +739,7 @@ async function recoverStaleSendingFollowups(now: Date) {
   const supabase = createAdminClient()
   const cutoff = new Date(now.getTime() - STALE_SENDING_MS).toISOString()
   const { data, error } = await (supabase.from('whatsapp_post_sale_followups') as any)
-    .select('id, tenant_id, store_id, channel_id, service_order_id, customer_id, post_sales_id, remote_phone, delivered_at, scheduled_for, status, message_text, outbound_message_id, payload, whatsapp_store_channels(instance_key), stores(settings)')
+    .select('id, tenant_id, store_id, channel_id, service_order_id, covered_service_order_ids, customer_id, post_sales_id, remote_phone, delivered_at, scheduled_for, status, message_text, outbound_message_id, payload, whatsapp_store_channels(instance_key), stores(settings)')
     .eq('status', 'sending')
     .lte('updated_at', cutoff)
     .limit(DEFAULT_DISPATCH_LIMIT * 10)
@@ -700,13 +802,15 @@ async function recoverStaleSendingFollowups(now: Date) {
             storeId: followup.store_id,
             serviceOrderId: followup.service_order_id,
             interactionSummary: 'Disparo automatico de pos-venda via WhatsApp.',
-            skipInteraction: true,
-          })
+          skipInteraction: true,
+        })
+      const groupedPostSalesIds = await ensureGroupPostSaleTrackings(followup)
       await finalizeSentFollowup({
         supabase,
         followup,
         instanceKey,
         postSalesId: tracking.postSalesId,
+        groupedPostSalesIds,
         sentAtIso: outboundSentAt || now.toISOString(),
       })
       continue
@@ -739,7 +843,7 @@ async function recoverStaleSendingFollowups(now: Date) {
 async function recoverFailedSentFollowups(now: Date) {
   const supabase = createAdminClient()
   const { data, error } = await (supabase.from('whatsapp_post_sale_followups') as any)
-    .select('id, tenant_id, store_id, channel_id, service_order_id, customer_id, post_sales_id, remote_phone, delivered_at, scheduled_for, status, message_text, outbound_message_id, payload, whatsapp_store_channels(instance_key), stores(settings)')
+    .select('id, tenant_id, store_id, channel_id, service_order_id, covered_service_order_ids, customer_id, post_sales_id, remote_phone, delivered_at, scheduled_for, status, message_text, outbound_message_id, payload, whatsapp_store_channels(instance_key), stores(settings)')
     .eq('status', 'failed')
     .not('outbound_message_id', 'is', null)
     .limit(DEFAULT_DISPATCH_LIMIT * 10)
@@ -766,8 +870,9 @@ async function recoverFailedSentFollowups(now: Date) {
             storeId: followup.store_id,
             serviceOrderId: followup.service_order_id,
             interactionSummary: 'Disparo automatico de pos-venda via WhatsApp.',
-            skipInteraction: true,
-          })
+          skipInteraction: true,
+        })
+      const groupedPostSalesIds = await ensureGroupPostSaleTrackings(followup)
 
       await finalizeSentFollowup({
         supabase,
@@ -777,6 +882,7 @@ async function recoverFailedSentFollowups(now: Date) {
         },
         instanceKey,
         postSalesId: tracking.postSalesId,
+        groupedPostSalesIds,
         sentAtIso: outbound.sent_at || now.toISOString(),
         fromStatuses: ['failed'],
       })
@@ -789,7 +895,7 @@ async function recoverFailedSentFollowups(now: Date) {
 async function dispatchScheduledFollowups(now: Date, limit = DEFAULT_DISPATCH_LIMIT) {
   const supabase = createAdminClient()
   const { data, error } = await (supabase.from('whatsapp_post_sale_followups') as any)
-    .select('id, tenant_id, store_id, channel_id, service_order_id, customer_id, post_sales_id, remote_phone, delivered_at, scheduled_for, status, message_text, outbound_message_id, payload, whatsapp_store_channels(instance_key), stores(settings)')
+    .select('id, tenant_id, store_id, channel_id, service_order_id, covered_service_order_ids, customer_id, post_sales_id, remote_phone, delivered_at, scheduled_for, status, message_text, outbound_message_id, payload, whatsapp_store_channels(instance_key), stores(settings)')
     .eq('status', 'scheduled')
     .lte('scheduled_for', now.toISOString())
     .order('scheduled_for', { ascending: true })
@@ -901,6 +1007,7 @@ async function dispatchScheduledFollowups(now: Date, limit = DEFAULT_DISPATCH_LI
         interactionSummary: 'Disparo automatico de pos-venda via WhatsApp.',
         skipInteraction: true,
       })
+      const groupedPostSalesIds = await ensureGroupPostSaleTrackings(followup)
 
       const outboundPayload = {
         followupId: followup.id,
@@ -1014,6 +1121,7 @@ async function dispatchScheduledFollowups(now: Date, limit = DEFAULT_DISPATCH_LI
         },
         instanceKey,
         postSalesId: tracking.postSalesId,
+        groupedPostSalesIds,
         sentAtIso: confirmedDelivery?.sent_at || new Date().toISOString(),
       })
 
@@ -1048,6 +1156,141 @@ async function dispatchScheduledFollowups(now: Date, limit = DEFAULT_DISPATCH_LI
     sent,
     failed,
   }
+}
+
+export type ManualPostSaleRequeueResult = {
+  requeuedFailures: number
+  scheduledMissingAttempts: number
+  skipped: number
+}
+
+export async function requeuePostSalesForDailyHealth(storeId: number): Promise<ManualPostSaleRequeueResult> {
+  const supabase = createAdminClient()
+  const now = new Date()
+  const channels = (await loadActiveChannels())
+    .filter((channel) => channel.store_id === storeId && followupEnabledFromStoreSettings(channel.stores?.settings))
+  const channel = channels[0]
+  if (!channel) throw new Error('Nao ha um canal de WhatsApp conectado com o pos-venda automatico habilitado.')
+
+  const { data: postSales, error: postSalesError } = await (supabase.from('post_sales') as any)
+    .select('id,service_order_id,status')
+    .eq('store_id', storeId)
+    .eq('status', 'Em Acompanhamento')
+  if (postSalesError) throw postSalesError
+
+  const openPostSales = postSales || []
+  if (!openPostSales.length) return { requeuedFailures: 0, scheduledMissingAttempts: 0, skipped: 0 }
+
+  const postSaleIds = openPostSales.map((postSale: { id: number }) => postSale.id)
+  const { data: followups, error: followupsError } = await (supabase.from('whatsapp_post_sale_followups') as any)
+    .select('id,post_sales_id,channel_id,status,scheduled_for,error_message,payload')
+    .eq('store_id', storeId)
+    .in('post_sales_id', postSaleIds)
+    .order('created_at', { ascending: false })
+  if (followupsError) throw followupsError
+
+  const latestFollowupByPostSale = new Map<number, any>()
+  for (const followup of followups || []) {
+    if (followup.post_sales_id && !latestFollowupByPostSale.has(followup.post_sales_id)) {
+      latestFollowupByPostSale.set(followup.post_sales_id, followup)
+    }
+  }
+
+  let requeuedFailures = 0
+  let scheduledMissingAttempts = 0
+  let skipped = 0
+  let slotOffset = 0
+
+  for (const postSale of openPostSales) {
+    const followup = latestFollowupByPostSale.get(postSale.id)
+    if (followup?.status === 'failed') {
+      const scheduledFor = addPostSaleSlots(nextPostSaleBusinessSlotForSettings(now, channel.stores?.settings), slotOffset, channel.stores?.settings)
+      const previousPayload = followup.payload && typeof followup.payload === 'object' && !Array.isArray(followup.payload) ? followup.payload : {}
+      const { data, error } = await (supabase.from('whatsapp_post_sale_followups') as any)
+        .update({
+          status: 'scheduled',
+          scheduled_for: scheduledFor.toISOString(),
+          error_message: followup.error_message ? `Reagendado manualmente. Erro anterior: ${followup.error_message}` : 'Reagendado manualmente pela Central Diaria.',
+          payload: { ...previousPayload, manualRequeueAt: now.toISOString() },
+          updated_at: now.toISOString(),
+        })
+        .eq('id', followup.id)
+        .eq('status', 'failed')
+        .select('id')
+        .maybeSingle()
+      if (error) throw error
+      if (data?.id) {
+        requeuedFailures += 1
+        slotOffset += 1
+      } else {
+        skipped += 1
+      }
+      continue
+    }
+
+    if (followup) continue
+
+    const { data: serviceOrder, error: serviceOrderError } = await (supabase.from('service_orders') as any)
+      .select('id,tenant_id,store_id,customer_id,dependente_id,dt_entregue_em,customers(id,full_name,phone,fone_movel),dependentes(id,full_name),vendas(id,status)')
+      .eq('id', postSale.service_order_id)
+      .eq('store_id', storeId)
+      .maybeSingle()
+    if (serviceOrderError) throw serviceOrderError
+
+    const saleStatus = serviceOrder?.vendas?.status || null
+    const deliveredAt = String(serviceOrder?.dt_entregue_em || '')
+    const deliveredMs = new Date(deliveredAt).getTime()
+    const settings = followupSettingsFromChannel(channel)
+    const daysSinceDelivery = Number.isFinite(deliveredMs) ? Math.floor((now.getTime() - deliveredMs) / 86_400_000) : -1
+    const phone = toEvolutionNumber(serviceOrder?.customers?.fone_movel || serviceOrder?.customers?.phone)
+    if (!serviceOrder || !settings || !phone || !deliveredAt || daysSinceDelivery < settings.days_after_delivery || saleStatus === 'Devolvida' || saleStatus === 'Cancelada') {
+      skipped += 1
+      continue
+    }
+
+    const { data: existingCoverage, error: coverageError } = await (supabase.from('whatsapp_post_sale_followups') as any)
+      .select('id')
+      .eq('store_id', storeId)
+      .overlaps('covered_service_order_ids', [serviceOrder.id])
+      .limit(1)
+    if (coverageError) throw coverageError
+    if (existingCoverage?.length) {
+      skipped += 1
+      continue
+    }
+
+    const scheduledFor = addPostSaleSlots(nextPostSaleBusinessSlotForSettings(now, channel.stores?.settings), slotOffset, channel.stores?.settings)
+    const messageText = buildPostSaleFollowupMessage({
+      template: settings.template,
+      customerName: serviceOrder.customers?.full_name || 'Cliente',
+      dependentName: serviceOrder.dependentes?.full_name ?? null,
+      daysSinceDelivery: Math.max(1, daysSinceDelivery),
+    })
+    const { error: insertError } = await (supabase.from('whatsapp_post_sale_followups') as any).insert({
+      tenant_id: serviceOrder.tenant_id,
+      store_id: storeId,
+      channel_id: channel.id,
+      service_order_id: serviceOrder.id,
+      covered_service_order_ids: [serviceOrder.id],
+      customer_id: serviceOrder.customer_id,
+      post_sales_id: postSale.id,
+      remote_phone: phone,
+      delivered_at: deliveredAt.slice(0, 10),
+      scheduled_for: scheduledFor.toISOString(),
+      status: 'scheduled',
+      message_text: messageText,
+      payload: { deliveryDate: deliveredAt.slice(0, 10), daysSinceDelivery, manualRequeueAt: now.toISOString() },
+    })
+    if (insertError?.code === '23505') {
+      skipped += 1
+      continue
+    }
+    if (insertError) throw insertError
+    scheduledMissingAttempts += 1
+    slotOffset += 1
+  }
+
+  return { requeuedFailures, scheduledMissingAttempts, skipped }
 }
 
 export type PostSaleFollowupJobResult = {

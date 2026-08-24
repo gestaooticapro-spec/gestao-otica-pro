@@ -64,16 +64,16 @@ function qrImageSource(qrCodeBase64: string | null) {
 const automationPlaceholders = [
   {
     id: 'collection',
-    title: 'Fazer cobranca',
-    description: 'Cobranca de parcelas em atraso com texto ajustavel.',
-    placeholder: 'Ex.: Oi, {nome}! Identificamos uma parcela em aberto e estamos entrando em contato para ajudar na regularizacao.',
+    title: 'Fazer cobrança',
+    description: 'Cobrança de parcelas em atraso com texto ajustável.',
+    placeholder: 'Ex.: Oi, {nome}! Identificamos uma parcela em aberto e estamos entrando em contato para ajudar na regularização.',
     icon: HandCoins,
   },
   {
     id: 'birthday_greeting',
-    title: 'Enviar felicitacoes de aniversario',
-    description: 'Mensagem de aniversario da loja para o cliente.',
-    placeholder: 'Ex.: Oi, {nome}! Toda a equipe da loja deseja um aniversario cheio de saude e alegrias.',
+    title: 'Enviar felicitações de aniversário',
+    description: 'Mensagem de aniversário da loja para o cliente.',
+    placeholder: 'Ex.: Oi, {nome}! Toda a equipe da loja deseja um aniversário cheio de saúde e alegrias.',
     icon: Cake,
   },
 ] as const
@@ -262,7 +262,7 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
 
   const handleDisconnect = () => {
     if (!channel) return
-    const confirmed = window.confirm('Desconectar este WhatsApp? Sera necessario gerar e ler um novo QR Code para conectar novamente.')
+    const confirmed = window.confirm('Desconectar este WhatsApp? Será necessário gerar e ler um novo QR Code para conectar novamente.')
     if (!confirmed) return
 
     setMessage(null)
@@ -496,7 +496,7 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
               </div>
             </div>
             <p className="mt-4 max-w-2xl text-sm leading-relaxed text-slate-300">
-              Conectar o WhatsApp da loja pra atendimento automatizado.
+              Conecte o WhatsApp da loja para atendimento automatizado.
             </p>
           </div>
 
@@ -695,7 +695,7 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
               {automationEnabled ? 'WhatsApp operando normalmente' : 'WhatsApp temporariamente pausado'}
             </h3>
             <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-300">
-              Este botao nao derruba a conexao nem exige novo QR Code. Ele apenas liga ou desliga o fluxo automatico da loja.
+              Este botão não derruba a conexão nem exige novo QR Code. Ele apenas liga ou desliga o fluxo automático da loja.
             </p>
           </div>
 
@@ -722,12 +722,12 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
                 <PartyPopper className="h-5 w-5 text-fuchsia-200" />
               </div>
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-200/70">Automacoes reais</p>
-                <h3 className="text-lg font-black text-white">Configuracoes que ja funcionam</h3>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-200/70">Automações reais</p>
+                <h3 className="text-lg font-black text-white">Configurações que já funcionam</h3>
               </div>
             </div>
             <p className="mt-3 max-w-3xl text-sm leading-relaxed text-slate-300">
-              Estes cards ja carregam e salvam configuracoes da loja. Use Expandir para ajustar textos e detalhes sem deixar tudo aberto na tela.
+              Estes cards já carregam e salvam configurações da loja. Use Expandir para ajustar textos e detalhes sem deixar tudo aberto na tela.
             </p>
           </div>
 
@@ -744,13 +744,13 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h4 className="text-sm font-black text-white">So responder sobre OS</h4>
+                  <h4 className="text-sm font-black text-white">Só responder sobre OS</h4>
                   <span className="rounded-lg border border-emerald-300/20 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-100">
-                    Configuravel
+                    Configurável
                   </span>
                 </div>
                 <p className="mt-1 text-xs leading-relaxed text-slate-300">
-                  Este card controla a automacao que ja existe hoje. Aqui a loja define se quer responder consultas de OS e quais textos devem ser enviados em cada status.
+                  Este card controla a automação que já existe hoje. Aqui a loja define se quer responder consultas de OS e quais textos devem ser enviados em cada status.
                 </p>
               </div>
             </div>
@@ -783,7 +783,7 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
                 {[
                   {
                     key: 'lens_in_production',
-                    label: 'Lente em producao',
+                    label: 'Lente em produção',
                   },
                   {
                     key: 'lens_arrived_needs_frame',
@@ -795,7 +795,7 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
                   },
                   {
                     key: 'ready_for_pickup',
-                    label: 'Oculos pronto',
+                    label: 'Óculos pronto',
                   },
                 ].map((item) => (
                   <div key={item.key} className="rounded-xl border border-white/10 bg-black/20 p-4">
@@ -823,7 +823,7 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
 
               <div className="mt-4 flex items-center justify-between gap-4">
                 <p className="text-[11px] leading-relaxed text-slate-400">
-                  Marcadores disponiveis: <span className="font-mono text-slate-200">{'{nome}'}</span> usa o primeiro nome do cliente.
+                  Marcadores disponíveis: <span className="font-mono text-slate-200">{'{nome}'}</span> usa o primeiro nome do cliente.
                   {' '}<span className="font-mono text-slate-200">{'{paciente}'}</span> adiciona o nome do dependente quando a OS estiver em nome de outra pessoa.
                 </p>
                 <button
@@ -850,7 +850,7 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
                 <div className="flex items-center gap-2">
                   <h4 className="text-sm font-black text-white">Enviar aviso de vencimento</h4>
                   <span className="rounded-lg border border-amber-300/20 bg-amber-400/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.2em] text-amber-100">
-                    Configuravel
+                    Configurável
                   </span>
                 </div>
                 <p className="mt-1 text-xs leading-relaxed text-slate-300">
@@ -924,13 +924,13 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h4 className="text-sm font-black text-white">Pos-venda automatico</h4>
+                  <h4 className="text-sm font-black text-white">Pós-venda automático</h4>
                   <span className="rounded-lg border border-rose-300/20 bg-rose-400/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.2em] text-rose-100">
-                    Configuravel
+                    Configurável
                   </span>
                 </div>
                 <p className="mt-1 text-xs leading-relaxed text-slate-300">
-                  Dispara um primeiro acompanhamento por WhatsApp depois da entrega e tenta coletar a nota de adaptacao sem atravessar o atendimento humano.
+                  Dispara um primeiro acompanhamento por WhatsApp depois da entrega e tenta coletar a nota de adaptação sem atravessar o atendimento humano.
                 </p>
               </div>
             </div>
@@ -977,7 +977,7 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
 
                 <div className="rounded-xl border border-white/10 bg-black/20 p-4">
                   <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
-                    Dias apos entrega
+                    Dias após entrega
                   </label>
                   <input
                     type="number"
@@ -995,7 +995,7 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
                   />
 
                   <p className="mt-4 rounded-xl border border-white/10 bg-slate-950/40 p-3 text-xs leading-relaxed text-slate-300">
-                    Os envios ocorrem sempre em horario comercial, nos intervalos de 9h15, 9h45 e assim por diante.
+                    Os envios ocorrem sempre em horário comercial, nos intervalos de 9h15, 9h45 e assim por diante.
                   </p>
                 </div>
               </div>
@@ -1011,7 +1011,7 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
                   className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-rose-400 px-5 text-xs font-black uppercase tracking-wider text-rose-950 shadow-lg shadow-rose-500/20 transition hover:bg-rose-300 disabled:opacity-50"
                 >
                   {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardCheck className="h-4 w-4" />}
-                  Salvar pos-venda
+                  Salvar pós-venda
                 </button>
               </div>
             </>
@@ -1028,11 +1028,11 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
                 <div className="flex items-center gap-2">
                   <h4 className="text-sm font-black text-white">Responder com IA</h4>
                   <span className="rounded-lg border border-cyan-300/20 bg-cyan-400/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.2em] text-cyan-100">
-                    Configuravel
+                  Configurável
                   </span>
                 </div>
                 <p className="mt-1 text-xs leading-relaxed text-slate-300">
-                  Quando ativada, perguntas fora dos modulos objetivos deixam de cair no menu antigo e ficam reservadas para o fluxo inteligente.
+                  Quando ativada, perguntas fora dos módulos objetivos deixam de cair no menu antigo e ficam reservadas para o fluxo inteligente.
                 </p>
               </div>
             </div>
@@ -1078,7 +1078,7 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
 
               <div className="mt-4 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <p className="text-[11px] leading-relaxed text-slate-400">
-                  O texto base sera usado como diretriz do atendimento inteligente nas proximas etapas do fluxo.
+                  O texto base será usado como diretriz do atendimento inteligente nas próximas etapas do fluxo.
                 </p>
                 <button
                   type="button"
@@ -1103,12 +1103,12 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
                 <PartyPopper className="h-5 w-5 text-fuchsia-200" />
               </div>
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-200/70">Futuras automacoes</p>
-                <h3 className="text-lg font-black text-white">Placeholders das proximas ideias</h3>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-200/70">Futuras automações</p>
+                <h3 className="text-lg font-black text-white">Placeholders das próximas ideias</h3>
               </div>
             </div>
             <p className="mt-3 max-w-3xl text-sm leading-relaxed text-slate-300">
-              Esta area serve como mapa visual do que ainda vamos implementar. Os toggles e textos abaixo ainda nao disparam nada de verdade.
+              Esta área serve como mapa visual do que ainda vamos implementar. Os toggles e textos abaixo ainda não disparam nada de verdade.
             </p>
           </div>
 
@@ -1183,7 +1183,7 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
                     Placeholder
                   </span>
                   <span className="text-[10px] text-slate-500">
-                    Configuracao visual por enquanto
+                    Configuração visual por enquanto
                   </span>
                 </div>
               </section>

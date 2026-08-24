@@ -1,7 +1,27 @@
 import type { RecommendationCaseInput } from '@/lib/server/lens-recommendation'
 
 export type EvaluationCaseForm = {
+  routinePrimary?: string | null
+  routinePrimaryIntensity?: string | null
+  routineSecondary?: string | null
+  routineSecondaryIntensity?: string | null
+  currentLensSatisfaction?: string | null
+  currentLensSource?: string | null
+  currentLensImprovements?: string | null
+  additionUse?: string | null
+  digitalFatigueSymptom?: string | null
+  myopiaControlIntent?: string | null
+  solarPrimaryObjective?: string | null
+  rejectMultifocal?: string | null
+  rejectBifocal?: string | null
+  rejectOccupational?: string | null
+  rejectTransitions?: string | null
+  rejectAntireflexo?: string | null
+  rejectBlueUv?: string | null
+  rejectedBrands?: string | null
+  rejectedLabs?: string | null
   ageYears?: string | null
+  prescriptionDate?: string | null
   marcaAtual?: string | null
   tipoLenteAtual?: string | null
   usaMultifocalHoje?: string | null
@@ -88,12 +108,29 @@ export function buildRecommendationCaseInput(form: EvaluationCaseForm): Recommen
   const wantsOfficeLens = form.objetivoCompra === 'oculos_escritorio' || form.objetivoCompra === 'ocupacional_escritorio'
   const hasAddition = adicao !== null && adicao > 0
 
-  if (computador >= 3) rotina.push('computador')
-  if (celular >= 2) rotina.push('celular')
-  if (leitura >= 2) rotina.push('leitura')
-  if (dirigir >= 2) rotina.push('dirigir')
-  if (sol >= 2 || externo >= 2) rotina.push('sol')
-  if (hasAddition || (age !== null && age >= 45)) {
+  const intensityWeight: Record<string, number> = { baixa: 1, moderada: 2, alta: 3 }
+  const structuredUses = [
+    [form.routinePrimary, form.routinePrimaryIntensity],
+    [form.routineSecondary, form.routineSecondaryIntensity],
+  ] as const
+  const hasGeneralUse = structuredUses.some(([use]) => use === 'geral')
+  const hasComputerUse = structuredUses.some(([use]) => use === 'computador_escritorio')
+  const hasReadingUse = structuredUses.some(([use]) => use === 'leitura_perto')
+  const hasDrivingUse = structuredUses.some(([use]) => use === 'dirigir')
+  const hasOutdoorUse = structuredUses.some(([use]) => use === 'externo_sol')
+  for (const [use, intensity] of structuredUses) {
+    if (!use || use === 'nao_informado') continue
+    const tag = use === 'computador_escritorio' ? 'computador' : use === 'leitura_perto' ? 'leitura' : use === 'externo_sol' ? 'sol' : use
+    rotina.push(tag, `intensidade_${intensityWeight[intensity || ''] || 1}:${tag}`)
+  }
+  if (!structuredUses.some(([use]) => use && use !== 'nao_informado') && computador >= 3) rotina.push('computador')
+  if (!structuredUses.some(([use]) => use && use !== 'nao_informado')) {
+    if (celular >= 2) rotina.push('celular')
+    if (leitura >= 2) rotina.push('leitura')
+    if (dirigir >= 2) rotina.push('dirigir')
+    if (sol >= 2 || externo >= 2) rotina.push('sol')
+  }
+  if (hasAddition) {
     objetivos.push('presbiopia')
     beneficios.push('adaptacao_rapida', 'conforto_visual')
   }
@@ -108,14 +145,13 @@ export function buildRecommendationCaseInput(form: EvaluationCaseForm): Recommen
   if (form.queixaDirigirNoite === 'sim') rotina.push('dirigir_noite')
   if (form.queixaSensibilidadeLuz === 'sim') {
     beneficios.push('conforto_luz')
-    if (form.prefereTransitions !== 'nao') preferencias.push('transitions')
   }
   if (form.prefereTransitions === 'sim') { preferencias.push('transitions'); beneficios.push('conforto_luz') }
   if (form.prefereBlueUv === 'sim') { preferencias.push('blue_uv'); beneficios.push('conforto_digital') }
   if (age !== null && age <= 14) rotina.push('crianca')
   if (form.queixaCriancaAtiva === 'sim') { rotina.push('crianca_ativa'); beneficios.push('resistencia') }
   if (form.queixaQuebraOculos === 'sim') { rotina.push('risco_quebra'); beneficios.push('resistencia') }
-  if (form.queixaProgressaoRapida === 'sim') { rotina.push('controle_miopia'); objetivos.push('controle_miopia'); beneficios.push('controle_miopia') }
+  if (form.queixaProgressaoRapida === 'sim' && form.myopiaControlIntent === 'sim' && age !== null && age <= 17) { rotina.push('controle_miopia'); objetivos.push('controle_miopia'); beneficios.push('controle_miopia') }
   if (wantsOfficeLens && hasAddition) { objetivos.push('ocupacional'); rotina.push('computador'); beneficios.push('conforto_visual', 'conforto_digital', 'campo_intermediario') }
   const alreadyUsesMultifocal = form.usaMultifocalHoje === 'sim' || form.tipoLenteAtual === 'multifocal'
   if (hasAddition && !wantsOfficeLens && (!alreadyUsesMultifocal || form.objetivoCompra === 'primeira_multifocal')) {
@@ -138,6 +174,49 @@ export function buildRecommendationCaseInput(form: EvaluationCaseForm): Recommen
   if (form.principalIncomodoAtual === 'preco') { objetivos.push('custo_beneficio'); beneficios.push('custo_beneficio') }
   if (form.aceitaPremium === 'sim') { objetivos.push('premium'); beneficios.push('qualidade_optica') }
   if (form.aceitaPremium === 'nao') rejeitados.push('premium')
+  if (form.rejectTransitions === 'sim') rejeitados.push('transitions')
+  if (form.rejectAntireflexo === 'sim') rejeitados.push('antirreflexo')
+  if (form.rejectBlueUv === 'sim') rejeitados.push('blue_uv')
+
+  const improvements = (form.currentLensImprovements || '').split(',').map((item) => item.trim()).filter(Boolean)
+  for (const improvement of improvements) {
+    if (improvement === 'adaptacao_conforto') beneficios.push('adaptacao_rapida', 'conforto_visual')
+    if (improvement === 'longe') beneficios.push('nitidez_longe', 'campo_visual_amplo')
+    if (improvement === 'perto') beneficios.push('campo_perto', 'conforto_proximo')
+    if (improvement === 'intermediario') beneficios.push('campo_intermediario', 'conforto_digital')
+    if (improvement === 'reflexos_noite') beneficios.push('antirreflexo', 'conforto_visual')
+    if (improvement === 'luz_sol') beneficios.push('conforto_luz')
+    if (improvement === 'espessura_peso') beneficios.push('estetica', 'lente_fina')
+    if (improvement === 'durabilidade') beneficios.push('resistencia')
+    if (improvement === 'preco') beneficios.push('custo_beneficio')
+  }
+  if (hasAddition && !hasGeneralUse) {
+    if (hasComputerUse && ['especifico_perto_computador', 'exclusivo_computador'].includes(form.additionUse || '')) {
+      objetivos.push('uso_perto_especifico', 'ocupacional')
+      rotina.push('computador', 'escritorio', 'intermediario')
+      beneficios.push('campo_intermediario', 'ergonomia_visual')
+    }
+    if (hasReadingUse && form.additionUse === 'exclusivo_perto') {
+      objetivos.push('uso_perto_especifico', 'ocupacional')
+      rotina.push('leitura', 'perto')
+      beneficios.push('campo_perto', 'conforto_proximo')
+    }
+    if (hasDrivingUse && form.additionUse === 'especifico_direcao') {
+      objetivos.push('ocupacional')
+      rotina.push('dirigir', 'longe', 'uso_externo')
+      beneficios.push('conforto_ao_dirigir', 'campo_visual_ao_dirigir')
+    }
+    if (hasOutdoorUse && form.additionUse === 'solar_exclusivo') {
+      objetivos.push('oculos_sol_grau')
+      rotina.push('sol', 'uso_externo')
+      beneficios.push('conforto_luz')
+    }
+  }
+  if (!hasAddition && age !== null && age >= 30 && age <= 44 && form.digitalFatigueSymptom === 'sim' && rotina.some((tag) => tag === 'computador' || tag === 'leitura')) {
+    objetivos.push('antifadiga')
+    beneficios.push('conforto_digital')
+  }
+  if (form.solarPrimaryObjective === 'sim') objetivos.push('oculos_sol_grau')
 
   const targetBudget = numberValue(form.budgetTarget)
   let budgetMode: 'economico' | 'intermediario' | 'premium' = 'intermediario'
@@ -164,6 +243,19 @@ export function buildRecommendationCaseInput(form: EvaluationCaseForm): Recommen
     desired_benefits: unique(beneficios),
     preferred_features: unique(preferencias),
     rejected_features: unique(rejeitados),
+    rejected_categories: [
+      ...(form.rejectMultifocal === 'sim' ? ['multifocal' as const] : []),
+      ...(form.rejectBifocal === 'sim' ? ['bifocal' as const] : []),
+      ...(form.rejectOccupational === 'sim' ? ['ocupacional' as const] : []),
+    ],
+    rejected_brands: (form.rejectedBrands || '').split(',').map((value) => value.trim()).filter(Boolean),
+    rejected_labs: (form.rejectedLabs || '').split(',').map((value) => value.trim()).filter(Boolean),
+    interview_completed: structuredUses.some(([use]) => !!use && use !== 'nao_informado'),
+    current_lens: form.marcaAtual?.trim() ? {
+      name: form.marcaAtual.trim(),
+      source: form.currentLensSource === 'history' ? 'history' : form.currentLensSource === 'catalog' ? 'catalog' : 'free_text',
+      satisfaction: form.currentLensSatisfaction === 'satisfeito' ? 'satisfied' : form.currentLensSatisfaction === 'parcial' ? 'partial' : form.currentLensSatisfaction === 'insatisfeito' ? 'unsatisfied' : null,
+    } : null,
     budget_mode: budgetMode,
     budget_signal: targetBudget !== null ? 'informado' : 'nao_informado',
     targetPrice: targetBudget && targetBudget > 0 ? targetBudget : null,

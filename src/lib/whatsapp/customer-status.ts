@@ -221,12 +221,82 @@ function expiresIn(ms: number) {
   return new Date(Date.now() + ms).toISOString()
 }
 
-function normalizeMessage(value: string | undefined) {
+function normalizeMessage(value: string | null | undefined) {
   return String(value || '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .trim()
     .toLowerCase()
+}
+
+function installmentReminderPreferenceCommand(value: string | null | undefined): {
+  action: 'opt_out' | 'opt_in'
+  requiresReminderContext: boolean
+} | null {
+  const normalized = normalizeMessage(value)
+    .replace(/[^\p{L}\p{N}\s]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (normalized === 'parar') return { action: 'opt_out', requiresReminderContext: false }
+  if (['voltar', 'reativar'].includes(normalized)) return { action: 'opt_in', requiresReminderContext: false }
+  if (['sair', 'cancelar', 'nao receber', 'nao quero receber'].includes(normalized)) {
+    return { action: 'opt_out', requiresReminderContext: true }
+  }
+
+  return null
+}
+
+async function setInstallmentReminderPreference(input: {
+  channel: ChannelRow
+  remotePhone: string
+  enabled: boolean
+  changedAt: string
+}) {
+  const supabase = createAdminClient()
+  const phoneVariants = [...getPhoneVariants(input.remotePhone)]
+  const { data: existingRows, error: loadError } = await (supabase.from('whatsapp_message_preferences') as any)
+    .select('id, remote_phone')
+    .eq('store_id', input.channel.store_id)
+    .in('remote_phone', phoneVariants)
+
+  if (loadError) throw loadError
+
+  const matchingRows = (existingRows ?? [])
+    .filter((row: { remote_phone?: string | null }) => phonesMatch(row.remote_phone, input.remotePhone))
+
+  const values = {
+    installment_reminders_enabled: input.enabled,
+    installment_reminders_changed_at: input.changedAt,
+    updated_at: input.changedAt,
+  }
+
+  if (matchingRows.length > 0) {
+    for (const row of matchingRows as Array<{ id: number }>) {
+      const { error } = await (supabase.from('whatsapp_message_preferences') as any)
+        .update(values)
+        .eq('id', row.id)
+        .lte('installment_reminders_changed_at', input.changedAt)
+
+      if (error) throw error
+    }
+    return
+  }
+
+  const { error } = await (supabase.from('whatsapp_message_preferences') as any)
+    .insert({
+      tenant_id: input.channel.tenant_id,
+      store_id: input.channel.store_id,
+      remote_phone: input.remotePhone,
+      ...values,
+    })
+
+  if (error) throw error
+}
+
+function preferenceChangedAt(providerCreatedAt: string | null | undefined) {
+  const parsed = providerCreatedAt ? new Date(providerCreatedAt) : null
+  return parsed && Number.isFinite(parsed.getTime()) ? parsed.toISOString() : new Date().toISOString()
 }
 
 function looksLikeOrderStatusQuestion(message: string | null | undefined) {
@@ -2192,6 +2262,29 @@ export async function resolveCustomerStatus(
     return { shouldReply: false, duplicate: true }
   }
   if (inboundError) throw inboundError
+
+  const preferenceCommand = installmentReminderPreferenceCommand(effectiveMessageText)
+  const preferenceState = preferenceCommand?.requiresReminderContext
+    ? await findConversationState(channel.id, normalizedPhone)
+    : null
+  const hasReminderContext = Boolean(readPaymentReminderContext(preferenceState?.metadata))
+  if (preferenceCommand && (!preferenceCommand.requiresReminderContext || hasReminderContext)) {
+    const enabled = preferenceCommand.action === 'opt_in'
+    await setInstallmentReminderPreference({
+      channel,
+      remotePhone: normalizedPhone,
+      enabled,
+      changedAt: preferenceChangedAt(input.providerCreatedAt),
+    })
+
+    const text = enabled
+      ? 'Tudo certo. Você voltará a receber lembretes automáticos de vencimento por WhatsApp.'
+      : 'Tudo certo. Você não receberá mais lembretes automáticos de vencimento por WhatsApp. Se quiser voltar a receber no futuro, envie VOLTAR a qualquer momento.'
+
+    return createOutbound(channel, inbound.id, normalizedPhone, text, enabled ? 'installment_reminder_opt_in' : 'installment_reminder_opt_out', {
+      installmentRemindersEnabled: enabled,
+    }, inbound.id)
+  }
 
   const automationSettings = await loadStoreWhatsAppSettings(channel.store_id)
   if (!isWhatsAppAutomationEnabled(automationSettings)) {

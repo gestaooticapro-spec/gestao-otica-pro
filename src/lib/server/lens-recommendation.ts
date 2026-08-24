@@ -51,6 +51,17 @@ export type RecommendationCaseInput = {
   desired_benefits?: string[]
   preferred_features?: string[]
   rejected_features?: string[]
+  /** Categorias que o cliente recusou explicitamente. Sao filtros absolutos. */
+  rejected_categories?: ClinicalCategory[]
+  /** Marcas/familias e laboratorios recusados explicitamente. */
+  rejected_brands?: string[]
+  rejected_labs?: string[]
+  interview_completed?: boolean
+  current_lens?: {
+    name: string
+    source: 'history' | 'catalog' | 'free_text'
+    satisfaction?: 'satisfied' | 'partial' | 'unsatisfied' | null
+  } | null
   budget_mode?: BudgetMode
   budget_signal?: 'informado' | 'nao_informado'
   targetPrice?: number | null
@@ -84,6 +95,8 @@ export type RecommendationOption = {
   originalRank?: number
   presentationRank?: number
   commercialRole?: 'anchor' | 'target' | 'alternative'
+  presentationLabel?: 'Opção 1' | 'Opção 2' | 'Opção 3'
+  budgetDelta?: number | null
   heatmapCompatibility?: HeatmapGeometryCompatibility
 }
 
@@ -647,25 +660,31 @@ function hasPrimaryOccupationalDemand(input: RecommendationCaseInput): boolean {
   )
 }
 
-function getDesiredClinicalCategories(input: RecommendationCaseInput): ClinicalCategory[] {
+export function getDesiredClinicalCategories(input: RecommendationCaseInput): ClinicalCategory[] {
   const rotinaTags = input.rotina_tags || []
   const desiredBenefits = input.desired_benefits || []
   const objetivoTags = input.objetivo_tags || []
   const hasPositiveAddition = input.adicao != null && input.adicao > 0
 
+  const rejected = new Set(input.rejected_categories || [])
+  const allowed = (categories: ClinicalCategory[]) => categories.filter((category) => !rejected.has(category))
+
   if (objetivoTags.includes('ocupacional') || desiredBenefits.includes('ocupacional')) {
-    return hasPositiveAddition ? ['ocupacional'] : ['visao_simples']
+    return allowed(hasPositiveAddition ? ['ocupacional'] : ['visao_simples'])
   }
 
   // Explicit occupational request from UI (e.g. "óculos para trabalho/escritório")
   if (hasPrimaryOccupationalDemand(input)) {
-    return hasPositiveAddition
+    return allowed(hasPositiveAddition
       ? ['ocupacional', 'multifocal', 'bifocal']
-      : ['ocupacional', 'visao_simples']
+      : ['ocupacional', 'visao_simples'])
   }
 
   if (hasPositiveAddition) {
-    return ['multifocal', 'bifocal']
+    if (objetivoTags.includes('uso_perto_especifico') && !rejected.has('ocupacional')) return ['ocupacional']
+    if (!rejected.has('multifocal')) return ['multifocal']
+    if (!rejected.has('bifocal')) return ['bifocal']
+    return []
   }
 
   if (
@@ -682,18 +701,14 @@ function getDesiredClinicalCategories(input: RecommendationCaseInput): ClinicalC
   }
 
   if (hasPrimarySunDemand(input)) {
-    return ['visao_simples', 'plana_solar']
-  }
-
-  if (rotinaTags.includes('sol') && rotinaTags.length === 1) {
-    return ['plana_solar', 'visao_simples']
+    return ['visao_simples']
   }
 
   return ['visao_simples']
 }
 
 function isPlausibleMyopiaControlCase(input: RecommendationCaseInput): boolean {
-  const isYoungPatient = input.idade == null || input.idade <= 21
+  const isYoungPatient = input.idade != null && input.idade <= 17
   const hasMyopia = input.esferico != null && input.esferico < 0
   return input.adicao == null && isYoungPatient && hasMyopia
 }
@@ -799,12 +814,15 @@ function matchesGrid(
         ? [input.receita.oe]
         : [input.receita.od, input.receita.oe]
     : [{ esferico: input.esferico, cilindrico: input.cilindrico }]
-  if (selectedEyes.some((eye) => eye.esferico == null || eye.cilindrico == null)) return false
+  // Na entrevista manual, cilindro vazio significa ausencia de astigmatismo (0,00),
+  // e uma receita pode ser monocular mesmo quando o seletor ainda esta em "ambos".
+  const prescribedEyes = selectedEyes.filter((eye) => eye.esferico != null)
+  if (prescribedEyes.length === 0) return false
   if (requiresAddRange && input.adicao == null) return false
 
-  return selectedEyes.every((eye) => grids.some((grid) => {
+  return prescribedEyes.every((eye) => grids.some((grid) => {
     const sphOk = between(eye.esferico, grid.sph_min, grid.sph_max)
-    const cylOk = between(eye.cilindrico, grid.cyl_min, grid.cyl_max)
+    const cylOk = between(eye.cilindrico ?? 0, grid.cyl_min, grid.cyl_max)
     const addOk =
       input.adicao == null
         ? true
@@ -2483,8 +2501,6 @@ function applyCurrentLensUpgradePreference(
     input.budget_mode === 'economico' ||
     (input.objetivo_tags || []).some((tag) => ['custo_beneficio', 'economia', 'premium_recusado'].includes(tag)) ||
     (input.rejected_features || []).includes('premium')
-  if (economyRequested) return entries
-
   const benchmarkRank = commercialTierRank(benchmark.tier)
   const adjusted = entries.map((entry) => {
     const tierReason = entry.reasons.find((reason) => reason.startsWith('lens_tier:'))
@@ -2517,6 +2533,10 @@ function applyCurrentLensUpgradePreference(
     const tierReason = entry.reasons.find((reason) => reason.startsWith('lens_tier:'))
     return commercialTierRank(normalizeCommercialTier(tierReason?.split(':')[1])) >= benchmarkRank
   })
+  const explicitBudgetRequiresDowngrade = input.targetPrice != null && input.targetPrice > 0 && !sameOrHigher.some((entry) => entry.finalPrice <= input.targetPrice!)
+  if (economyRequested || explicitBudgetRequiresDowngrade) {
+    return adjusted.sort((left, right) => right.score - left.score || left.finalPrice - right.finalPrice)
+  }
   const pool = sameOrHigher.length ? sameOrHigher : adjusted
   return pool.sort((left, right) => right.score - left.score || left.finalPrice - right.finalPrice)
 }
@@ -2629,6 +2649,16 @@ function rankRecommendationOptions(params: {
       const family = familyById.get(offer.family_id)
       if (!family) return null
 
+      const normalizedFamily = normalizeIntentText(`${family.nome} ${offer.raw_label}`)
+      if ((input.rejected_brands || []).some((brand) => normalizedFamily.includes(normalizeIntentText(brand)))) return null
+      const lab = normalizeIntentText(family.sourceLaboratorio || offer.sourceLaboratorio || '')
+      if ((input.rejected_labs || []).some((rejectedLab) => lab.includes(normalizeIntentText(rejectedLab)))) return null
+      const semantic = getSharedFamilySemanticProfile(family.nome)
+      const antiFatigueDescriptor = normalizeIntentText(`${normalizedFamily} ${(semantic?.usage_tags || []).join(' ')} ${(semantic?.benefit_tags || []).join(' ')}`)
+      const isAntiFatigue = /(antifad|anti fad|eyezen|sync|relax|boost)/.test(antiFatigueDescriptor)
+      const wantsAntiFatigue = (input.objetivo_tags || []).includes('antifadiga')
+      if (wantsAntiFatigue !== isAntiFatigue && (wantsAntiFatigue || isAntiFatigue)) return null
+
       const clinicalEvaluation = evaluateClinicalEligibility(
         input,
         family,
@@ -2725,6 +2755,15 @@ function rankRecommendationOptions(params: {
   const filteredCandidates: CandidateConfig[] = candidateConfigs.filter((entry) => {
     if (maxPrice != null && entry.finalPrice > maxPrice) return false
     if (minPrice != null && entry.finalPrice < minPrice) return false
+    const rejected = input.rejected_features || []
+    if (rejected.length > 0) {
+      const embedded = resolveEmbeddedTreatment(entry.offer, input)
+      const descriptor = normalizeIntentText(`${entry.treatment?.nome || ''} ${entry.treatment?.tipo || ''} ${embedded?.name || ''} ${embedded?.type || ''}`)
+      const treatmentFlags = normalizeFeatureFlags(entry.treatment?.features || {})
+      if (rejected.includes('transitions') && (/(transition|fotossens|photochrom|sensity|photofusion)/.test(descriptor) || treatmentFlags.transitions)) return false
+      if (rejected.includes('blue_uv') && (/(blue|azul|screen|digital)/.test(descriptor) || treatmentFlags.blue_uv)) return false
+      if (rejected.includes('antirreflexo') && (/(antirreflex|anti reflex|\bar\b)/.test(descriptor) || treatmentFlags.antirreflexo)) return false
+    }
     return true
   })
 
@@ -3297,6 +3336,7 @@ export async function recommendLensConfigurations(params: {
   const strictCategories = forcedClinicalCategories?.length
     ? forcedClinicalCategories
     : getDesiredClinicalCategories(input)
+  if (strictCategories.length === 0) return []
   const strictRanked = rankRecommendationOptions({
     catalog,
     input,
@@ -3310,7 +3350,25 @@ export async function recommendLensConfigurations(params: {
   }).filter((entry) => !isUnsafeTopRecommendation(input, entry))
 
   const upgradeAwareRanked = applyCurrentLensUpgradePreference(strictRanked, input, catalog)
-  return selectDiverseTopEntries(upgradeAwareRanked, topN)
+  const sameCategory = upgradeAwareRanked.filter((option) => option.clinicalCategory === strictCategories[0])
+  if (topN !== 3) return selectDiverseTopEntries(sameCategory, topN)
+
+  const valid = sameCategory.filter((option) => Number.isFinite(option.finalPrice))
+  if (valid.length === 0) return []
+  const topScore = Math.max(...valid.map((option) => option.score))
+  const strong = valid.filter((option) => option.score >= topScore - 12)
+  const budget = input.targetPrice ?? targetPrice ?? null
+  const withinBudget = budget == null ? strong : strong.filter((option) => option.finalPrice <= budget)
+  const affordablePool = withinBudget.length > 0 ? withinBudget : strong
+  const good = [...affordablePool].sort((a, b) => a.finalPrice - b.finalPrice || b.score - a.score)[0]
+  const better = [...affordablePool].sort((a, b) => b.score - a.score || a.finalPrice - b.finalPrice).find((option) => option.configKey !== good?.configKey)
+  const ideal = [...valid].sort((a, b) => b.score - a.score || b.finalPrice - a.finalPrice).find((option) => option.configKey !== good?.configKey && option.configKey !== better?.configKey)
+  return [good, better, ideal].filter((option): option is RecommendationOption => !!option).map((option, index) => ({
+    ...option,
+    presentationLabel: (['Opção 1', 'Opção 2', 'Opção 3'] as const)[index],
+    budgetDelta: budget != null && option.finalPrice > budget ? option.finalPrice - budget : null,
+    presentationRank: index + 1,
+  }))
 }
 
 function getStorePreferenceSnapshot(option: RecommendationOption): { lab: number; brand: number } {
@@ -3353,6 +3411,8 @@ function applyRecommendationPresentationStrategy(
   recommendations: RecommendationOption[]
   presentationStrategy: RecommendationPresentationStrategy
 } {
+  const labelForIndex = (index: number): NonNullable<RecommendationOption['presentationLabel']> =>
+    (['Opção 1', 'Opção 2', 'Opção 3'] as const)[index] || 'Opção 3'
   const roleForIndex = (index: number): NonNullable<RecommendationOption['commercialRole']> =>
     index === 0 ? 'anchor' : index === 1 ? 'target' : 'alternative'
   const ranked = recommendations.map((option, index) => ({
@@ -3369,6 +3429,7 @@ function applyRecommendationPresentationStrategy(
     return {
       recommendations: ranked.map((option, index) => ({
         ...option,
+        presentationLabel: labelForIndex(index),
         presentationRank: index + 1,
       })),
       presentationStrategy: {
@@ -3383,6 +3444,7 @@ function applyRecommendationPresentationStrategy(
 
   const display = [ranked[1], ranked[0], ...ranked.slice(2)].map((option, index) => ({
     ...option,
+    presentationLabel: labelForIndex(index),
     presentationRank: index + 1,
     commercialRole: roleForIndex(index),
   }))
@@ -3598,19 +3660,6 @@ export async function startRecommendationConversation(params: {
   }
 
   const tPrice = params.caseInput.targetPrice ?? null
-  const childControlMyopia =
-    isPlausibleMyopiaControlCase(state.caseInput) &&
-    (state.caseInput.rotina_tags || []).includes('controle_miopia') &&
-    ((state.caseInput.idade != null && state.caseInput.idade <= 14) ||
-      (state.caseInput.rotina_tags || []).includes('crianca'))
-  const premiumTechnicalStretch =
-    state.caseInput.budget_mode === 'premium' ||
-    (state.caseInput.desired_benefits || []).some((benefit) =>
-      ['lente_fina', 'qualidade_optica', 'ar_premium'].includes(benefit),
-    )
-  const initialMaxPrice = tPrice
-    ? tPrice * (childControlMyopia || premiumTechnicalStretch ? 1.7 : 1.2)
-    : undefined
   const requestedTopN = params.topN || 3
   const rankedRecommendations = await recommendLensConfigurations({
     versionId: params.versionId,
@@ -3619,7 +3668,6 @@ export async function startRecommendationConversation(params: {
     aiConfig: params.aiConfig,
     topN: params.heatmap ? Math.max(8, requestedTopN) : requestedTopN,
     targetPrice: tPrice,
-    maxPrice: initialMaxPrice,
   })
   const heatmapAdjusted = params.heatmap
     ? applyHeatmapCompatibility(rankedRecommendations, params.heatmap.samples, params.heatmap.geometries)

@@ -12,8 +12,8 @@ export const metadata: Metadata = {
 type UnknownRecord = Record<string, unknown>
 const SECTION_LABELS: Record<string, string> = {
   customer: 'Seu atendimento', prescription: 'Sua receita', lensRecommendations: 'Lentes para comparar',
-  decisionCriteria: 'O que orientou a indicação', heatmap: 'Seu comportamento visual', measurement: 'Suas medidas',
-  visagismo: 'Sua escolha de armação', thickness: 'Como fica a sua lente',
+  decisionCriteria: 'O que orientou a indicação', measurement: 'Suas medidas',
+  heatmap: 'Seu campo visual', visagismo: 'Sua escolha de armação', thickness: 'Como fica a sua lente',
 }
 const VALUE_LABELS: Record<string, string> = { sim: 'Sim', nao: 'Não', multifocal: 'Multifocal', bifocal: 'Bifocal', completed: 'Concluído' }
 
@@ -22,15 +22,19 @@ function record(value: unknown): UnknownRecord {
 }
 function lensGeometry(value: unknown): TowerReportLensGeometry | null {
   const source = record(value)
-  const points = (input: unknown, includeThickness: boolean) => Array.isArray(input) ? input.map((item) => {
+  const contour = Array.isArray(source.contour) ? source.contour.flatMap((item) => {
     const point = record(item)
-    const x = Number(point.x); const y = Number(point.y); const thickness = Number(point.thickness)
-    if (!Number.isFinite(x) || !Number.isFinite(y) || (includeThickness && !Number.isFinite(thickness))) return null
-    return includeThickness ? { x, y, thickness } : { x, y }
-  }).filter((point): point is { x: number; y: number; thickness?: number } => Boolean(point)) : []
-  const contour = points(source.contour, false).map(({ x, y }) => ({ x, y }))
-  const rim = points(source.rim, true).map(({ x, y, thickness }) => ({ x, y, thickness: thickness! }))
-  return contour.length >= 3 && rim.length >= 3 ? { contour, rim } : null
+    const x = Number(point.x); const y = Number(point.y)
+    return Number.isFinite(x) && Number.isFinite(y) ? [{ x, y }] : []
+  }) : []
+  const rim = Array.isArray(source.rim) ? source.rim.flatMap((item) => {
+    const point = record(item)
+    const x = Number(point.x); const y = Number(point.y); const thickness = Number(point.thickness); const displayFrontSag = Number(point.displayFrontSag)
+    return Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(thickness)
+      ? [{ x, y, thickness, displayFrontSag: Number.isFinite(displayFrontSag) ? displayFrontSag : 0 }]
+      : []
+  }) : []
+  return rim.length >= 3 ? { contour, rim } : null
 }
 function scalar(value: unknown): string {
   if (typeof value === 'boolean') return value ? 'Sim' : 'Não'
@@ -83,7 +87,11 @@ function LensRecommendationContent({ snapshot }: { snapshot: UnknownRecord }) {
   })}</div>
 }
 
-function SectionContent({ id, snapshot }: { id: string; snapshot: UnknownRecord }) {
+function SectionContent({ id, snapshot, heatmapAssets = [] }: {
+  id: string
+  snapshot: UnknownRecord
+  heatmapAssets?: Array<{ id: string; url: string; kind: string }>
+}) {
   if (id === 'customer') {
     const customer = record(snapshot.customer)
     return <div><p className="text-lg font-black text-slate-900">{scalar(customer.fullName) || 'Cliente'}</p>{scalar(customer.mobilePhone) && <p className="mt-1 text-sm text-slate-500">{scalar(customer.mobilePhone)}</p>}</div>
@@ -96,7 +104,7 @@ function SectionContent({ id, snapshot }: { id: string; snapshot: UnknownRecord 
     return <LensRecommendationContent snapshot={snapshot} />
   }
   if (id === 'decisionCriteria') return <Values value={snapshot.decisionCriteria} />
-  if (id === 'heatmap') return <Values value={record(snapshot.heatmap).summary} />
+  if (id === 'heatmap') return <div className="space-y-4"><p className="text-sm leading-6 text-slate-600">Este mapa representa as áreas da lente mais utilizadas durante a leitura. Ele ajuda a explicar a recomendação visual apresentada pela ótica.</p>{heatmapAssets.map((asset) => <figure key={asset.id} className="overflow-hidden rounded-2xl border border-slate-100 bg-slate-50"><img src={asset.url} alt={assetCaption(asset.kind)} className="h-auto w-full object-contain" /><figcaption className="p-3 text-xs font-medium text-slate-500">{assetCaption(asset.kind)}</figcaption></figure>)}</div>
   if (id === 'measurement') {
     const measurement = record(snapshot.measurement)
     return <div className="space-y-3"><Values value={{ tipo: measurement.lensMode, referencia: measurement.referenceMm ? `${scalar(measurement.referenceMm)} mm` : '' }} /><Values value={measurement.frontMeasurements} /><Values value={measurement.profileMeasurements} /></div>
@@ -106,9 +114,9 @@ function SectionContent({ id, snapshot }: { id: string; snapshot: UnknownRecord 
     return <div className="space-y-3"><Values value={{ formatoDoRosto: analysis.faceShape, tomDePele: visagismo.detectedSkinTone }} />{scalar(frame.name) && <p className="rounded-xl bg-violet-50 p-3 text-sm text-violet-950">Armação selecionada: <strong>{scalar(frame.name)}</strong></p>}</div>
   }
   if (id === 'thickness') {
-    const thickness = record(snapshot.thickness); const lens = record(thickness.lens); const frame = record(thickness.frame); const geometry = lensGeometry(thickness.geometry)
-    const minimum = Number(lens.minimumThicknessMm); const maximum = Number(lens.maximumThicknessMm); const width = Number(frame.widthMm); const height = Number(frame.heightMm)
-    return <div><Values value={{ indice: lens.index, espessuraMinima: lens.minimumThicknessMm ? `${scalar(lens.minimumThicknessMm)} mm` : '', espessuraMaxima: lens.maximumThicknessMm ? `${scalar(lens.maximumThicknessMm)} mm` : '', armacao: frame.name, montagem: frame.mount }} />{[minimum, maximum, width, height].every(Number.isFinite) && <TowerReportLensSimulation minimumThicknessMm={minimum} maximumThicknessMm={maximum} widthMm={width} heightMm={height} geometry={geometry} />}</div>
+    const thickness = record(snapshot.thickness); const lens = record(thickness.lens); const frame = record(thickness.frame); const opticalCenter = record(thickness.opticalCenter); const geometry = lensGeometry(thickness.geometry)
+    const minimum = Number(lens.minimumThicknessMm); const maximum = Number(lens.maximumThicknessMm)
+    return <div><Values value={{ indice: lens.index, espessuraMinima: lens.minimumThicknessMm ? `${scalar(lens.minimumThicknessMm)} mm` : '', espessuraMaxima: lens.maximumThicknessMm ? `${scalar(lens.maximumThicknessMm)} mm` : '', armacao: frame.name, montagem: frame.mount }} />{[minimum, maximum].every(Number.isFinite) && <TowerReportLensSimulation minimumThicknessMm={minimum} maximumThicknessMm={maximum} geometry={geometry} widthMm={Number(frame.widthMm)} heightMm={Number(frame.heightMm)} focalX={Number(opticalCenter.horizontalMm)} focalY={Number(opticalCenter.verticalMm)} savedRotation={Number(opticalCenter.rotationAngle)} index={Number(lens.index)} />}</div>
   }
   return null
 }
@@ -123,9 +131,11 @@ export default async function PublicTowerReportPage({ params }: { params: Promis
   const snapshot = record(envelope.snapshot)
   const title = report.audience === 'retailer_export' ? 'Relatório técnico do atendimento' : 'Seu relatório Neosmart'
   const customer = record(snapshot.customer)
-  return <main className="min-h-screen bg-[radial-gradient(circle_at_12%_0%,rgba(34,211,238,.18),transparent_28%),#f8fafc] px-4 py-6 text-slate-900 sm:py-10"><div className="mx-auto max-w-4xl"><header className="overflow-hidden rounded-[30px] bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-950 p-6 text-white shadow-2xl shadow-cyan-950/20 sm:p-8"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[.18em] text-cyan-200">Neosmart · experiência óptica</p><h1 className="mt-3 text-3xl font-black">{title}</h1><p className="mt-2 text-sm text-slate-300">{scalar(customer.fullName) ? `Olá, ${scalar(customer.fullName)}.` : 'Um resumo da sua experiência na ótica.'}</p><p className="mt-4 text-xs font-bold text-cyan-100">Disponível até {date(report.expiresAt)}</p></div><FileText className="shrink-0 text-cyan-200" size={38} /></div></header>
+  const heatmapAssets = report.assets.filter((asset) => asset.kind === 'heatmap')
+  const galleryAssets = report.assets.filter((asset) => asset.kind !== 'heatmap')
+  return <main className="min-h-screen bg-[radial-gradient(circle_at_12%_0%,rgba(34,211,238,.18),transparent_28%),#f8fafc] px-4 py-6 text-slate-900 sm:py-10"><div className="mx-auto max-w-4xl"><header className="overflow-hidden rounded-[30px] bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-950 p-6 text-white shadow-2xl shadow-cyan-950/20 sm:p-8"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[.18em] text-cyan-200">NeoSmart</p><h1 className="mt-3 text-3xl font-black">{title}</h1><p className="mt-2 text-sm text-slate-300">{scalar(customer.fullName) ? `Olá, ${scalar(customer.fullName)}.` : 'Um resumo da sua experiência na ótica.'}</p><p className="mt-4 text-xs font-bold text-cyan-100">Disponível até {date(report.expiresAt)}</p></div><FileText className="shrink-0 text-cyan-200" size={38} /></div></header>
     <section className="mt-5 rounded-3xl border border-cyan-100 bg-white p-5 shadow-sm"><p className="text-xs font-black uppercase tracking-[.16em] text-cyan-700">O resultado da sua experiência</p><p className="mt-2 text-sm leading-6 text-slate-600">Aqui estão as descobertas, escolhas e registros que ajudam você a conversar com segurança sobre a melhor solução para o seu olhar.</p></section>
-    <div className="mt-5 space-y-4">{selectedSections.map((id) => <section key={id} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"><p className="text-[10px] font-black uppercase tracking-[.16em] text-slate-400">Experiência personalizada</p><h2 className="mt-1.5 mb-4 flex items-center gap-2 text-lg font-black"><Eye size={18} className="text-cyan-700" />{SECTION_LABELS[id]}</h2><SectionContent id={id} snapshot={snapshot} /></section>)}
-      {report.assets.length > 0 && <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"><p className="text-[10px] font-black uppercase tracking-[.16em] text-slate-400">Registros da experiência</p><h2 className="mt-1.5 mb-4 flex items-center gap-2 text-lg font-black"><ImageIcon size={18} className="text-cyan-700" />Imagens que comprovam suas escolhas</h2><div className="grid gap-3 sm:grid-cols-3">{report.assets.map((asset) => <figure key={asset!.id} className="overflow-hidden rounded-2xl border border-slate-100 bg-slate-50"><img src={asset!.url} alt={assetCaption(asset!.kind)} className="aspect-[4/3] h-auto w-full object-cover" /><figcaption className="p-3 text-xs font-medium text-slate-500">{assetCaption(asset!.kind)}</figcaption></figure>)}</div></section>}
+    <div className="mt-5 space-y-4">{selectedSections.map((id) => <section key={id} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"><p className="text-[10px] font-black uppercase tracking-[.16em] text-slate-400">Experiência personalizada</p><h2 className="mt-1.5 mb-4 flex items-center gap-2 text-lg font-black"><Eye size={18} className="text-cyan-700" />{SECTION_LABELS[id]}</h2><SectionContent id={id} snapshot={snapshot} heatmapAssets={heatmapAssets} /></section>)}
+      {galleryAssets.length > 0 && <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"><p className="text-[10px] font-black uppercase tracking-[.16em] text-slate-400">Registros da experiência</p><h2 className="mt-1.5 mb-4 flex items-center gap-2 text-lg font-black"><ImageIcon size={18} className="text-cyan-700" />Imagens que comprovam suas escolhas</h2><div className="grid gap-3 sm:grid-cols-3">{galleryAssets.map((asset) => <figure key={asset!.id} className="overflow-hidden rounded-2xl border border-slate-100 bg-slate-50"><img src={asset!.url} alt={assetCaption(asset!.kind)} className="aspect-[4/3] h-auto w-full object-cover" /><figcaption className="p-3 text-xs font-medium text-slate-500">{assetCaption(asset!.kind)}</figcaption></figure>)}</div></section>}
     </div><footer className="mt-6 flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-xs leading-5 text-emerald-900"><ShieldCheck className="mt-0.5 shrink-0" size={18} /><p>Este resultado foi compartilhado temporariamente pela sua ótica. As imagens utilizam acesso privado e expiram junto com o relatório.</p></footer></div></main>
 }

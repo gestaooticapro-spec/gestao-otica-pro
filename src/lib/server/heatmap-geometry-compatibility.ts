@@ -1,4 +1,5 @@
 import type { LensGeometry } from '@/lib/actions/lens-geometry.actions'
+import { projectCommercialHeatmapCompatibilityPoint } from '@/lib/tower/heatmap-commercial-projection'
 
 type Point = { x: number; y: number }
 export type PersistedHeatmapSample = Point & {
@@ -92,16 +93,20 @@ export function evaluateHeatmapGeometryCompatibility(
     intermediate: pins.corridor.map(remap),
     near: pins.near.map(remap),
   }
+  const commercialSamples = samples.map((sample) => ({
+    ...sample,
+    ...projectCommercialHeatmapCompatibilityPoint(sample),
+  }))
   const zones = ['distance', 'intermediate', 'near'] as const
   const isCoveredByUsefulField = (sample: PersistedHeatmapSample) =>
     zones.some((zone) => isInsidePolygon({ x: sample.x, y: sample.y }, polygons[zone]))
   const coverageByZone = Object.fromEntries(zones.map((zone) => {
-    const zoneSamples = samples.filter((sample) => targetZone(sample.targetY) === zone)
+    const zoneSamples = commercialSamples.filter((sample) => targetZone(sample.targetY) === zone)
     const covered = zoneSamples.filter(isCoveredByUsefulField).length
     return [zone, zoneSamples.length ? covered / zoneSamples.length : 0]
   })) as Record<(typeof zones)[number], number>
-  const coveredSamples = samples.filter(isCoveredByUsefulField).length
-  const coverage = samples.length ? coveredSamples / samples.length : 0
+  const coveredSamples = commercialSamples.filter(isCoveredByUsefulField).length
+  const coverage = commercialSamples.length ? coveredSamples / commercialSamples.length : 0
 
   if (coverage >= 0.96) {
     return { status: 'compativel_com_sobra', scoreAdjustment: 2, coverage, ...withZones(coverageByZone), message: 'O campo da lente acolhe o mapa com margem confortável.' }

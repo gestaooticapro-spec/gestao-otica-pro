@@ -3,6 +3,11 @@ import PromissoriaPhantom from '@/components/print/PromissoriaPhantom'
 import { notFound } from 'next/navigation'
 import { isStoreModuleEnabledForStore } from '@/lib/store-modules.server'
 
+// A duplicata usa os vencimentos atuais das parcelas e não pode reutilizar
+// uma renderização anterior após uma renegociação.
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 type FinanciamentoPrint = {
     store?: { settings?: unknown } | null
 }
