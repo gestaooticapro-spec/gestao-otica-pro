@@ -142,10 +142,11 @@ Antes de considerar um deploy completo de WhatsApp, normalmente precisamos valid
 
 O rodape da Central de Operacoes exibe a versao atual e permite abrir o historico de deploys. O registro fica em `src/lib/release-history.ts`.
 
-- `PENDING_RELEASE_CHANGES` e o diario das alteracoes feitas desde o ultimo deploy. A cada nova implementacao, acrescente uma descricao objetiva nessa lista sem mudar a versao.
+- `PENDING_RELEASE_VERSION` e aberta na primeira alteracao apos um deploy, usando o proximo patch (por exemplo, `1.02.04`), e permanece assim ate o deploy.
+- `PENDING_RELEASE_CHANGES` e o diario das alteracoes feitas desde o ultimo deploy. A primeira alteracao abre a versao pendente; as seguintes apenas acrescentam descricoes a essa mesma versao.
 - Essa lista deve refletir somente o codigo que sera entregue: se uma implementacao for desfeita, abandonada ou substituida antes do deploy, remova ou atualize o item correspondente.
 - `RELEASE_HISTORY` guarda apenas deploys concluidos e preserva todas as versoes antigas.
-- Depois que o deploy for concluido, incrementar uma unica vez somente o ultimo bloco: `1.02.01` -> `1.02.02`, inserir a nova versao no inicio de `RELEASE_HISTORY`, mover para ela as mudancas pendentes e limpar `PENDING_RELEASE_CHANGES`.
+- Depois que o deploy for concluido, inserir a versao pendente no inicio de `RELEASE_HISTORY`, mover para ela as mudancas pendentes e limpar `PENDING_RELEASE_VERSION` e `PENDING_RELEASE_CHANGES`.
 - Alterar a linha/minor, como `1.02.xx` -> `1.03.00`, somente mediante solicitacao expressa do usuario.
 - O modal mostra inicialmente os tres deploys mais recentes e carrega versoes mais antigas conforme a rolagem; o arquivo nao deve descartar historico antigo.
 

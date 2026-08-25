@@ -4,29 +4,36 @@ export type Release = {
   changes: string[]
 }
 
-// Registre aqui todas as mudancas que ainda nao foram implantadas.
-// Durante o desenvolvimento, apenas acrescente itens a esta lista, sem mudar a versao.
+// Registre aqui todas as mudancas do proximo lote depois que ele for iniciado.
+// A primeira mudanca apos um deploy abre a proxima versao; as seguintes apenas
+// completam essa mesma versao ate o proximo deploy.
 // Se uma implementacao for desfeita ou substituida antes do deploy, remova ou corrija
 // o respectivo item para que a lista descreva somente o que realmente sera entregue.
-export const PENDING_RELEASE_CHANGES = [
-  'Alerta operacional corrigido para montagem local apos a chegada da lente: acima de 24 horas, ou acima de 7 dias quando a loja aguarda a armacao do cliente.',
-  'Alerta operacional de montagem local permanece visivel enquanto a pendencia persistir.',
-  'Alerta de venda sem OS identificado explicitamente como exclusivo de lentes oftalmicas; lentes de contato ficam fora da verificacao.',
-  'Alerta de OS sem data prometida mantido como ponto operacional relevante para acompanhamento de prazo.',
-  'Central Diaria passou a identificar OS do fluxo optico sem lente vinculada e OS com lente sem grau preenchido.',
-  'Alerta de mais de uma OS aberta por venda removido por ser um fluxo normal; a Central permanece focada em inconsistencias reais.',
-  'Historico de versoes passou a preservar todos os deploys e carregar as entradas antigas progressivamente no modal.',
-  'Registro de mudancas pendentes passou a ser corrigido quando uma implementacao for removida ou substituida antes do deploy.',
-  'Auditoria da Central impediu sobrescrita de snapshots prontos, limitou vendas de lentes a data de referencia, confirmou o tipo de produto nas OS e restringiu a narrativa da IA a fatos suportados.',
-  'Testes da Central foram incluidos na suite padrao e ampliados para snapshots, lente de contato e respostas adversariais da IA.',
-] as const
+export const PENDING_RELEASE_VERSION: string | null = null
+export const PENDING_RELEASE_CHANGES: readonly string[] = []
 
 // Esta lista contem somente deploys concluidos e deve preservar todo o historico.
 // A versao 1.02.00 e o registro mais antigo atualmente disponivel neste repositorio.
-// Depois do deploy, incremente uma unica vez somente o ultimo bloco (ex.: 1.02.01 -> 1.02.02),
-// mova as mudancas pendentes para a nova versao e limpe PENDING_RELEASE_CHANGES.
+// Ao iniciar o proximo lote, use 1.02.04 em PENDING_RELEASE_VERSION. Depois do deploy,
+// mova as mudancas pendentes para a nova versao e limpe as duas constantes pendentes.
 // Alteracoes de linha/minor (ex.: 1.02.xx -> 1.03.00) exigem solicitacao expressa.
 export const RELEASE_HISTORY: Release[] = [
+  {
+    version: '1.02.03',
+    date: '24/08/2026',
+    changes: [
+      'Alerta operacional corrigido para montagem local apos a chegada da lente: acima de 24 horas, ou acima de 7 dias quando a loja aguarda a armacao do cliente.',
+      'Alerta operacional de montagem local permanece visivel enquanto a pendencia persistir.',
+      'Alerta de venda sem OS identificado explicitamente como exclusivo de lentes oftalmicas; lentes de contato ficam fora da verificacao.',
+      'Alerta de OS sem data prometida mantido como ponto operacional relevante para acompanhamento de prazo.',
+      'Central Diaria passou a identificar OS do fluxo optico sem lente vinculada e OS com lente sem grau preenchido.',
+      'Alerta de mais de uma OS aberta por venda removido por ser um fluxo normal; a Central permanece focada em inconsistencias reais.',
+      'Historico de versoes passou a preservar todos os deploys e carregar as entradas antigas progressivamente no modal.',
+      'Registro de mudancas pendentes passou a ser corrigido quando uma implementacao for removida ou substituida antes do deploy.',
+      'Auditoria da Central impediu sobrescrita de snapshots prontos, limitou vendas de lentes a data de referencia, confirmou o tipo de produto nas OS e restringiu a narrativa da IA a fatos suportados.',
+      'Testes da Central foram incluidos na suite padrao e ampliados para snapshots, lente de contato e respostas adversariais da IA.',
+    ],
+  },
   {
     version: '1.02.02',
     date: '24/08/2026',
@@ -56,4 +63,4 @@ export const RELEASE_HISTORY: Release[] = [
   },
 ]
 
-export const CURRENT_VERSION = RELEASE_HISTORY[0].version
+export const CURRENT_VERSION = PENDING_RELEASE_VERSION ?? RELEASE_HISTORY[0].version
