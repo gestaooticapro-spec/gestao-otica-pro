@@ -9,8 +9,10 @@ export type Release = {
 // completam essa mesma versao ate o proximo deploy.
 // Se uma implementacao for desfeita ou substituida antes do deploy, remova ou corrija
 // o respectivo item para que a lista descreva somente o que realmente sera entregue.
-export const PENDING_RELEASE_VERSION: string | null = null
-export const PENDING_RELEASE_CHANGES: readonly string[] = []
+export const PENDING_RELEASE_VERSION: string | null = '1.02.04'
+export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'Respostas automáticas de horário passaram a informar os intervalos recorrentes, incluindo o almoço, junto do horário semanal da loja.',
+]
 
 // Esta lista contem somente deploys concluidos e deve preservar todo o historico.
 // A versao 1.02.00 e o registro mais antigo atualmente disponivel neste repositorio.
