@@ -138,12 +138,16 @@ Antes de considerar um deploy completo de WhatsApp, normalmente precisamos valid
 
 ## Versionamento de deploy
 
-O rodape da Central de Operacoes exibe a versao atual e permite abrir o historico dos tres ultimos deploys. O registro versionado fica em `src/lib/release-history.ts` e deve ser atualizado ao concluir cada implementacao que gere deploy.
+`1.02.00` e o deploy mais antigo atualmente registrado neste repositorio. Versoes anteriores so devem ser acrescentadas se houver uma fonte confiavel para recupera-las.
 
-- Incrementar somente o ultimo bloco a cada deploy: `1.02.01` -> `1.02.02` -> `1.02.03`.
+O rodape da Central de Operacoes exibe a versao atual e permite abrir o historico de deploys. O registro fica em `src/lib/release-history.ts`.
+
+- `PENDING_RELEASE_CHANGES` e o diario das alteracoes feitas desde o ultimo deploy. A cada nova implementacao, acrescente uma descricao objetiva nessa lista sem mudar a versao.
+- Essa lista deve refletir somente o codigo que sera entregue: se uma implementacao for desfeita, abandonada ou substituida antes do deploy, remova ou atualize o item correspondente.
+- `RELEASE_HISTORY` guarda apenas deploys concluidos e preserva todas as versoes antigas.
+- Depois que o deploy for concluido, incrementar uma unica vez somente o ultimo bloco: `1.02.01` -> `1.02.02`, inserir a nova versao no inicio de `RELEASE_HISTORY`, mover para ela as mudancas pendentes e limpar `PENDING_RELEASE_CHANGES`.
 - Alterar a linha/minor, como `1.02.xx` -> `1.03.00`, somente mediante solicitacao expressa do usuario.
-- Inserir a nova versao no inicio do historico, mantendo apenas os tres deploys mais recentes.
-- Registrar data e lista objetiva de alteracoes tecnicas aplicadas no `main`.
+- O modal mostra inicialmente os tres deploys mais recentes e carrega versoes mais antigas conforme a rolagem; o arquivo nao deve descartar historico antigo.
 
 ## Arquivos de contexto util
 

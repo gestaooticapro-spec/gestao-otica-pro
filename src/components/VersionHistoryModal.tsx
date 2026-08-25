@@ -1,9 +1,11 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { History, X } from 'lucide-react'
 
 import { RELEASE_HISTORY } from '@/lib/release-history'
+
+const RELEASES_PER_PAGE = 3
 
 type VersionHistoryModalProps = {
   isOpen: boolean
@@ -11,6 +13,12 @@ type VersionHistoryModalProps = {
 }
 
 export default function VersionHistoryModal({ isOpen, onClose }: VersionHistoryModalProps) {
+  const [visibleReleaseCount, setVisibleReleaseCount] = useState(RELEASES_PER_PAGE)
+
+  useEffect(() => {
+    if (isOpen) setVisibleReleaseCount(RELEASES_PER_PAGE)
+  }, [isOpen])
+
   useEffect(() => {
     if (!isOpen) return
 
@@ -33,6 +41,11 @@ export default function VersionHistoryModal({ isOpen, onClose }: VersionHistoryM
 
   if (!isOpen) return null
 
+  const visibleReleases = RELEASE_HISTORY.slice(0, visibleReleaseCount)
+  const loadOlderReleases = () => {
+    setVisibleReleaseCount((current) => Math.min(current + RELEASES_PER_PAGE, RELEASE_HISTORY.length))
+  }
+
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
@@ -54,8 +67,14 @@ export default function VersionHistoryModal({ isOpen, onClose }: VersionHistoryM
             <X className="h-4 w-4" />
           </button>
         </header>
-        <div className="max-h-[70vh] space-y-5 overflow-y-auto px-5 py-5">
-          {RELEASE_HISTORY.map((release, index) => (
+        <div
+          className="max-h-[70vh] space-y-5 overflow-y-auto px-5 py-5"
+          onScroll={(event) => {
+            const element = event.currentTarget
+            if (element.scrollTop + element.clientHeight >= element.scrollHeight - 48) loadOlderReleases()
+          }}
+        >
+          {visibleReleases.map((release, index) => (
             <article key={release.version} className={index > 0 ? 'border-t border-white/10 pt-5' : ''}>
               <h3 className="text-sm font-bold text-white">Versão {release.version} <span className="font-medium text-slate-400">- {release.date}</span></h3>
               <ul className="mt-3 list-disc space-y-1.5 pl-5 text-xs leading-5 text-slate-300">
@@ -63,6 +82,11 @@ export default function VersionHistoryModal({ isOpen, onClose }: VersionHistoryM
               </ul>
             </article>
           ))}
+          {visibleReleaseCount < RELEASE_HISTORY.length && (
+            <button type="button" onClick={loadOlderReleases} className="w-full py-2 text-xs font-bold text-cyan-200 transition hover:text-white">
+              Carregar versoes anteriores
+            </button>
+          )}
         </div>
       </section>
     </div>

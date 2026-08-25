@@ -4,6 +4,18 @@ import { phonesMatch } from '@/lib/whatsapp/phone'
 
 export type DailyHealthArea = 'financeiro' | 'operacao' | 'relacionamento'
 export type DailyHealthPriority = 'critico' | 'atencao' | 'informativo'
+export type DailyHealthAlertState = 'novo' | 'piorou' | 'melhorou' | 'persistente'
+
+export type DailyHealthAlertLifecycle = {
+  state: DailyHealthAlertState
+  firstSeen: string
+  daysOpen: number
+  previousImpact: number | null
+  impactChange: number | null
+  newRecords: number
+  resolvedRecords: number
+  show: boolean
+}
 
 export type DailyHealthAlert = {
   id: string
@@ -16,6 +28,15 @@ export type DailyHealthAlert = {
   href: string
   records: { type: string; ids: number[] }
   presentation?: { title: string; detail: string }
+  lifecycle?: DailyHealthAlertLifecycle
+}
+
+export type DailyHealthAreaLifecycle = {
+  newCount: number
+  worsenedCount: number
+  improvedCount: number
+  persistentCount: number
+  resolvedCount: number
 }
 
 export type DailyHealthAmountComparison = {
@@ -53,12 +74,14 @@ export type DailyHealthMetrics = {
   overdueOrders: number
   ordersWithoutLabRequest: number
   labArrivalOverdue: number
-  staleLabOrders: number
+  mountingOverdue: number
+  mountingWaitingForFrame: number
+  ordersWithoutLensLink: number
+  ordersWithoutPrescription: number
   ordersWithoutPromise: number
   inconsistentOrderTimeline: number
   lensSalesWithoutOrder: number
   cancelledSalesWithOpenOrder: number
-  duplicateOpenOrders: number
   pendingPostSales: number
   postSalesCompletedYesterday: number
   postSalesCompletedWeek: number
@@ -66,7 +89,22 @@ export type DailyHealthMetrics = {
   pendingWhatsApp: number
   costCoverage: number | null
   creditAnalysis: CreditAnalysis
+  accountsPayableAnalysis?: AccountsPayableAnalysis
   areaNarratives?: DailyHealthAreaNarratives
+  alertLifecycle?: Record<DailyHealthArea, DailyHealthAreaLifecycle>
+}
+
+export type AccountsPayableAnalysis = {
+  pendingCount: number
+  pendingValue: number
+  overdueCount: number
+  overdueValue: number
+  oldestOverdueDays: number
+  dueNext7Count: number
+  dueNext7Value: number
+  dueTodayCount: number
+  overdueRecords: number[]
+  dueNext7Records: number[]
 }
 
 export type CreditGroupInsight = {
@@ -85,6 +123,16 @@ export type CreditAnalysis = {
   currentDelinquencyValue: number
   historicalPeakLateRate: number | null
   historicalPeakLateMonth: string | null
+  delinquencyAging: {
+    over30Installments: number
+    over30Value: number
+    over60Installments: number
+    over60Value: number
+    over90Installments: number
+    over90Value: number
+    over90CustomersOutsideSpc: number
+  }
+  multiplePurchaseSignal: string | null
   termGroups: CreditGroupInsight[]
   simultaneousGroups: CreditGroupInsight[]
   strongestSignal: string | null
@@ -107,6 +155,9 @@ export type PostSaleAnalysis = {
   complaintOrAdaptation: number
   awaitingHumanReview: number
   awaitingRating: number
+  deliveryIssueIds: number[]
+  humanReviewIds: number[]
+  satisfactionIds: number[]
 }
 
 export type DailyHealthAreaNarratives = {
@@ -127,6 +178,23 @@ export type DailyHealthReport = {
   generatedAt: string | null
 }
 
+function reportFromStoredRow(data: any): DailyHealthReport {
+  return {
+    id: data.id,
+    reportDate: data.report_date,
+    status: data.status,
+    metrics: data.metrics,
+    alerts: data.alerts,
+    narrative: data.narrative,
+    sourceFailures: data.source_failures || [],
+    generatedAt: data.generated_at,
+  }
+}
+
+function isReadySnapshot(data: any) {
+  return data?.status === 'ready'
+}
+
 export type DailyHealthSettings = {
   overdueCriticalValue: number
   minimumCostCoverage: number
@@ -138,7 +206,7 @@ export const DEFAULT_DAILY_HEALTH_SETTINGS: DailyHealthSettings = {
   overdueCriticalValue: 5000,
   minimumCostCoverage: 0.9,
   labRequestHours: 24,
-  labStaleHours: 120,
+  labStaleHours: 24,
 }
 
 function normalizeSettings(input: unknown): DailyHealthSettings {
@@ -159,6 +227,8 @@ export async function getDailyHealthSettings(storeId: number) {
 
 const SAO_PAULO = 'America/Sao_Paulo'
 const DAY_MS = 24 * 60 * 60 * 1000
+const LOCAL_MOUNTING_LIMIT_HOURS = 24
+const CUSTOMER_FRAME_CONCERN_HOURS = 7 * 24
 const ORDER_SEQUENCE_TOLERANCE_MS = 4 * 60 * 60 * 1000
 
 function dateKey(date = new Date()) {
@@ -172,6 +242,14 @@ function rangeForDate(key: string) {
     start: new Date(`${key}T00:00:00-03:00`).toISOString(),
     end: new Date(`${key}T23:59:59.999-03:00`).toISOString(),
   }
+}
+
+// Payments use data_pagamento as a business date persisted at midnight UTC.
+// Querying it in Sao Paulo time would place that midnight in the prior local day.
+function rangeForBusinessDate(key: string) {
+  const start = new Date(`${key}T00:00:00.000Z`)
+  const end = new Date(start.getTime() + DAY_MS)
+  return { start: start.toISOString(), end: end.toISOString() }
 }
 
 function previousDateKey(key: string, days: number) {
@@ -204,6 +282,16 @@ function money(value: number) {
 
 function sum(rows: any[], field: string) {
   return rows.reduce((total, row) => total + Number(row?.[field] || 0), 0)
+}
+
+function buildMountingAttention(orders: any[], reportEnd: number) {
+  const elapsedHours = (value: string | null) => value
+    ? Math.max(0, (reportEnd - new Date(value).getTime()) / (60 * 60 * 1000))
+    : 0
+  const openForMounting = orders.filter((order) => Boolean(order.dt_lente_chegou) && !order.dt_montado_em && !order.dt_montado_no_lab)
+  const mountingOverdue = openForMounting.filter((order) => order.armacao_com_cliente !== true && elapsedHours(order.dt_lente_chegou) > LOCAL_MOUNTING_LIMIT_HOURS)
+  const mountingWaitingForFrame = openForMounting.filter((order) => order.armacao_com_cliente === true && elapsedHours(order.dt_lente_chegou) > CUSTOMER_FRAME_CONCERN_HOURS)
+  return { mountingOverdue, mountingWaitingForFrame }
 }
 
 function buildSalesSummary(
@@ -278,11 +366,23 @@ function creditGroup(label: string, rows: any[], todayKey: string): CreditGroupI
   return { label, rate: due.length >= 5 ? late.length / due.length : null, lateInstallments: late.length, dueInstallments: due.length }
 }
 
+function businessDateRangeFromStartOfMonth(key: string) {
+  const start = rangeForBusinessDate(firstDayOfMonth(key)).start
+  const end = rangeForBusinessDate(key).end
+  return { start, end }
+}
+
+function currentDelinquencyGroup(label: string, rows: any[], todayKey: string): CreditGroupInsight {
+  const due = rows.filter((row) => dueOnOrBefore(row, todayKey))
+  const overdue = due.filter((row) => isCurrentlyDelinquent(row, todayKey))
+  return { label, rate: due.length >= 5 ? overdue.length / due.length : null, lateInstallments: overdue.length, dueInstallments: due.length }
+}
+
 async function loadInstallments(admin: ReturnType<typeof createAdminClient>, storeId: number) {
   const rows: any[] = []
   for (let from = 0; ; from += 1000) {
     const { data, error } = await (admin.from('financiamento_parcelas') as any)
-      .select('id,financiamento_id,customer_id,numero_parcela,data_vencimento,data_pagamento,valor_parcela,valor_pago,valor_transferido_entrada,valor_transferido_saida,status,financiamento_loja(quantidade_parcelas)')
+      .select('id,financiamento_id,customer_id,numero_parcela,data_vencimento,data_pagamento,valor_parcela,valor_pago,valor_transferido_entrada,valor_transferido_saida,status,financiamento_loja(quantidade_parcelas),customers(is_spc)')
       .eq('store_id', storeId)
       .order('id', { ascending: true })
       .range(from, from + 999)
@@ -300,6 +400,15 @@ function buildCreditAnalysis(installments: any[], todayKey: string): CreditAnaly
   const historicalLateRate = due.length >= 5 ? historicalLate.length / due.length : null
   const currentDelinquencyRate = due.length >= 5 ? currentlyDelinquent.length / due.length : null
   const currentDelinquencyValue = currentlyDelinquent.reduce((total, item) => total + outstanding(item), 0)
+  const overdueSince = (item: any) => Math.max(0, Math.floor((new Date(`${todayKey}T12:00:00-03:00`).getTime() - new Date(item.data_vencimento).getTime()) / DAY_MS))
+  const aging = (days: number) => currentlyDelinquent.filter((item) => overdueSince(item) >= days)
+  const over30 = aging(30)
+  const over60 = aging(60)
+  const over90 = aging(90)
+  const spcOutsideCustomers = new Set(over90.filter((item) => {
+    const customer = Array.isArray(item.customers) ? item.customers[0] : item.customers
+    return item.customer_id && customer?.is_spc !== true
+  }).map((item) => item.customer_id))
   const byMonth = new Map<string, any[]>()
   due.forEach((item) => { const month = String(item.data_vencimento).slice(0, 7); byMonth.set(month, [...(byMonth.get(month) || []), item]) })
   const monthly = [...byMonth.entries()].map(([month, rows]) => ({ month, ...creditGroup(month, rows, todayKey) })).filter((item) => item.rate !== null)
@@ -315,6 +424,20 @@ function buildCreditAnalysis(installments: any[], todayKey: string): CreditAnaly
     creditGroup('Uma venda parcelada ativa', valid.filter((item) => (activeFinancingsByCustomer.get(item.customer_id)?.size || 0) === 1), todayKey),
     creditGroup('Duas ou mais vendas parceladas ativas', valid.filter((item) => (activeFinancingsByCustomer.get(item.customer_id)?.size || 0) >= 2), todayKey),
   ]
+  const currentSimultaneousGroups = [
+    currentDelinquencyGroup('Uma compra parcelada ativa', valid.filter((item) => (activeFinancingsByCustomer.get(item.customer_id)?.size || 0) === 1), todayKey),
+    currentDelinquencyGroup('Duas ou mais compras parceladas ativas', valid.filter((item) => (activeFinancingsByCustomer.get(item.customer_id)?.size || 0) >= 2), todayKey),
+  ]
+  const singlePurchaseGroup = currentSimultaneousGroups[0]
+  const multiplePurchaseGroup = currentSimultaneousGroups[1]
+  const multiplePurchaseSignal = multiplePurchaseGroup?.rate !== null
+    && singlePurchaseGroup?.rate !== null
+    && multiplePurchaseGroup.dueInstallments >= 10
+    && multiplePurchaseGroup.lateInstallments >= 5
+    && multiplePurchaseGroup.rate >= 0.25
+    && multiplePurchaseGroup.rate >= singlePurchaseGroup.rate + 0.12
+    ? `Entre clientes com duas ou mais compras parceladas ativas, ${Math.round(multiplePurchaseGroup.rate * 100)}% das parcelas vencidas continuam em aberto, contra ${Math.round(singlePurchaseGroup.rate * 100)}% entre quem tem uma compra ativa.`
+    : null
   const candidates = [...termGroups, ...simultaneousGroups].filter((item) => item.rate !== null && item.dueInstallments >= 5).sort((a, b) => (b.rate || 0) - (a.rate || 0))
   const strongest = candidates[0]
   const baseline = historicalLateRate || 0
@@ -339,6 +462,16 @@ function buildCreditAnalysis(installments: any[], todayKey: string): CreditAnaly
     currentDelinquencyValue,
     historicalPeakLateRate: peak?.rate ?? null,
     historicalPeakLateMonth: peak?.month ?? null,
+    delinquencyAging: {
+      over30Installments: over30.length,
+      over30Value: over30.reduce((total, item) => total + outstanding(item), 0),
+      over60Installments: over60.length,
+      over60Value: over60.reduce((total, item) => total + outstanding(item), 0),
+      over90Installments: over90.length,
+      over90Value: over90.reduce((total, item) => total + outstanding(item), 0),
+      over90CustomersOutsideSpc: spcOutsideCustomers.size,
+    },
+    multiplePurchaseSignal,
     termGroups,
     simultaneousGroups,
     strongestSignal,
@@ -391,15 +524,24 @@ function buildPostSaleAnalysis(postSales: any[], followups: any[], interactions:
   let complaintOrAdaptation = 0
   let awaitingHumanReview = 0
   let awaitingRating = 0
+  const deliveryIssueIds = new Set<number>()
+  const humanReviewIds = new Set<number>()
+  const satisfactionIds = new Set<number>()
 
   for (const postSale of postSales) {
     const order = orderById.get(postSale.service_order_id)
     const customer = Array.isArray(order?.customers) ? order.customers[0] : order?.customers
     const phone = String(customer?.fone_movel || customer?.phone || '').replace(/\\D/g, '')
-    if (!phone) noPhone += 1
+    if (!phone) {
+      noPhone += 1
+      deliveryIssueIds.add(postSale.id)
+    }
 
     const followup = latestFollowupByPostSale.get(postSale.id)
-    if (!followup) noMessageAttempt += 1
+    if (!followup) {
+      noMessageAttempt += 1
+      deliveryIssueIds.add(postSale.id)
+    }
     else if (followup.status === 'sent') {
       messageSent += 1
       const sentAt = new Date(followup.sent_at || followup.created_at).getTime()
@@ -416,33 +558,282 @@ function buildPostSaleAnalysis(postSales: any[], followups: any[], interactions:
       } else messageNoResponse += 1
     }
     else if (followup.status === 'scheduled' || followup.status === 'sending') messageScheduled += 1
-    else if (followup.status === 'failed') messageFailed += 1
+    else if (followup.status === 'failed') {
+      messageFailed += 1
+      deliveryIssueIds.add(postSale.id)
+    }
     else if (followup.status === 'cancelled') messageCancelled += 1
 
     const summaries = (interactionByPostSale.get(postSale.id) || []).map((interaction) => String(interaction.resumo || ''))
-    if (summaries.some((summary) => /reclam|adaptaÃ§Ã£o|adaptacao/i.test(summary))) complaintOrAdaptation += 1
-    if (summaries.some((summary) => /handoff|atendimento humano/i.test(summary))) awaitingHumanReview += 1
+    if (summaries.some((summary) => /reclam|adaptaÃ§Ã£o|adaptacao/i.test(summary))) {
+      complaintOrAdaptation += 1
+      satisfactionIds.add(postSale.id)
+    }
+    if (summaries.some((summary) => /handoff|atendimento humano/i.test(summary))) {
+      awaitingHumanReview += 1
+      humanReviewIds.add(postSale.id)
+    }
     if (summaries.some((summary) => /pedido de nota|nota de pos-venda|esclarecimento da nota/i.test(summary))) awaitingRating += 1
   }
 
-  return { total: postSales.length, noPhone, messageSent, messageScheduled, messageNoResponse, customerResponded, ratingsReceived, respondedWithoutRating, messageFailed, messageCancelled, noMessageAttempt, complaintOrAdaptation, awaitingHumanReview, awaitingRating }
+  return {
+    total: postSales.length,
+    noPhone,
+    messageSent,
+    messageScheduled,
+    messageNoResponse,
+    customerResponded,
+    ratingsReceived,
+    respondedWithoutRating,
+    messageFailed,
+    messageCancelled,
+    noMessageAttempt,
+    complaintOrAdaptation,
+    awaitingHumanReview,
+    awaitingRating,
+    deliveryIssueIds: [...deliveryIssueIds],
+    humanReviewIds: [...humanReviewIds],
+    satisfactionIds: [...satisfactionIds],
+  }
+}
+
+async function loadAllRows(queryForRange: (from: number, to: number) => any) {
+  const rows: any[] = []
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await queryForRange(from, from + 999)
+    if (error) throw error
+    rows.push(...(data || []))
+    if (!data || data.length < 1000) return rows
+  }
+}
+
+function buildOrderIntegrityAttention(orders: any[], ophthalmicSaleIds: Set<number>) {
+  const hasLensLink = (order: any) => (Array.isArray(order.links) ? order.links : []).some((link: any) => link.uso_na_os === 'lente_od' || link.uso_na_os === 'lente_oe')
+  const hasPrescription = (order: any) => [
+    order.receita_longe_od_esferico, order.receita_longe_od_cilindrico,
+    order.receita_longe_oe_esferico, order.receita_longe_oe_cilindrico,
+    order.receita_perto_od_esferico, order.receita_perto_od_cilindrico,
+    order.receita_perto_oe_esferico, order.receita_perto_oe_cilindrico,
+  ].some((value) => value != null && String(value).trim() !== '' && String(value).trim() !== '-')
+  const isOphthalmicOrder = (order: any) => ophthalmicSaleIds.has(Number(order.venda_id))
+  return {
+    ordersWithoutLensLink: orders.filter((order) => isOphthalmicOrder(order) && !hasLensLink(order)),
+    ordersWithoutPrescription: orders.filter((order) => isOphthalmicOrder(order) && hasLensLink(order) && !hasPrescription(order)),
+  }
+}
+
+function buildAccountsPayableAnalysis(rows: any[], todayKey: string): AccountsPayableAnalysis | undefined {
+  const pending = rows.filter((row) => row.status === 'Pendente' && Math.max(0, Number(row.amount || 0) - Number(row.amount_paid || 0)) > 0.01)
+  if (!pending.length) return undefined
+  const next7Key = previousDateKey(todayKey, -7)
+  const outstandingAmount = (row: any) => Math.max(0, Number(row.amount || 0) - Number(row.amount_paid || 0))
+  const overdueRows = pending.filter((row) => String(row.due_date || '').slice(0, 10) < todayKey)
+  const dueNext7Rows = pending.filter((row) => {
+    const date = String(row.due_date || '').slice(0, 10)
+    return date >= todayKey && date <= next7Key
+  })
+  const daysLate = (row: any) => Math.max(0, Math.floor((new Date(`${todayKey}T12:00:00-03:00`).getTime() - new Date(row.due_date).getTime()) / DAY_MS))
+  return {
+    pendingCount: pending.length,
+    pendingValue: pending.reduce((total, row) => total + outstandingAmount(row), 0),
+    overdueCount: overdueRows.length,
+    overdueValue: overdueRows.reduce((total, row) => total + outstandingAmount(row), 0),
+    oldestOverdueDays: overdueRows.length ? Math.max(...overdueRows.map(daysLate)) : 0,
+    dueNext7Count: dueNext7Rows.length,
+    dueNext7Value: dueNext7Rows.reduce((total, row) => total + outstandingAmount(row), 0),
+    dueTodayCount: pending.filter((row) => String(row.due_date || '').slice(0, 10) === todayKey).length,
+    overdueRecords: overdueRows.map((row) => Number(row.id)).filter(Number.isFinite),
+    dueNext7Records: dueNext7Rows.map((row) => Number(row.id)).filter(Number.isFinite),
+  }
+}
+
+function priorityWeight(priority: DailyHealthPriority) {
+  return { informativo: 0, atencao: 1, critico: 2 }[priority]
+}
+
+function daysBetween(firstDate: string, lastDate: string) {
+  return Math.max(1, Math.floor((new Date(`${lastDate}T12:00:00-03:00`).getTime() - new Date(`${firstDate}T12:00:00-03:00`).getTime()) / DAY_MS) + 1)
+}
+
+function alertImpact(alert: DailyHealthAlert) {
+  return alert.impact ?? alert.records.ids.length
+}
+
+function shouldRepeatPersistentAlert(alert: DailyHealthAlert, daysOpen: number) {
+  return [7, 15, 30].includes(daysOpen) || (daysOpen > 30 && (alert.priority === 'critico' ? daysOpen % 7 === 0 : daysOpen % 14 === 0))
+}
+
+const ALERT_SOURCE_DEPENDENCIES: Record<string, string[]> = {
+  'overdue-installments': ['parcelas'],
+  'payable-overdue': ['contas a pagar'],
+  'payable-next-7-days': ['contas a pagar'],
+  'cost-coverage': ['itens vendidos'],
+  'orders-without-lab': ['ordens de servico'],
+  'lenses-not-arrived': ['ordens de servico'],
+  'lens-mounting-overdue': ['ordens de servico'],
+  'lens-mounting-waiting-frame': ['ordens de servico'],
+  'orders-without-promise': ['ordens de servico'],
+  'orders-without-lens-link': ['ordens de servico', 'lentes das OS'],
+  'orders-without-prescription': ['ordens de servico', 'lentes das OS'],
+  'invalid-order-timeline': ['ordens de servico'],
+  'cancelled-sales-with-open-order': ['ordens de servico'],
+  'lens-sales-without-order': ['ordens de servico', 'vendas de lentes'],
+  'whatsapp-pending': ['WhatsApp'],
+  'post-sales-delivery': ['pos-venda', 'envios de pos-venda', 'clientes de pos-venda', 'respostas de WhatsApp para pos-venda'],
+  'post-sales-human-review': ['pos-venda', 'interacoes de pos-venda'],
+  'post-sales-satisfaction': ['pos-venda', 'interacoes de pos-venda'],
+}
+
+const RETIRED_ALERT_IDS = new Set([
+  'invalid-order-timeline',
+  'duplicate-open-orders',
+  'lab-orders-without-update',
+])
+
+const DATA_SOURCE_ALERTS: Array<{ id: string; area: DailyHealthArea; sources: string[]; title: string; detail: string }> = [
+  {
+    id: 'data-unavailable-financial',
+    area: 'financeiro',
+    sources: ['vendas', 'vendas acumuladas do mes', 'vendas no mesmo periodo do ano anterior', 'recebimentos', 'recebimentos acumulados do mes', 'recebimentos no mesmo periodo do ano anterior', 'parcelas', 'contas a pagar', 'itens vendidos'],
+    title: 'Parte dos dados financeiros não pôde ser atualizada',
+    detail: 'O relatório preservou as pendências anteriores e não tirou conclusões sobre essa fonte hoje.',
+  },
+  {
+    id: 'data-unavailable-operation',
+    area: 'operacao',
+    sources: ['ordens de servico', 'vendas de lentes', 'lentes das OS'],
+    title: 'Parte dos dados operacionais não pôde ser atualizada',
+    detail: 'O relatório preservou as pendências anteriores e não tirou conclusões sobre essa fonte hoje.',
+  },
+  {
+    id: 'data-unavailable-relationship',
+    area: 'relacionamento',
+    sources: ['pos-venda', 'envios de pos-venda', 'interacoes de pos-venda', 'clientes de pos-venda', 'respostas de WhatsApp para pos-venda', 'WhatsApp'],
+    title: 'Parte dos dados de relacionamento não pôde ser atualizada',
+    detail: 'O relatório preservou as pendências anteriores e não tirou conclusões sobre essa fonte hoje.',
+  },
+]
+
+function shouldRepeatAfterMissedGeneration(alert: DailyHealthAlert, previousDaysOpen: number, daysOpen: number) {
+  for (let day = previousDaysOpen + 1; day <= daysOpen; day += 1) {
+    if (shouldRepeatPersistentAlert(alert, day)) return true
+  }
+  return false
+}
+
+function compareAlerts(currentAlerts: DailyHealthAlert[], previousAlerts: DailyHealthAlert[], previousDate: string | null, reportDate: string, unavailableSources = new Set<string>()) {
+  const priorById = new Map(previousAlerts.map((alert) => [alert.id, alert]))
+  const lifecycle: Record<DailyHealthArea, DailyHealthAreaLifecycle> = {
+    financeiro: { newCount: 0, worsenedCount: 0, improvedCount: 0, persistentCount: 0, resolvedCount: 0 },
+    operacao: { newCount: 0, worsenedCount: 0, improvedCount: 0, persistentCount: 0, resolvedCount: 0 },
+    relacionamento: { newCount: 0, worsenedCount: 0, improvedCount: 0, persistentCount: 0, resolvedCount: 0 },
+  }
+  const currentIds = new Set(currentAlerts.map((alert) => alert.id))
+  for (const previous of previousAlerts) {
+    const sourceUnavailable = (ALERT_SOURCE_DEPENDENCIES[previous.id] || []).some((source) => unavailableSources.has(source))
+    if (!currentIds.has(previous.id) && previous.lifecycle && lifecycle[previous.area] && !sourceUnavailable && !RETIRED_ALERT_IDS.has(previous.id)) lifecycle[previous.area].resolvedCount += 1
+  }
+
+  const alerts = currentAlerts.map((alert) => {
+    const previous = priorById.get(alert.id)
+    if (alert.id.startsWith('data-unavailable-')) {
+      const state = previous?.lifecycle ? 'piorou' as const : 'novo' as const
+      lifecycle[alert.area][state === 'novo' ? 'newCount' : 'worsenedCount'] += 1
+      return { ...alert, lifecycle: { state, firstSeen: previous?.lifecycle?.firstSeen || reportDate, daysOpen: previous?.lifecycle ? daysBetween(previous.lifecycle.firstSeen, reportDate) : 1, previousImpact: previous ? alertImpact(previous) : null, impactChange: null, newRecords: 0, resolvedRecords: 0, show: true } }
+    }
+    if (!previous || !previousDate || !previous.lifecycle) {
+      lifecycle[alert.area].newCount += 1
+      return { ...alert, lifecycle: { state: 'novo' as const, firstSeen: reportDate, daysOpen: 1, previousImpact: null, impactChange: null, newRecords: alert.records.ids.length, resolvedRecords: 0, show: true } }
+    }
+
+    const currentImpact = alertImpact(alert)
+    const previousImpact = alertImpact(previous)
+    const difference = currentImpact - previousImpact
+    const relativeChange = previousImpact > 0 ? Math.abs(difference) / previousImpact : 0
+    const previousIds = new Set(previous.records?.ids || [])
+    const currentIdsForAlert = new Set(alert.records.ids)
+    const newRecords = [...currentIdsForAlert].filter((id) => !previousIds.has(id)).length
+    const resolvedRecords = [...previousIds].filter((id) => !currentIdsForAlert.has(id)).length
+    const firstSeen = previous.lifecycle?.firstSeen || previousDate
+    const daysOpen = daysBetween(firstSeen, reportDate)
+    const priorityChanged = priorityWeight(alert.priority) - priorityWeight(previous.priority)
+    const materialIncrease = difference > 0 && (previousImpact < 10 ? difference >= 1 : relativeChange >= 0.1)
+    const materialDecrease = difference < 0 && (previousImpact < 10 ? difference <= -1 : relativeChange >= 0.1)
+    const state: DailyHealthAlertState = priorityChanged > 0 || materialIncrease ? 'piorou' : priorityChanged < 0 || materialDecrease ? 'melhorou' : 'persistente'
+    lifecycle[alert.area][state === 'piorou' ? 'worsenedCount' : state === 'melhorou' ? 'improvedCount' : 'persistentCount'] += 1
+    return {
+      ...alert,
+      detail: ['lens-mounting-overdue', 'lens-mounting-waiting-frame'].includes(alert.id) && state === 'persistente'
+        ? `${alert.detail} O assunto ainda nao foi resolvido desde ontem.`
+        : alert.detail,
+      lifecycle: {
+        state,
+        firstSeen,
+        daysOpen,
+        previousImpact,
+        impactChange: difference,
+        newRecords,
+        resolvedRecords,
+        show: state !== 'persistente'
+          || newRecords > 0
+          || ['lens-mounting-overdue', 'lens-mounting-waiting-frame'].includes(alert.id)
+          || shouldRepeatAfterMissedGeneration(alert, previous.lifecycle.daysOpen || 0, daysOpen),
+      },
+    }
+  })
+  return { alerts, lifecycle }
+}
+
+export const dailyHealthTestables = {
+  buildAccountsPayableAnalysis,
+  buildOrderIntegrityAttention,
+  buildPostSaleAnalysis,
+  buildMountingAttention,
+  compareAlerts,
+  isGroundedAiText,
+  isReadySnapshot,
 }
 
 function fallbackNarrative(metrics: DailyHealthMetrics, alerts: DailyHealthAlert[]) {
   const urgent = alerts.filter((alert) => alert.priority === 'critico' || alert.priority === 'atencao').slice(0, 2)
   const salesText = `As vendas foram ${money(metrics.sales)} e os recebimentos ${money(metrics.received)}.`
-  const creditText = metrics.creditAnalysis.historicalLateRate === null
-    ? ''
-    : ` No crédito, ${metrics.creditAnalysis.currentDelinquencyInstallments} parcelas vencidas seguem em aberto; o histórico de atraso é de ${Math.round(metrics.creditAnalysis.historicalLateRate * 100)}%.`
+  const creditText = metrics.creditAnalysis.currentDelinquencyInstallments
+    ? ` No crédito, ${metrics.creditAnalysis.currentDelinquencyInstallments} parcelas vencidas seguem em aberto.`
+    : ''
   if (!urgent.length) return `${salesText}${creditText} Nenhum desvio relevante foi identificado nas fontes disponíveis.`
   return `${salesText}${creditText} Hoje merece atenção: ${urgent.map((alert) => alert.title.toLowerCase()).join(' e ')}.`
 }
 
-function fallbackAreaNarratives(metrics: DailyHealthMetrics): DailyHealthAreaNarratives {
+function fallbackFinancialNarrative(credit: CreditAnalysis) {
+  const aging = credit.delinquencyAging
+  const current = credit.currentDelinquencyInstallments
+    ? `Hoje existem ${credit.currentDelinquencyInstallments} parcelas vencidas em aberto, somando ${money(credit.currentDelinquencyValue)}.`
+    : 'Hoje nao ha parcelas vencidas em aberto.'
+  const lossRisk = aging.over90Installments
+    ? `Dessas, ${aging.over90Installments} ja ultrapassaram 90 dias de atraso, no valor de ${money(aging.over90Value)}; ${aging.over90CustomersOutsideSpc} cliente${aging.over90CustomersOutsideSpc === 1 ? '' : 's'} desse grupo ainda nao esta${aging.over90CustomersOutsideSpc === 1 ? '' : 'o'} no SPC.`
+    : 'Nenhuma parcela aberta ultrapassou 90 dias de atraso.'
+  return `${current} ${lossRisk} ${credit.multiplePurchaseSignal || 'A prioridade e agir primeiro sobre os valores mais antigos e de maior impacto.'}`
+}
+
+function fallbackAreaNarratives(metrics: DailyHealthMetrics, alerts: DailyHealthAlert[] = []): DailyHealthAreaNarratives {
   const postSale = metrics.postSaleAnalysis
+  const hasUnavailableData = (area: DailyHealthArea) => alerts.some((alert) => alert.area === area && alert.id.startsWith('data-unavailable-'))
+  const changed = (area: DailyHealthArea) => {
+    const state = metrics.alertLifecycle?.[area]
+    return Boolean(state && state.newCount + state.worsenedCount + state.improvedCount > 0)
+  }
+  const quiet = (area: DailyHealthArea) => {
+    const resolved = metrics.alertLifecycle?.[area]?.resolvedCount || 0
+    return resolved ? `${resolved} pendencia${resolved === 1 ? '' : 's'} foi${resolved === 1 ? '' : 'ram'} resolvida${resolved === 1 ? '' : 's'} desde ontem.` : 'Nao houve mudanca material desde ontem.'
+  }
   const operationFacts = [
     metrics.overdueOrders > 0 ? `${metrics.overdueOrders} pedidos alem do prazo` : '',
     metrics.ordersWithoutLabRequest > 0 ? `${metrics.ordersWithoutLabRequest} pedidos sem envio ao laboratorio` : '',
+    metrics.mountingOverdue > 0 ? `${metrics.mountingOverdue} montagens locais acima de 24 horas` : '',
+    metrics.mountingWaitingForFrame > 0 ? `${metrics.mountingWaitingForFrame} montagens aguardam a armacao do cliente ha mais de 7 dias` : '',
+    metrics.ordersWithoutPromise > 0 ? `${metrics.ordersWithoutPromise} OS sem data prometida` : '',
+    metrics.ordersWithoutLensLink > 0 ? `${metrics.ordersWithoutLensLink} OS estao sem lente vinculada` : '',
+    metrics.ordersWithoutPrescription > 0 ? `${metrics.ordersWithoutPrescription} OS com lente vinculada estao sem grau preenchido` : '',
     metrics.readyForPickup > 0 ? `${metrics.readyForPickup} pedidos prontos aguardando retirada` : '',
   ].filter(Boolean)
   const relationshipFacts = [
@@ -452,10 +843,10 @@ function fallbackAreaNarratives(metrics: DailyHealthMetrics): DailyHealthAreaNar
       : 'Nao ha pos-vendas pendentes.',
   ]
   return {
-    financeiro: `${metrics.creditAnalysis.narrative} ${metrics.creditAnalysis.recommendation}`,
-    operacao: operationFacts.length ? `A operacao pede atencao: ${operationFacts.join('; ')}.` : 'A operacao nao trouxe desvios relevantes nas fontes disponiveis.',
-    relacionamento: relationshipFacts.join(' '),
-    relacionamentoConcern: postSale.awaitingHumanReview > 0
+    financeiro: hasUnavailableData('financeiro') ? 'Nao foi possivel atualizar todos os dados financeiros. O relatorio nao concluiu que pendencias anteriores foram resolvidas.' : changed('financeiro') ? fallbackFinancialNarrative(metrics.creditAnalysis) : quiet('financeiro'),
+    operacao: hasUnavailableData('operacao') ? 'Nao foi possivel atualizar todos os dados operacionais. O relatorio nao concluiu que pendencias anteriores foram resolvidas.' : changed('operacao') ? (operationFacts.length ? `A operacao pede atencao: ${operationFacts.join('; ')}.` : 'A operacao nao trouxe desvios relevantes nas fontes disponiveis.') : quiet('operacao'),
+    relacionamento: hasUnavailableData('relacionamento') ? 'Nao foi possivel atualizar todos os dados de relacionamento. O relatorio nao concluiu que pendencias anteriores foram resolvidas.' : changed('relacionamento') ? relationshipFacts.join(' ') : quiet('relacionamento'),
+    relacionamentoConcern: !hasUnavailableData('relacionamento') && changed('relacionamento') && postSale.awaitingHumanReview > 0
       ? `Fiquei preocupado com ${postSale.awaitingHumanReview} caso${postSale.awaitingHumanReview === 1 ? '' : 's'} em revisao humana aberta. Confira esses retornos antes de seguirmos com novos contatos.`
       : null,
   }
@@ -467,10 +858,27 @@ type DailyHealthNarrativeResult = {
   cards: Record<string, { title: string; detail: string }>
 }
 
+function aiText(value: unknown) {
+  return typeof value === 'string' && value.trim().length > 10 && value.trim().length <= 1200 ? value.trim() : null
+}
+
+function isGroundedAiText(value: unknown, evidence: string[]) {
+  const text = aiText(value)
+  if (!text) return false
+  if (/(?:porque|por isso|devido|caus(?:a|ou)|provoc|recomend|prioriz|\bdeve\b|\bprecisa\b|contat(?:e|ar)|\bfaca\b|\bfaça\b)/i.test(text)) return false
+  const supportedNumbers = new Set(evidence.flatMap((item) => item.match(/\d+(?:[.,]\d+)?/g) || []))
+  const usedNumbers = text.match(/\d+(?:[.,]\d+)?/g) || []
+  return usedNumbers.every((number) => supportedNumbers.has(number))
+}
+
+function groundedAiText(value: unknown, fallbackValue: string, evidence: string[]) {
+  return isGroundedAiText(value, evidence) ? String(value).trim() : fallbackValue
+}
+
 async function createNarrative(metrics: DailyHealthMetrics, alerts: DailyHealthAlert[]): Promise<DailyHealthNarrativeResult> {
   const fallback: DailyHealthNarrativeResult = {
     narrative: fallbackNarrative(metrics, alerts),
-    areas: fallbackAreaNarratives(metrics),
+    areas: fallbackAreaNarratives(metrics, alerts),
     cards: Object.fromEntries(alerts.map((alert) => [alert.id, { title: alert.title, detail: alert.detail }])),
   }
   const apiKey = process.env.OPENAI_API_KEY
@@ -479,12 +887,23 @@ async function createNarrative(metrics: DailyHealthMetrics, alerts: DailyHealthA
     return fallback
   }
   try {
+    const metricsForAi = Object.fromEntries(Object.entries(metrics).filter(([key]) => !new Set(['inconsistentOrderTimeline']).has(key)))
+    const aiMetrics = {
+      ...metricsForAi,
+      creditAnalysis: {
+        currentDelinquencyRate: metrics.creditAnalysis.currentDelinquencyRate,
+        currentDelinquencyInstallments: metrics.creditAnalysis.currentDelinquencyInstallments,
+        currentDelinquencyValue: metrics.creditAnalysis.currentDelinquencyValue,
+        delinquencyAging: metrics.creditAnalysis.delinquencyAging,
+        multiplePurchaseSignal: metrics.creditAnalysis.multiplePurchaseSignal,
+      },
+    }
     const response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'gpt-4.1-mini',
-        input: `Voce escreve a leitura diaria de uma otica em portugues brasileiro. Retorne SOMENTE JSON valido, sem markdown, neste formato: {"geral":"...","financeiro":"...","operacao":"...","relacionamento":"...","relacionamentoConcern":"texto ou null","cards":{"id-do-alerta":{"title":"...","detail":"..."}}}. Use SOMENTE os fatos estruturados abaixo. Nao invente causas, valores, clientes ou acoes. Cada leitura deve ser humana, direta e curta. No financeiro, use "inadimplencia atual" SOMENTE para parcelas vencidas que continuam em aberto. Parcela quitada depois do vencimento compoe apenas o "historico de atraso" e nunca deve ser chamada de inadimplencia. Explique os dois indicadores sem misturar seus significados. Os cards sao excecoes que precisam de atencao: reescreva o titulo e o detalhe de cada alerta de forma variada, amigavel e concreta. Para CADA card, use exclusivamente os fatos do alerta com o mesmo id; nao acrescente porcentagens, causas, comparacoes, estados de resposta ou conclusoes que nao estejam no titulo e detalhe daquele alerta. Nao crie uma acao nova nem repita literalmente o titulo original. Em relacionamento, explique os pos-vendas concluidos ontem e na semana, os envios, as respostas, as notas registradas, as respostas sem nota registrada, os casos aguardando nota e as falhas. Nunca escreva que uma resposta foi 'avaliada' quando o fato e apenas nao haver nota registrada. Preencha relacionamentoConcern somente quando houver revisao humana aberta, em tom de consultor preocupado. ${JSON.stringify({ metrics, alerts: alerts.map(({ id, title, detail, priority, area }) => ({ id, title, detail, priority, area })) })}`,
+        input: `Voce escreve a leitura diaria de uma otica em portugues brasileiro. Retorne SOMENTE JSON valido, sem markdown, neste formato: {"geral":"...","financeiro":"...","operacao":"...","relacionamento":"...","relacionamentoConcern":"texto ou null","cards":{"id-do-alerta":{"title":"...","detail":"..."}}}. Use SOMENTE os fatos estruturados abaixo. Nao invente causas, valores, clientes ou acoes. Cada leitura deve ser humana, direta e curta. Os textos financeiro, operacao e relacionamento sao leituras de modulo, nao listas de botoes. O relatorio e diario: use lifecycle.show para decidir o que merece ser mencionado. Se um modulo nao tiver alerta com show=true, diga apenas que nao houve mudanca material desde ontem, citando resolucoes quando houver; nao repita numeros persistentes. No financeiro, quando houver mudanca relevante, fale de inadimplencia atual: parcelas que continuam vencidas em aberto, valor, envelhecimento acima de 90 dias e quantos clientes desse grupo ainda nao estao no SPC. Se houver alerta de contas a pagar com lifecycle.show=true, mencione somente o vencimento em aberto ou a concentracao material nos proximos 7 dias. Nunca mencione parcelas que foram quitadas com atraso, historico de atraso ou comparacoes de pagamento passado. Mencione varias compras parceladas apenas se multiplePurchaseSignal existir e houver mudanca relevante no financeiro, como associacao atual observada e nao causa. Os cards sao excecoes com lifecycle.show=true: reescreva titulo e detalhe de forma variada e concreta. Quando houver lens-mounting-overdue persistente, deixe claro que a montagem local ainda nao foi registrada desde ontem. Quando houver lens-mounting-waiting-frame persistente, deixe claro que a armação do cliente ainda nao foi recebida desde ontem. Para CADA card, use exclusivamente os fatos do alerta com o mesmo id; nao acrescente porcentagens, causas, comparacoes, estados de resposta ou conclusoes que nao estejam no titulo e detalhe daquele alerta. Nao crie uma acao nova nem repita literalmente o titulo original. Em relacionamento, explique os pos-vendas concluidos ontem e na semana somente quando relacionamento tiver mudanca relevante. Nunca escreva que uma resposta foi 'avaliada' quando o fato e apenas nao haver nota registrada. Preencha relacionamentoConcern somente quando houver revisao humana aberta e show=true, em tom de consultor preocupado. ${JSON.stringify({ metrics: aiMetrics, lifecycle: metrics.alertLifecycle, alerts: alerts.map(({ id, title, detail, priority, area, lifecycle }) => ({ id, title, detail, priority, area, lifecycle })) })}`,
       }),
       cache: 'no-store',
     })
@@ -513,23 +932,30 @@ async function createNarrative(metrics: DailyHealthMetrics, alerts: DailyHealthA
       console.warn(`[Daily health][IA] JSON invalido: ${text.slice(0, 1000)}`)
       return fallback
     }
-    const validText = (value: unknown, fallbackValue: string) => typeof value === 'string' && value.trim().length > 10 && value.trim().length <= 1200 ? value.trim() : fallbackValue
-    const cards = Object.fromEntries(alerts.map((alert) => {
-      const card = parsed.cards && typeof parsed.cards === 'object' ? (parsed.cards as Record<string, unknown>)[alert.id] : null
-      const value = card && typeof card === 'object' ? card as Record<string, unknown> : {}
-      return [alert.id, {
-        title: validText(value.title, alert.title),
-        detail: validText(value.detail, alert.detail),
-      }]
-    }))
+    const hasForbiddenCreditHistoryLanguage = (value: string) => /historico|quitad|paga[sd]? com atraso/i.test(value)
+    const cards = Object.fromEntries(alerts.map((alert) => [alert.id, { title: alert.title, detail: alert.detail }]))
+    const financialEvidence = [fallback.areas.financeiro, ...alerts.filter((alert) => alert.area === 'financeiro').flatMap((alert) => [alert.title, alert.detail])]
+    const operationEvidence = [fallback.areas.operacao, ...alerts.filter((alert) => alert.area === 'operacao').flatMap((alert) => [alert.title, alert.detail])]
+    const relationshipEvidence = [fallback.areas.relacionamento, ...alerts.filter((alert) => alert.area === 'relacionamento').flatMap((alert) => [alert.title, alert.detail])]
+    const financeiroDaIa = groundedAiText(parsed.financeiro, fallback.areas.financeiro, financialEvidence)
+    const financeiro = hasForbiddenCreditHistoryLanguage(financeiroDaIa)
+      ? fallback.areas.financeiro
+      : financeiroDaIa
+    const financeiroTemMudanca = Boolean(metrics.alertLifecycle && (metrics.alertLifecycle.financeiro.newCount + metrics.alertLifecycle.financeiro.worsenedCount + metrics.alertLifecycle.financeiro.improvedCount > 0))
+    const operacaoTemMudanca = Boolean(metrics.alertLifecycle && (metrics.alertLifecycle.operacao.newCount + metrics.alertLifecycle.operacao.worsenedCount + metrics.alertLifecycle.operacao.improvedCount > 0))
+    const relacionamentoTemMudanca = Boolean(metrics.alertLifecycle && (metrics.alertLifecycle.relacionamento.newCount + metrics.alertLifecycle.relacionamento.worsenedCount + metrics.alertLifecycle.relacionamento.improvedCount > 0))
+    const dadosIndisponiveis = (area: DailyHealthArea) => alerts.some((alert) => alert.area === area && alert.id.startsWith('data-unavailable-'))
+    const financeiroComSinal = financeiroTemMudanca && metrics.creditAnalysis.multiplePurchaseSignal && !financeiro.includes('duas ou mais compras')
+      ? `${financeiro} ${metrics.creditAnalysis.multiplePurchaseSignal}`
+      : financeiro
     return {
-      narrative: validText(parsed.geral, fallback.narrative),
+      narrative: groundedAiText(parsed.geral, fallback.narrative, [fallback.narrative, ...alerts.flatMap((alert) => [alert.title, alert.detail])]),
       areas: {
-        financeiro: validText(parsed.financeiro, fallback.areas.financeiro),
-        operacao: validText(parsed.operacao, fallback.areas.operacao),
-        relacionamento: validText(parsed.relacionamento, fallback.areas.relacionamento),
-        relacionamentoConcern: typeof parsed.relacionamentoConcern === 'string' && parsed.relacionamentoConcern.trim().length > 10 && parsed.relacionamentoConcern.trim().length <= 600
-          ? parsed.relacionamentoConcern.trim()
+        financeiro: !dadosIndisponiveis('financeiro') && financeiroTemMudanca ? financeiroComSinal : fallback.areas.financeiro,
+        operacao: !dadosIndisponiveis('operacao') && operacaoTemMudanca ? groundedAiText(parsed.operacao, fallback.areas.operacao, operationEvidence) : fallback.areas.operacao,
+        relacionamento: !dadosIndisponiveis('relacionamento') && relacionamentoTemMudanca ? groundedAiText(parsed.relacionamento, fallback.areas.relacionamento, relationshipEvidence) : fallback.areas.relacionamento,
+        relacionamentoConcern: !dadosIndisponiveis('relacionamento') && relacionamentoTemMudanca && isGroundedAiText(parsed.relacionamentoConcern, [fallback.areas.relacionamentoConcern || '', ...relationshipEvidence]) && /revis/i.test(String(parsed.relacionamentoConcern)) && !/reclama/i.test(String(parsed.relacionamentoConcern))
+          ? String(parsed.relacionamentoConcern).trim()
           : fallback.areas.relacionamentoConcern,
       },
       cards,
@@ -542,37 +968,48 @@ async function createNarrative(metrics: DailyHealthMetrics, alerts: DailyHealthA
 
 export async function generateDailyStoreHealthReport(storeId = 1, reportDate = previousDateKey(dateKey(), 1)): Promise<DailyHealthReport> {
   const admin = createAdminClient({ noStore: true })
+  const { data: existingReport, error: existingReportError } = await (admin.from('daily_store_health_reports') as any)
+    .select('*')
+    .eq('store_id', storeId)
+    .eq('report_date', reportDate)
+    .maybeSingle()
+  if (existingReportError) throw existingReportError
+  if (isReadySnapshot(existingReport)) return reportFromStoredRow(existingReport)
   const failures: string[] = []
   const target = rangeForDate(reportDate)
   const monthTarget = rangeFromStartOfMonth(reportDate)
   const lastYearReportDate = sameDatePreviousYear(reportDate)
   const lastYearTarget = rangeFromStartOfMonth(lastYearReportDate)
+  const paymentTarget = rangeForBusinessDate(reportDate)
+  const paymentMonthTarget = businessDateRangeFromStartOfMonth(reportDate)
+  const lastYearPaymentTarget = businessDateRangeFromStartOfMonth(lastYearReportDate)
   // A snapshot must be judged at the end of its reference day, not when it is regenerated.
   const asOfDateKey = reportDate
   const dueSoonKey = previousDateKey(asOfDateKey, -7)
 
-  const [storeResult, settingsResult, salesResult, monthSalesResult, lastYearSalesResult, paymentsResult, monthPaymentsResult, lastYearPaymentsResult, financingsResult, monthFinancingsResult, lastYearFinancingsResult, installmentsResult, ordersResult, lensSalesResult, postSalesResult, postSalesCompletedYesterdayResult, postSalesCompletedWeekResult, postSaleFollowupsResult, postSaleInteractionsResult, postSaleOrdersResult, itemsResult, whatsAppResult] = await Promise.allSettled([
+  const [storeResult, settingsResult, salesResult, monthSalesResult, lastYearSalesResult, paymentsResult, monthPaymentsResult, lastYearPaymentsResult, financingsResult, monthFinancingsResult, lastYearFinancingsResult, installmentsResult, accountsPayableResult, ordersResult, lensSalesResult, postSalesResult, postSalesCompletedYesterdayResult, postSalesCompletedWeekResult, postSaleFollowupsResult, postSaleInteractionsResult, postSaleOrdersResult, itemsResult, whatsAppResult] = await Promise.allSettled([
     (admin.from('stores') as any).select('tenant_id,created_at').eq('id', storeId).single(),
     (admin.from('daily_store_health_settings') as any).select('settings').eq('store_id', storeId).maybeSingle(),
-    (admin.from('vendas') as any).select('id,valor_final,valor_restante,financiamento_loja!financiamento_loja_venda_id_fkey(valor_total_financiado)').eq('store_id', storeId).eq('status', 'Fechada').gte('created_at', target.start).lte('created_at', target.end),
-    (admin.from('vendas') as any).select('id,valor_final,valor_restante,financiamento_loja!financiamento_loja_venda_id_fkey(valor_total_financiado)').eq('store_id', storeId).eq('status', 'Fechada').gte('created_at', monthTarget.start).lte('created_at', monthTarget.end),
-    (admin.from('vendas') as any).select('id,valor_final,valor_restante,financiamento_loja!financiamento_loja_venda_id_fkey(valor_total_financiado)').eq('store_id', storeId).eq('status', 'Fechada').gte('created_at', lastYearTarget.start).lte('created_at', lastYearTarget.end),
-    (admin.from('pagamentos') as any).select('valor_pago,parcela_id').eq('store_id', storeId).gte('data_pagamento', target.start).lte('data_pagamento', target.end),
-    (admin.from('pagamentos') as any).select('valor_pago,parcela_id').eq('store_id', storeId).gte('data_pagamento', monthTarget.start).lte('data_pagamento', monthTarget.end),
-    (admin.from('pagamentos') as any).select('valor_pago,parcela_id').eq('store_id', storeId).gte('data_pagamento', lastYearTarget.start).lte('data_pagamento', lastYearTarget.end),
-    (admin.from('financiamento_loja') as any).select('id,customer_id,valor_total_financiado,quantidade_parcelas,created_at').eq('store_id', storeId).gte('created_at', target.start).lte('created_at', target.end),
-    (admin.from('financiamento_loja') as any).select('valor_total_financiado').eq('store_id', storeId).gte('created_at', monthTarget.start).lte('created_at', monthTarget.end),
-    (admin.from('financiamento_loja') as any).select('valor_total_financiado').eq('store_id', storeId).gte('created_at', lastYearTarget.start).lte('created_at', lastYearTarget.end),
+    loadAllRows((from, to) => (admin.from('vendas') as any).select('id,valor_final,valor_restante,financiamento_loja!financiamento_loja_venda_id_fkey(valor_total_financiado)').eq('store_id', storeId).eq('status', 'Fechada').gte('created_at', target.start).lte('created_at', target.end).range(from, to)),
+    loadAllRows((from, to) => (admin.from('vendas') as any).select('id,valor_final,valor_restante,financiamento_loja!financiamento_loja_venda_id_fkey(valor_total_financiado)').eq('store_id', storeId).eq('status', 'Fechada').gte('created_at', monthTarget.start).lte('created_at', monthTarget.end).range(from, to)),
+    loadAllRows((from, to) => (admin.from('vendas') as any).select('id,valor_final,valor_restante,financiamento_loja!financiamento_loja_venda_id_fkey(valor_total_financiado)').eq('store_id', storeId).eq('status', 'Fechada').gte('created_at', lastYearTarget.start).lte('created_at', lastYearTarget.end).range(from, to)),
+    loadAllRows((from, to) => (admin.from('pagamentos') as any).select('valor_pago,parcela_id').eq('store_id', storeId).gte('data_pagamento', paymentTarget.start).lt('data_pagamento', paymentTarget.end).range(from, to)),
+    loadAllRows((from, to) => (admin.from('pagamentos') as any).select('valor_pago,parcela_id').eq('store_id', storeId).gte('data_pagamento', paymentMonthTarget.start).lt('data_pagamento', paymentMonthTarget.end).range(from, to)),
+    loadAllRows((from, to) => (admin.from('pagamentos') as any).select('valor_pago,parcela_id').eq('store_id', storeId).gte('data_pagamento', lastYearPaymentTarget.start).lt('data_pagamento', lastYearPaymentTarget.end).range(from, to)),
+    loadAllRows((from, to) => (admin.from('financiamento_loja') as any).select('id,customer_id,valor_total_financiado,quantidade_parcelas,created_at').eq('store_id', storeId).gte('created_at', target.start).lte('created_at', target.end).range(from, to)),
+    loadAllRows((from, to) => (admin.from('financiamento_loja') as any).select('valor_total_financiado').eq('store_id', storeId).gte('created_at', monthTarget.start).lte('created_at', monthTarget.end).range(from, to)),
+    loadAllRows((from, to) => (admin.from('financiamento_loja') as any).select('valor_total_financiado').eq('store_id', storeId).gte('created_at', lastYearTarget.start).lte('created_at', lastYearTarget.end).range(from, to)),
     loadInstallments(admin, storeId),
-    (admin.from('service_orders') as any).select('id,venda_id,created_at,dt_prometido_para,dt_pedido_em,dt_lente_chegou,dt_montado_em,dt_montado_no_lab,dt_recebido_na_loja,dt_entregue_em,lab_encerrada_em,os_enviada_ao_lab,vendas(status)').eq('store_id', storeId),
-    (admin.from('venda_itens') as any).select('venda_id,products!inner(tipo_produto),vendas!inner(status,created_at)').eq('store_id', storeId).eq('products.tipo_produto', 'Lente').eq('vendas.status', 'Fechada').gte('vendas.created_at', rangeForDate(previousDateKey(reportDate, 30)).start),
-    (admin.from('post_sales') as any).select('id,status,service_order_id,avaliacao_cliente').eq('store_id', storeId).neq('status', 'Concluido'),
-    (admin.from('post_sales') as any).select('id').eq('store_id', storeId).eq('status', 'Concluido').gte('updated_at', target.start).lte('updated_at', target.end),
-    (admin.from('post_sales') as any).select('id').eq('store_id', storeId).eq('status', 'Concluido').gte('updated_at', rangeForDate(previousDateKey(reportDate, 6)).start).lte('updated_at', target.end),
-    (admin.from('whatsapp_post_sale_followups') as any).select('post_sales_id,channel_id,remote_phone,status,sent_at,created_at').eq('store_id', storeId).not('post_sales_id', 'is', null).order('created_at', { ascending: false }),
-    (admin.from('post_sales_interactions') as any).select('post_sales_id,tipo_contato,resumo,created_at').eq('store_id', storeId).order('created_at', { ascending: false }),
-    (admin.from('service_orders') as any).select('id,customers(phone,fone_movel)').eq('store_id', storeId),
-    (admin.from('venda_itens') as any).select('id,product_id,valor_total_item,products(preco_custo),vendas!inner(created_at,status)').eq('store_id', storeId).eq('vendas.status', 'Fechada').gte('vendas.created_at', target.start).lte('vendas.created_at', target.end),
+    loadAllRows((from, to) => (admin.from('accounts_payable') as any).select('id,amount,amount_paid,due_date,status').eq('store_id', storeId).range(from, to)),
+    loadAllRows((from, to) => (admin.from('service_orders') as any).select('id,venda_id,created_at,dt_prometido_para,dt_pedido_em,dt_lente_chegou,dt_montado_em,dt_montado_no_lab,dt_recebido_na_loja,dt_entregue_em,lab_encerrada_em,os_enviada_ao_lab,armacao_com_cliente,receita_longe_od_esferico,receita_longe_od_cilindrico,receita_longe_oe_esferico,receita_longe_oe_cilindrico,receita_perto_od_esferico,receita_perto_od_cilindrico,receita_perto_oe_esferico,receita_perto_oe_cilindrico,links:venda_itens_os_links(venda_item_id,uso_na_os),vendas(status)').eq('store_id', storeId).range(from, to)),
+    loadAllRows((from, to) => (admin.from('venda_itens') as any).select('venda_id,products!inner(tipo_produto),vendas!inner(status,created_at)').eq('store_id', storeId).eq('products.tipo_produto', 'Lente').eq('vendas.status', 'Fechada').gte('vendas.created_at', rangeForDate(previousDateKey(reportDate, 30)).start).lte('vendas.created_at', target.end).range(from, to)),
+    loadAllRows((from, to) => (admin.from('post_sales') as any).select('id,status,service_order_id,avaliacao_cliente').eq('store_id', storeId).neq('status', 'Concluido').range(from, to)),
+    loadAllRows((from, to) => (admin.from('post_sales') as any).select('id').eq('store_id', storeId).eq('status', 'Concluido').gte('updated_at', target.start).lte('updated_at', target.end).range(from, to)),
+    loadAllRows((from, to) => (admin.from('post_sales') as any).select('id').eq('store_id', storeId).eq('status', 'Concluido').gte('updated_at', rangeForDate(previousDateKey(reportDate, 6)).start).lte('updated_at', target.end).range(from, to)),
+    loadAllRows((from, to) => (admin.from('whatsapp_post_sale_followups') as any).select('post_sales_id,channel_id,remote_phone,status,sent_at,created_at').eq('store_id', storeId).not('post_sales_id', 'is', null).order('created_at', { ascending: false }).range(from, to)),
+    loadAllRows((from, to) => (admin.from('post_sales_interactions') as any).select('post_sales_id,tipo_contato,resumo,created_at').eq('store_id', storeId).order('created_at', { ascending: false }).range(from, to)),
+    loadAllRows((from, to) => (admin.from('service_orders') as any).select('id,customers(phone,fone_movel)').eq('store_id', storeId).range(from, to)),
+    loadAllRows((from, to) => (admin.from('venda_itens') as any).select('id,product_id,valor_total_item,products(preco_custo),vendas!inner(created_at,status)').eq('store_id', storeId).eq('vendas.status', 'Fechada').gte('vendas.created_at', target.start).lte('vendas.created_at', target.end).range(from, to)),
     getWhatsAppPendencias(storeId),
   ])
 
@@ -595,6 +1032,7 @@ export async function generateDailyStoreHealthReport(storeId = 1, reportDate = p
   const monthFinancings = read<any[]>(monthFinancingsResult, 'parcelamentos acumulados do mes', [])
   const lastYearFinancings = read<any[]>(lastYearFinancingsResult, 'parcelamentos no mesmo periodo do ano anterior', [])
   const installments = read<any[]>(installmentsResult, 'parcelas', [])
+  const accountsPayable = read<any[]>(accountsPayableResult, 'contas a pagar', [])
   const orders = read<any[]>(ordersResult, 'ordens de servico', [])
   const lensSales = read<any[]>(lensSalesResult, 'vendas de lentes', [])
   const postSales = read<any[]>(postSalesResult, 'pos-venda', [])
@@ -620,6 +1058,7 @@ export async function generateDailyStoreHealthReport(storeId = 1, reportDate = p
 
   const unpaid = installments.filter((item) => outstanding(item) > 0.01)
   const creditAnalysis = buildCreditAnalysis(installments, asOfDateKey)
+  const accountsPayableAnalysis = buildAccountsPayableAnalysis(accountsPayable, asOfDateKey)
   const overdue = unpaid.filter((item) => String(item.data_vencimento).slice(0, 10) < asOfDateKey)
   const dueSoon = unpaid.filter((item) => String(item.data_vencimento).slice(0, 10) >= asOfDateKey && String(item.data_vencimento).slice(0, 10) <= dueSoonKey)
   const activeByCustomer = new Map<number, number>()
@@ -634,8 +1073,18 @@ export async function generateDailyStoreHealthReport(storeId = 1, reportDate = p
   const readyForPickup = activeOrders.filter((order) => order.dt_recebido_na_loja)
   const oldWithoutLab = activeOrders.filter((order) => !order.dt_pedido_em && new Date(order.created_at).getTime() < reportEnd - settings.labRequestHours * 60 * 60 * 1000)
   const lensNotArrivedByPromise = activeOrders.filter((order) => Boolean(order.dt_pedido_em) && !order.dt_lente_chegou && orderDate(order.dt_prometido_para) !== null && orderDate(order.dt_prometido_para)! <= asOfDateKey)
-  const lateLensOrderIds = new Set(lensNotArrivedByPromise.map((order) => order.id))
-  const staleLabOrders = activeOrders.filter((order) => Boolean(order.dt_pedido_em) && !order.dt_lente_chegou && !lateLensOrderIds.has(order.id) && new Date(order.dt_pedido_em).getTime() < reportEnd - settings.labStaleHours * 60 * 60 * 1000)
+  const { mountingOverdue, mountingWaitingForFrame } = buildMountingAttention(activeOrders, reportEnd)
+  const activeOrderSaleIds = [...new Set(activeOrders.map((order) => Number(order.venda_id)).filter(Number.isFinite))]
+  const ophthalmicSaleIds = new Set<number>()
+  if (activeOrderSaleIds.length) {
+    try {
+      const rows = await loadAllRows((from, to) => (admin.from('venda_itens') as any).select('venda_id,products!inner(tipo_produto)').eq('store_id', storeId).eq('products.tipo_produto', 'Lente').in('venda_id', activeOrderSaleIds).range(from, to))
+      rows.forEach((row) => ophthalmicSaleIds.add(Number(row.venda_id)))
+    } catch {
+      failures.push('lentes das OS')
+    }
+  }
+  const { ordersWithoutLensLink, ordersWithoutPrescription } = buildOrderIntegrityAttention(activeOrders, ophthalmicSaleIds)
   const ordersWithoutPromise = activeOrders.filter((order) => !order.dt_prometido_para)
   const operationAuditStart = rangeForDate(previousDateKey(reportDate, 30)).start
   const inconsistentOrderTimeline = orders.filter((order) => {
@@ -646,12 +1095,6 @@ export async function generateDailyStoreHealthReport(storeId = 1, reportDate = p
     return arrivedBeforeRequested || assembledBeforeArrival || deliveredBeforeAssembly
   })
   const cancelledSalesWithOpenOrder = orders.filter((order) => !order.dt_entregue_em && !order.lab_encerrada_em && ['Cancelada', 'Devolvida'].includes(saleStatus(order)))
-  const activeOrdersBySale = new Map<number, any[]>()
-  activeOrders.forEach((order) => {
-    if (!order.venda_id) return
-    activeOrdersBySale.set(order.venda_id, [...(activeOrdersBySale.get(order.venda_id) || []), order])
-  })
-  const duplicateOpenOrders = [...activeOrdersBySale.values()].filter((saleOrders) => saleOrders.length > 1)
   const lensSaleIds = new Set(lensSales.map((item) => Number(item.venda_id)).filter(Number.isFinite))
   const ordersBySale = new Set(orders.map((order) => Number(order.venda_id)).filter(Number.isFinite))
   const lensSalesWithoutOrder = [...lensSaleIds].filter((saleId) => !ordersBySale.has(saleId))
@@ -675,12 +1118,14 @@ export async function generateDailyStoreHealthReport(storeId = 1, reportDate = p
     overdueOrders: lensNotArrivedByPromise.length,
     ordersWithoutLabRequest: oldWithoutLab.length,
     labArrivalOverdue: lensNotArrivedByPromise.length,
-    staleLabOrders: staleLabOrders.length,
+    mountingOverdue: mountingOverdue.length,
+    mountingWaitingForFrame: mountingWaitingForFrame.length,
+    ordersWithoutLensLink: ordersWithoutLensLink.length,
+    ordersWithoutPrescription: ordersWithoutPrescription.length,
     ordersWithoutPromise: ordersWithoutPromise.length,
     inconsistentOrderTimeline: inconsistentOrderTimeline.length,
     lensSalesWithoutOrder: lensSalesWithoutOrder.length,
     cancelledSalesWithOpenOrder: cancelledSalesWithOpenOrder.length,
-    duplicateOpenOrders: duplicateOpenOrders.length,
     pendingPostSales: postSales.length,
     postSalesCompletedYesterday: postSalesCompletedYesterday.length,
     postSalesCompletedWeek: postSalesCompletedWeek.length,
@@ -688,32 +1133,58 @@ export async function generateDailyStoreHealthReport(storeId = 1, reportDate = p
     pendingWhatsApp: whatsApp.length,
     costCoverage: soldValue > 0 ? coveredValue / soldValue : null,
     creditAnalysis,
+    accountsPayableAnalysis,
   }
 
+  const unavailableSources = new Set(failures)
+  const sourceAvailable = (...sources: string[]) => sources.every((source) => !unavailableSources.has(source))
   const alerts: DailyHealthAlert[] = []
-  if (metrics.overdue > 0) alerts.push({ id: 'overdue-installments', area: 'financeiro', priority: metrics.overdue > settings.overdueCriticalValue ? 'critico' : 'atencao', title: `${metrics.overdueInstallments} parcelas vencidas`, detail: `${money(metrics.overdue)} permanecem em aberto.`, impact: metrics.overdue, confidence: 'alta', href: `/dashboard/loja/${storeId}/financeiro/parcelas`, records: { type: 'parcela', ids: overdue.slice(0, 25).map((item) => item.id) } })
-  if (metrics.multiFinancingCustomers > 0) alerts.push({ id: 'multiple-financing', area: 'financeiro', priority: 'atencao', title: `${metrics.multiFinancingCustomers} clientes com mais de uma parcela ativa`, detail: 'Acompanhe esse grupo antes de liberar novo credito; o indicador aponta exposicao, nao causa de atraso.', impact: null, confidence: 'media', href: `/dashboard/loja/${storeId}/financeiro/parcelas`, records: { type: 'cliente', ids: [...activeByCustomer].filter(([, count]) => count > 1).map(([id]) => id).slice(0, 25) } })
-  if (metrics.ordersWithoutLabRequest > 0) alerts.push({ id: 'orders-without-lab', area: 'operacao', priority: 'critico', title: `${metrics.ordersWithoutLabRequest} lentes ainda nao foram pedidas ao laboratorio`, detail: `Essas OS estao abertas ha mais de ${settings.labRequestHours} horas sem pedido registrado.`, impact: metrics.ordersWithoutLabRequest, confidence: 'alta', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: oldWithoutLab.slice(0, 25).map((item) => item.id) } })
-  if (metrics.labArrivalOverdue > 0) alerts.push({ id: 'lenses-not-arrived', area: 'operacao', priority: 'critico', title: `${metrics.labArrivalOverdue} lentes nao chegaram ate a data prometida`, detail: 'O pedido foi registrado no laboratorio, mas a lente ainda nao chegou para a montagem.', impact: metrics.labArrivalOverdue, confidence: 'alta', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: lensNotArrivedByPromise.slice(0, 25).map((item) => item.id) } })
-  if (metrics.staleLabOrders > 0) alerts.push({ id: 'lab-orders-without-update', area: 'operacao', priority: 'atencao', title: `${metrics.staleLabOrders} pedidos ao laboratorio sem atualizacao`, detail: `Essas OS foram pedidas ha mais de ${settings.labStaleHours} horas e ainda nao registram chegada da lente.`, impact: metrics.staleLabOrders, confidence: 'alta', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: staleLabOrders.slice(0, 25).map((item) => item.id) } })
-  if (metrics.ordersWithoutPromise > 0) alerts.push({ id: 'orders-without-promise', area: 'operacao', priority: 'atencao', title: `${metrics.ordersWithoutPromise} OS abertas sem data prometida`, detail: 'Sem uma data combinada, a loja nao consegue acompanhar atraso de lente ou entrega.', impact: metrics.ordersWithoutPromise, confidence: 'alta', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: ordersWithoutPromise.slice(0, 25).map((item) => item.id) } })
-  if (metrics.inconsistentOrderTimeline > 0) alerts.push({ id: 'invalid-order-timeline', area: 'operacao', priority: 'atencao', title: `${metrics.inconsistentOrderTimeline} OS com datas fora de sequencia`, detail: 'Ha chegada, montagem ou entrega registrada antes da etapa anterior do processo.', impact: metrics.inconsistentOrderTimeline, confidence: 'alta', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: inconsistentOrderTimeline.slice(0, 25).map((item) => item.id) } })
-  if (metrics.cancelledSalesWithOpenOrder > 0) alerts.push({ id: 'cancelled-sales-with-open-order', area: 'operacao', priority: 'atencao', title: `${metrics.cancelledSalesWithOpenOrder} vendas canceladas ou devolvidas ainda possuem OS aberta`, detail: 'Essas OS precisam ser encerradas para nao continuarem na fila operacional.', impact: metrics.cancelledSalesWithOpenOrder, confidence: 'alta', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: cancelledSalesWithOpenOrder.slice(0, 25).map((item) => item.id) } })
-  if (metrics.duplicateOpenOrders > 0) alerts.push({ id: 'duplicate-open-orders', area: 'operacao', priority: 'atencao', title: `${metrics.duplicateOpenOrders} vendas possuem mais de uma OS aberta`, detail: 'Confirme se sao processos distintos ou uma duplicidade antes de seguir com o laboratorio.', impact: metrics.duplicateOpenOrders, confidence: 'media', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'venda', ids: [...activeOrdersBySale.entries()].filter(([, saleOrders]) => saleOrders.length > 1).map(([saleId]) => saleId).slice(0, 25) } })
-  if (metrics.lensSalesWithoutOrder > 0) alerts.push({ id: 'lens-sales-without-order', area: 'operacao', priority: 'atencao', title: `${metrics.lensSalesWithoutOrder} vendas de lente nao possuem OS`, detail: 'Essas vendas recentes de lente precisam ser conferidas para garantir que o processo de laboratorio foi aberto.', impact: metrics.lensSalesWithoutOrder, confidence: 'media', href: `/dashboard/loja/${storeId}/vendas`, records: { type: 'venda', ids: lensSalesWithoutOrder.slice(0, 25) } })
-  if (metrics.pendingWhatsApp > 0) alerts.push({ id: 'whatsapp-pending', area: 'relacionamento', priority: 'atencao', title: `${metrics.pendingWhatsApp} conversas de WhatsApp aguardando humano`, detail: 'Ha atendimentos transferidos que ainda precisam de continuidade.', impact: metrics.pendingWhatsApp, confidence: 'alta', href: `/dashboard/loja/${storeId}/atendimento`, records: { type: 'conversa', ids: whatsApp.slice(0, 25).map((item) => item.id) } })
-  const postSalesWithDeliveryIssue = postSaleAnalysis.messageFailed + postSaleAnalysis.noMessageAttempt + postSaleAnalysis.noPhone
-  if (postSalesWithDeliveryIssue > 0) alerts.push({ id: 'post-sales-delivery', area: 'relacionamento', priority: 'atencao', title: `${postSalesWithDeliveryIssue} pos-vendas sem contato confiavel`, detail: `${postSaleAnalysis.messageFailed} falharam no envio, ${postSaleAnalysis.noMessageAttempt} nao possuem tentativa registrada e ${postSaleAnalysis.noPhone} nao possuem telefone valido.`, impact: postSalesWithDeliveryIssue, confidence: 'alta', href: `/dashboard/loja/${storeId}/pos-venda`, records: { type: 'pos-venda', ids: postSales.slice(0, 25).map((item) => item.id) } })
-  if (postSaleAnalysis.awaitingHumanReview > 0) alerts.push({ id: 'post-sales-human-review', area: 'relacionamento', priority: 'atencao', title: `${postSaleAnalysis.awaitingHumanReview} respostas de pos-venda aguardam revisao`, detail: 'Esses clientes responderam e ainda precisam de continuidade humana registrada.', impact: postSaleAnalysis.awaitingHumanReview, confidence: 'alta', href: `/dashboard/loja/${storeId}/pos-venda`, records: { type: 'pos-venda', ids: postSales.slice(0, 25).map((item) => item.id) } })
-  if (postSaleAnalysis.complaintOrAdaptation > 0) alerts.push({ id: 'post-sales-satisfaction', area: 'relacionamento', priority: 'critico', title: `${postSaleAnalysis.complaintOrAdaptation} sinais de reclamacao ou adaptacao`, detail: 'O pos-venda registrou relato que pede acompanhamento humano antes de encerrar o caso.', impact: postSaleAnalysis.complaintOrAdaptation, confidence: 'alta', href: `/dashboard/loja/${storeId}/pos-venda`, records: { type: 'pos-venda', ids: postSales.slice(0, 25).map((item) => item.id) } })
-  if (metrics.costCoverage !== null && metrics.costCoverage < settings.minimumCostCoverage) alerts.push({ id: 'cost-coverage', area: 'financeiro', priority: 'atencao', title: 'Margem indisponivel por custo incompleto', detail: `Somente ${(metrics.costCoverage * 100).toFixed(0)}% do valor vendido possui custo positivo cadastrado; lucro e margem foram ocultados.`, impact: null, confidence: 'alta', href: `/dashboard/loja/${storeId}/reports/financeiro`, records: { type: 'produto', ids: [] } })
+  if (sourceAvailable('parcelas') && metrics.overdue > 0) alerts.push({ id: 'overdue-installments', area: 'financeiro', priority: metrics.overdue > settings.overdueCriticalValue ? 'critico' : 'atencao', title: `${metrics.overdueInstallments} parcelas vencidas`, detail: `${money(metrics.overdue)} permanecem em aberto.`, impact: metrics.overdue, confidence: 'alta', href: `/dashboard/loja/${storeId}/financeiro/parcelas`, records: { type: 'parcela', ids: overdue.map((item) => item.id) } })
+  if (sourceAvailable('ordens de servico') && metrics.ordersWithoutLabRequest > 0) alerts.push({ id: 'orders-without-lab', area: 'operacao', priority: 'critico', title: `${metrics.ordersWithoutLabRequest} lentes ainda nao foram pedidas ao laboratorio`, detail: `Essas OS estao abertas ha mais de ${settings.labRequestHours} horas sem pedido registrado.`, impact: metrics.ordersWithoutLabRequest, confidence: 'alta', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: oldWithoutLab.map((item) => item.id) } })
+  if (sourceAvailable('ordens de servico') && metrics.labArrivalOverdue > 0) alerts.push({ id: 'lenses-not-arrived', area: 'operacao', priority: 'critico', title: `${metrics.labArrivalOverdue} lentes nao chegaram ate a data prometida`, detail: 'O pedido foi registrado no laboratorio, mas a lente ainda nao chegou para a montagem.', impact: metrics.labArrivalOverdue, confidence: 'alta', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: lensNotArrivedByPromise.map((item) => item.id) } })
+  if (sourceAvailable('ordens de servico') && metrics.mountingOverdue > 0) alerts.push({ id: 'lens-mounting-overdue', area: 'operacao', priority: 'critico', title: `${metrics.mountingOverdue} oculos aguardam montagem ha mais de 24 horas`, detail: 'A lente ja chegou na loja, mas a montagem local ainda nao foi registrada.', impact: metrics.mountingOverdue, confidence: 'alta', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: mountingOverdue.map((item) => item.id) } })
+  if (sourceAvailable('ordens de servico') && metrics.mountingWaitingForFrame > 0) alerts.push({ id: 'lens-mounting-waiting-frame', area: 'operacao', priority: 'atencao', title: `${metrics.mountingWaitingForFrame} oculos aguardam a armação do cliente ha mais de 7 dias`, detail: 'A lente chegou na loja, mas a montagem depende da armação que ainda esta com o cliente.', impact: metrics.mountingWaitingForFrame, confidence: 'alta', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: mountingWaitingForFrame.map((item) => item.id) } })
+  if (sourceAvailable('ordens de servico') && metrics.ordersWithoutPromise > 0) alerts.push({ id: 'orders-without-promise', area: 'operacao', priority: 'atencao', title: `${metrics.ordersWithoutPromise} OS estao sem data prometida`, detail: 'Sem uma data combinada, a loja nao consegue acompanhar corretamente o prazo da lente e da entrega.', impact: metrics.ordersWithoutPromise, confidence: 'alta', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: ordersWithoutPromise.map((item) => item.id) } })
+  if (sourceAvailable('ordens de servico', 'lentes das OS') && metrics.ordersWithoutLensLink > 0) alerts.push({ id: 'orders-without-lens-link', area: 'operacao', priority: 'atencao', title: `${metrics.ordersWithoutLensLink} OS abertas sem lente vinculada`, detail: 'A OS nao possui item de lente OD ou OE relacionado a venda. Confira se a lente ainda sera escolhida ou se houve falha no cadastro.', impact: metrics.ordersWithoutLensLink, confidence: 'media', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: ordersWithoutLensLink.map((item) => item.id) } })
+  if (sourceAvailable('ordens de servico', 'lentes das OS') && metrics.ordersWithoutPrescription > 0) alerts.push({ id: 'orders-without-prescription', area: 'operacao', priority: 'atencao', title: `${metrics.ordersWithoutPrescription} OS com lente vinculada estao sem grau`, detail: 'A OS possui lente relacionada, mas nenhum campo de receita foi preenchido. Confira antes de enviar ou montar.', impact: metrics.ordersWithoutPrescription, confidence: 'media', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: ordersWithoutPrescription.map((item) => item.id) } })
+  if (sourceAvailable('ordens de servico') && metrics.cancelledSalesWithOpenOrder > 0) alerts.push({ id: 'cancelled-sales-with-open-order', area: 'operacao', priority: 'atencao', title: `${metrics.cancelledSalesWithOpenOrder} vendas canceladas ou devolvidas ainda possuem OS aberta`, detail: 'Essas OS precisam ser encerradas para nao continuarem na fila operacional.', impact: metrics.cancelledSalesWithOpenOrder, confidence: 'alta', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: cancelledSalesWithOpenOrder.map((item) => item.id) } })
+  if (sourceAvailable('ordens de servico', 'vendas de lentes') && metrics.lensSalesWithoutOrder > 0) alerts.push({ id: 'lens-sales-without-order', area: 'operacao', priority: 'atencao', title: `${metrics.lensSalesWithoutOrder} vendas de lentes oftalmicas nao possuem OS`, detail: 'Essas vendas recentes de lentes oftalmicas precisam ser conferidas para garantir que o processo de laboratorio foi aberto. Lentes de contato nao entram nesta verificacao.', impact: metrics.lensSalesWithoutOrder, confidence: 'media', href: `/dashboard/loja/${storeId}/vendas`, records: { type: 'venda', ids: lensSalesWithoutOrder } })
+  if (sourceAvailable('WhatsApp') && metrics.pendingWhatsApp > 0) alerts.push({ id: 'whatsapp-pending', area: 'relacionamento', priority: 'atencao', title: `${metrics.pendingWhatsApp} conversas de WhatsApp aguardando humano`, detail: 'Ha atendimentos transferidos que ainda precisam de continuidade.', impact: metrics.pendingWhatsApp, confidence: 'alta', href: `/dashboard/loja/${storeId}/atendimento`, records: { type: 'conversa', ids: whatsApp.map((item) => item.id) } })
+  const postSalesWithDeliveryIssue = postSaleAnalysis.deliveryIssueIds.length
+  if (sourceAvailable('pos-venda', 'envios de pos-venda', 'clientes de pos-venda') && postSalesWithDeliveryIssue > 0) alerts.push({ id: 'post-sales-delivery', area: 'relacionamento', priority: 'atencao', title: `${postSalesWithDeliveryIssue} pos-vendas sem contato confiavel`, detail: `${postSaleAnalysis.messageFailed} falharam no envio, ${postSaleAnalysis.noMessageAttempt} nao possuem tentativa registrada e ${postSaleAnalysis.noPhone} nao possuem telefone valido.`, impact: postSalesWithDeliveryIssue, confidence: 'alta', href: `/dashboard/loja/${storeId}/pos-venda`, records: { type: 'pos-venda', ids: postSaleAnalysis.deliveryIssueIds } })
+  if (sourceAvailable('pos-venda', 'interacoes de pos-venda') && postSaleAnalysis.awaitingHumanReview > 0) alerts.push({ id: 'post-sales-human-review', area: 'relacionamento', priority: 'atencao', title: `${postSaleAnalysis.awaitingHumanReview} respostas de pos-venda aguardam revisao`, detail: 'Esses clientes responderam e ainda precisam de continuidade humana registrada.', impact: postSaleAnalysis.awaitingHumanReview, confidence: 'alta', href: `/dashboard/loja/${storeId}/pos-venda`, records: { type: 'pos-venda', ids: postSaleAnalysis.humanReviewIds } })
+  if (sourceAvailable('pos-venda', 'interacoes de pos-venda') && postSaleAnalysis.complaintOrAdaptation > 0) alerts.push({ id: 'post-sales-satisfaction', area: 'relacionamento', priority: 'critico', title: `${postSaleAnalysis.complaintOrAdaptation} sinais de reclamacao ou adaptacao`, detail: 'O pos-venda registrou relato que pede acompanhamento humano antes de encerrar o caso.', impact: postSaleAnalysis.complaintOrAdaptation, confidence: 'alta', href: `/dashboard/loja/${storeId}/pos-venda`, records: { type: 'pos-venda', ids: postSaleAnalysis.satisfactionIds } })
+  if (sourceAvailable('contas a pagar') && accountsPayableAnalysis?.overdueCount) alerts.push({ id: 'payable-overdue', area: 'financeiro', priority: accountsPayableAnalysis.overdueValue > settings.overdueCriticalValue ? 'critico' : 'atencao', title: `${accountsPayableAnalysis.overdueCount} contas a pagar vencidas`, detail: `${money(accountsPayableAnalysis.overdueValue)} continuam em aberto; a mais antiga está vencida há ${accountsPayableAnalysis.oldestOverdueDays} dias.`, impact: accountsPayableAnalysis.overdueValue, confidence: 'alta', href: `/dashboard/loja/${storeId}/financeiro/contas`, records: { type: 'conta a pagar', ids: accountsPayableAnalysis.overdueRecords } })
+  if (sourceAvailable('contas a pagar') && accountsPayableAnalysis && accountsPayableAnalysis.dueNext7Count >= 5 && accountsPayableAnalysis.dueNext7Value > settings.overdueCriticalValue) alerts.push({ id: 'payable-next-7-days', area: 'financeiro', priority: 'atencao', title: `${accountsPayableAnalysis.dueNext7Count} contas a pagar concentram vencimento nos próximos 7 dias`, detail: `${money(accountsPayableAnalysis.dueNext7Value)} precisam ser acompanhados até ${previousDateKey(asOfDateKey, -7).split('-').reverse().join('/')}.`, impact: accountsPayableAnalysis.dueNext7Value, confidence: 'alta', href: `/dashboard/loja/${storeId}/financeiro/contas`, records: { type: 'conta a pagar', ids: accountsPayableAnalysis.dueNext7Records } })
+  if (sourceAvailable('itens vendidos') && metrics.costCoverage !== null && metrics.costCoverage < settings.minimumCostCoverage) alerts.push({ id: 'cost-coverage', area: 'financeiro', priority: 'atencao', title: 'Margem indisponivel por custo incompleto', detail: `Somente ${(metrics.costCoverage * 100).toFixed(0)}% do valor vendido possui custo positivo cadastrado; lucro e margem foram ocultados.`, impact: null, confidence: 'alta', href: `/dashboard/loja/${storeId}/reports/financeiro`, records: { type: 'produto', ids: [] } })
+  for (const sourceAlert of DATA_SOURCE_ALERTS) {
+    if (sourceAlert.sources.some((source) => unavailableSources.has(source))) {
+      alerts.push({ id: sourceAlert.id, area: sourceAlert.area, priority: 'atencao', title: sourceAlert.title, detail: sourceAlert.detail, impact: null, confidence: 'alta', href: '', records: { type: 'fonte', ids: [] } })
+    }
+  }
 
-  const narratives = await createNarrative(metrics, alerts)
+  const { data: previousReport } = await (admin.from('daily_store_health_reports') as any)
+    .select('report_date,alerts')
+    .eq('store_id', storeId)
+    .eq('status', 'ready')
+    .lt('report_date', reportDate)
+    .order('report_date', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const compared = compareAlerts(alerts, Array.isArray(previousReport?.alerts) ? previousReport.alerts : [], previousReport?.report_date || null, reportDate, unavailableSources)
+  metrics.alertLifecycle = compared.lifecycle
+  const narratives = await createNarrative(metrics, compared.alerts)
   metrics.areaNarratives = narratives.areas
-  const presentedAlerts = alerts.map((alert) => ({ ...alert, presentation: narratives.cards[alert.id] || { title: alert.title, detail: alert.detail } }))
+  const presentedAlerts = compared.alerts.map((alert) => ({ ...alert, presentation: narratives.cards[alert.id] || { title: alert.title, detail: alert.detail } }))
   const report: DailyHealthReport = { reportDate, status: 'ready', metrics, alerts: presentedAlerts.sort((a, b) => ({ critico: 0, atencao: 1, informativo: 2 }[a.priority] - { critico: 0, atencao: 1, informativo: 2 }[b.priority])), narrative: narratives.narrative, sourceFailures: failures, generatedAt: new Date().toISOString() }
-  const { data: saved, error } = await (admin.from('daily_store_health_reports') as any).upsert({ tenant_id: store.tenant_id, store_id: storeId, report_date: reportDate, status: 'ready', metrics: report.metrics, alerts: report.alerts, narrative: report.narrative, source_failures: report.sourceFailures, generated_at: report.generatedAt, generation_started_at: report.generatedAt, updated_at: report.generatedAt }, { onConflict: 'store_id,report_date' }).select('id').single()
-  if (error) throw error
+  const { data: saved, error } = await (admin.from('daily_store_health_reports') as any).insert({ tenant_id: store.tenant_id, store_id: storeId, report_date: reportDate, status: 'ready', metrics: report.metrics, alerts: report.alerts, narrative: report.narrative, source_failures: report.sourceFailures, generated_at: report.generatedAt, generation_started_at: report.generatedAt, updated_at: report.generatedAt }).select('id').single()
+  if (error) {
+    if (error.code === '23505') {
+      const { data: concurrentReport, error: concurrentReportError } = await (admin.from('daily_store_health_reports') as any).select('*').eq('store_id', storeId).eq('report_date', reportDate).maybeSingle()
+      if (!concurrentReportError && isReadySnapshot(concurrentReport)) return reportFromStoredRow(concurrentReport)
+    }
+    throw error
+  }
   return { ...report, id: saved?.id }
 }
 
@@ -721,5 +1192,5 @@ export async function getLatestDailyStoreHealthReport(storeId: number): Promise<
   const admin = createAdminClient({ noStore: true })
   const { data, error } = await (admin.from('daily_store_health_reports') as any).select('*').eq('store_id', storeId).eq('status', 'ready').order('report_date', { ascending: false }).limit(1).maybeSingle()
   if (error || !data) return null
-  return { id: data.id, reportDate: data.report_date, status: data.status, metrics: data.metrics, alerts: data.alerts, narrative: data.narrative, sourceFailures: data.source_failures || [], generatedAt: data.generated_at }
+  return reportFromStoredRow(data)
 }
