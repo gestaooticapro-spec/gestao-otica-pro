@@ -9,10 +9,8 @@ export type Release = {
 // completam essa mesma versao ate o proximo deploy.
 // Se uma implementacao for desfeita ou substituida antes do deploy, remova ou corrija
 // o respectivo item para que a lista descreva somente o que realmente sera entregue.
-export const PENDING_RELEASE_VERSION: string | null = '1.02.04'
-export const PENDING_RELEASE_CHANGES: readonly string[] = [
-  'Respostas automáticas de horário passaram a informar os intervalos recorrentes, incluindo o almoço, junto do horário semanal da loja.',
-]
+export const PENDING_RELEASE_VERSION: string | null = null
+export const PENDING_RELEASE_CHANGES: readonly string[] = []
 
 // Esta lista contem somente deploys concluidos e deve preservar todo o historico.
 // A versao 1.02.00 e o registro mais antigo atualmente disponivel neste repositorio.
@@ -20,6 +18,13 @@ export const PENDING_RELEASE_CHANGES: readonly string[] = [
 // mova as mudancas pendentes para a nova versao e limpe as duas constantes pendentes.
 // Alteracoes de linha/minor (ex.: 1.02.xx -> 1.03.00) exigem solicitacao expressa.
 export const RELEASE_HISTORY: Release[] = [
+  {
+    version: '1.02.04',
+    date: '25/08/2026',
+    changes: [
+      'Respostas automáticas de horário passaram a informar os intervalos recorrentes, incluindo o almoço, junto do horário semanal da loja.',
+    ],
+  },
   {
     version: '1.02.03',
     date: '24/08/2026',
