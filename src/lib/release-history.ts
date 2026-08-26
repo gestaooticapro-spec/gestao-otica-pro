@@ -12,11 +12,13 @@ export type Release = {
 export const PENDING_RELEASE_VERSION: string | null = '1.02.05'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
   'Resumo de vendas, acumulados e analises de itens passou a considerar a data_fechamento da venda; recebimentos continuam usando a data real do pagamento.',
+  'O botao de refazer da Loja 1 pode gerar uma previa mensal com os dados disponiveis antes do fechamento do mes, sem grava-la como snapshot oficial.',
   'Atualizacao manual da Central pode recalcular o snapshot atual e substitui-lo somente depois que o novo calculo termina com sucesso.',
   'Radar Operacional deixou de listar OS de vendas canceladas, devolvidas ou com fluxo de laboratorio encerrado.',
   'Relacionamento passou a alertar somente quando existem notas 1 ou 2, reclamacoes, insatisfacao ou dificuldade de adaptacao; informacoes normais de pos-venda continuam fora do resumo.',
   'Sinais de relacionamento passaram a separar ocorrencias de ontem, acumulado do mes e historico antigo; o alerta mensal so aparece ao atingir tres sinais e nao se repete diariamente.',
   'Central passou a salvar snapshots semanais e mensais a partir dos diarios, com consulta somente leitura na tela e sem recalculo pelos botoes de periodo.',
+  'A leitura mensal ganhou o modal "Sub-uso do programa", com cards determinísticos por área para funções desabilitadas, nunca utilizadas ou com queda relevante de uso.',
   'Resumo financeiro passou a ocultar comparacoes sem historico disponivel; numeros presentes nas leituras e alertas ganharam destaque visual por prioridade.',
   'Cards de vendas e valores que entraram foram compactados para reduzir o espaco vertical entre as linhas.',
   'Cards de vendas e valores que entraram receberam uma segunda compactacao visual, preservando a legibilidade.',
@@ -37,7 +39,11 @@ export const PENDING_RELEASE_CHANGES: readonly string[] = [
   'A identificacao de produtos duplicados passou a exigir nome, marca e referencia compativeis em conjunto; a referencia ignora apenas espacos e pontuacao, preserva sufixos e nao mistura registros com referencia ausente e informada.',
   'A revisao de duplicidades ganhou uma previa de mesclagem somente leitura: o gerente escolhe o cadastro principal e ve vinculos a transferir, estoque resultante, dados complementares e conflitos bloqueadores antes de qualquer alteracao.',
   'Duplicidades sem conflitos bloqueadores agora podem ser mescladas pelo gerente com confirmacao dupla; a operacao transfere todos os vinculos, complementa campos vazios, consolida estoque e registra auditoria em uma unica transacao reversivel em caso de falha.',
+  'Na revisao de duplicidades, a previa de mesclagem passou a ficar dentro de cada card, com o rotulo objetivo "Previa usando este como o principal".',
+  'Cards de cadastros suspeitos passaram a exibir o codigo do registro; a previa explica em linguagem operacional quando dependentes serao transferidos ou ja existem no cadastro principal.',
+  'Mesclagens recentes agora podem ser desfeitas pelo gerente a partir da auditoria; a recuperacao restaura cadastros e vinculos em uma unica transacao e e bloqueada quando houve alteracoes posteriores.',
   'Comissoes pendentes de agosto da Natalia na Loja 1 foram ajustadas retroativamente para a taxa de 3%, sem alterar as vendas nem a configuracao vigente para os proximos fechamentos.',
+  'Resposta ao agradecimento após lembrete de parcela passou a usar uma confirmação humana e específica, sem sugerir recebimento de pagamento ou documento.',
 ]
 
 // Esta lista contem somente deploys concluidos e deve preservar todo o historico.

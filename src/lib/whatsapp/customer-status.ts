@@ -743,7 +743,7 @@ function isPaymentReminderAcknowledgement(message: string | null | undefined) {
 }
 
 function paymentReminderAcknowledgementText() {
-  return 'Que bom que recebeu. Se precisar de alguma coisa, é só chamar.'
+  return 'De nada! Estamos à disposição para ajudar.'
 }
 
 function looksLikePixRequest(message: string | null | undefined) {

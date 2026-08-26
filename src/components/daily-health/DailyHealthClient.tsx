@@ -2,11 +2,12 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, ClipboardCheck, Handshake, List, Loader2, RefreshCw, ScanSearch } from 'lucide-react'
+import { CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, ClipboardCheck, Gauge, Handshake, List, Loader2, RefreshCw, ScanSearch } from 'lucide-react'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import OperationalCasesModal from '@/components/daily-health/OperationalCasesModal'
 import RelationshipCasesModal from '@/components/daily-health/RelationshipCasesModal'
 import DataQualityCasesModal from '@/components/daily-health/DataQualityCasesModal'
+import ProgramUsageModal from '@/components/daily-health/ProgramUsageModal'
 import type { DailyHealthAmountComparison, DailyHealthAlert, DailyHealthArea, DailyHealthReport, PeriodicHealthSnapshot } from '@/lib/daily-store-health'
 
 type Props = { storeId: number; report: DailyHealthReport | null; weeklySnapshot: PeriodicHealthSnapshot | null; monthlySnapshot: PeriodicHealthSnapshot | null; needsPin: boolean; canConfigure: boolean }
@@ -65,14 +66,15 @@ function moduleNarrative(report: DailyHealthReport, area: DailyHealthArea) {
   return narratives?.cadastros || null
 }
 
-function PeriodicSnapshotView({ snapshot, cadence }: { snapshot: PeriodicHealthSnapshot | null; cadence: 'weekly' | 'monthly' }) {
+function PeriodicSnapshotView({ snapshot, cadence, onOpenProgramUsage }: { snapshot: PeriodicHealthSnapshot | null; cadence: 'weekly' | 'monthly'; onOpenProgramUsage: () => void }) {
+  const usageButton = cadence === 'monthly' ? <button type="button" onClick={onOpenProgramUsage} className="inline-flex h-9 items-center gap-2 border border-emerald-300/30 bg-emerald-300/[0.06] px-3 text-xs font-semibold text-emerald-100 transition-colors hover:border-emerald-200/50 hover:bg-emerald-300/10"><Gauge className="h-4 w-4" />Sub-uso do programa</button> : null
   if (!snapshot) {
     const isWeekly = cadence === 'weekly'
-    return <section className="mt-8 max-w-5xl border border-white/10 bg-black/20 px-5 py-6"><h2 className="text-lg font-bold text-white">{isWeekly ? 'Varredura semanal' : 'Varredura mensal'}</h2><p className="mt-3 text-sm leading-6 text-slate-300">{isWeekly ? 'Ainda não existe uma varredura semanal salva. A primeira será disponibilizada na próxima segunda-feira.' : 'Ainda não existe uma varredura mensal salva. A primeira será disponibilizada no primeiro dia do próximo mês.'}</p></section>
+    return <section className="mt-8 max-w-5xl border border-white/10 bg-black/20 px-5 py-6"><div className="flex flex-wrap items-center justify-between gap-4"><h2 className="text-lg font-bold text-white">{isWeekly ? 'Varredura semanal' : 'Varredura mensal'}</h2>{usageButton}</div><p className="mt-3 text-sm leading-6 text-slate-300">{isWeekly ? 'Ainda não existe uma varredura semanal salva. A primeira será disponibilizada na próxima segunda-feira.' : 'Ainda não existe uma varredura mensal salva. A primeira será disponibilizada no primeiro dia do próximo mês.'}</p></section>
   }
   const period = `${new Date(`${snapshot.periodStart}T12:00:00`).toLocaleDateString('pt-BR')} a ${new Date(`${snapshot.periodEnd}T12:00:00`).toLocaleDateString('pt-BR')}`
   const alerts = snapshot.alerts
-  return <section className="mt-8 max-w-6xl" aria-label={cadence === 'weekly' ? 'Varredura semanal' : 'Varredura mensal'}><div className="border-b border-white/10 pb-5"><p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-200">Snapshot salvo</p><h2 className="mt-2 text-2xl font-black text-white">{cadence === 'weekly' ? 'Varredura semanal' : 'Varredura mensal'}</h2><p className="mt-2 text-sm text-slate-400">Período: {period}. Esta leitura é somente consulta.</p></div><p className="mt-6 max-w-6xl text-lg leading-8 text-slate-100">{snapshot.narrative}</p>{alerts.length ? <div className="mt-6 space-y-3">{alerts.map((alert: DailyHealthAlert) => <article key={alert.id} className={`border-l-4 bg-black/20 px-5 py-4 ${alert.priority === 'critico' ? 'border-rose-400' : 'border-amber-300'}`}><p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">{alert.area}</p><h3 className="mt-1 text-base font-bold text-white">{alert.presentation?.title || alert.title}</h3><p className="mt-1 text-sm leading-6 text-slate-200">{alert.presentation?.detail || alert.detail}</p></article>)}</div> : <div className="mt-6 flex items-center gap-3 text-sm text-emerald-100"><CheckCircle2 className="h-4 w-4" />Nenhum ponto de atenção foi consolidado neste período.</div>}</section>
+  return <section className="mt-8 max-w-6xl" aria-label={cadence === 'weekly' ? 'Varredura semanal' : 'Varredura mensal'}><div className="flex flex-wrap items-end justify-between gap-4 border-b border-white/10 pb-5"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-200">Snapshot salvo</p><h2 className="mt-2 text-2xl font-black text-white">{cadence === 'weekly' ? 'Varredura semanal' : 'Varredura mensal'}</h2><p className="mt-2 text-sm text-slate-400">Período: {period}. Esta leitura é somente consulta.</p></div>{usageButton}</div><p className="mt-6 max-w-6xl text-lg leading-8 text-slate-100">{snapshot.narrative}</p>{alerts.length ? <div className="mt-6 space-y-3">{alerts.map((alert: DailyHealthAlert) => <article key={alert.id} className={`border-l-4 bg-black/20 px-5 py-4 ${alert.priority === 'critico' ? 'border-rose-400' : 'border-amber-300'}`}><p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">{alert.area}</p><h3 className="mt-1 text-base font-bold text-white">{alert.presentation?.title || alert.title}</h3><p className="mt-1 text-sm leading-6 text-slate-200">{alert.presentation?.detail || alert.detail}</p></article>)}</div> : <div className="mt-6 flex items-center gap-3 text-sm text-emerald-100"><CheckCircle2 className="h-4 w-4" />Nenhum ponto de atenção foi consolidado neste período.</div>}</section>
 }
 
 export default function DailyHealthClient({ storeId, report, weeklySnapshot, monthlySnapshot, needsPin }: Props) {
@@ -86,18 +88,21 @@ export default function DailyHealthClient({ storeId, report, weeklySnapshot, mon
   const [selectedRelationshipAlert, setSelectedRelationshipAlert] = useState<DailyHealthAlert | null>(null)
   const [selectedDataQualityAlert, setSelectedDataQualityAlert] = useState<DailyHealthAlert | null>(null)
   const [dataQualityChanged, setDataQualityChanged] = useState(false)
+  const [programUsageOpen, setProgramUsageOpen] = useState(false)
+  const [monthlyPreview, setMonthlyPreview] = useState<PeriodicHealthSnapshot | null>(null)
 
   const refreshReport = async () => {
     setRefreshing(true)
     setRefreshError(null)
     try {
-      const response = await fetch('/api/daily-health', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId }) })
+      const response = await fetch('/api/daily-health', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId, monthlyPreview: storeId === 1 && selectedCadence === 'monthly' }) })
       const data = await response.json()
       if (response.status === 403) {
         setNeedsRefreshPin(true)
         return
       }
       if (!response.ok) throw new Error(data.error || 'Nao foi possivel atualizar o resumo.')
+      if (storeId === 1 && selectedCadence === 'monthly') setMonthlyPreview(data.monthlySnapshot || null)
       router.refresh()
     } catch (error) {
       setRefreshError(error instanceof Error ? error.message : 'Nao foi possivel atualizar o resumo.')
@@ -148,10 +153,11 @@ export default function DailyHealthClient({ storeId, report, weeklySnapshot, mon
       })}</div>}
       {report?.sourceFailures.length ? <p className="mt-5 text-xs text-slate-500">Dados indisponiveis: {report.sourceFailures.join(', ')}.</p> : null}
     </section>
-    </> : <PeriodicSnapshotView snapshot={selectedCadence === 'weekly' ? weeklySnapshot : monthlySnapshot} cadence={selectedCadence} />}
+    </> : <PeriodicSnapshotView snapshot={selectedCadence === 'weekly' ? weeklySnapshot : (monthlyPreview || monthlySnapshot)} cadence={selectedCadence} onOpenProgramUsage={() => setProgramUsageOpen(true)} />}
     {selectedOperationalAlert ? <OperationalCasesModal storeId={storeId} alert={selectedOperationalAlert} onClose={() => setSelectedOperationalAlert(null)} /> : null}
     {selectedRelationshipAlert ? <RelationshipCasesModal storeId={storeId} alert={selectedRelationshipAlert} onClose={() => setSelectedRelationshipAlert(null)} /> : null}
     {selectedDataQualityAlert ? <DataQualityCasesModal storeId={storeId} alert={selectedDataQualityAlert} onChanged={() => setDataQualityChanged(true)} onClose={() => { setSelectedDataQualityAlert(null); if (dataQualityChanged) void refreshReport() }} /> : null}
+    {programUsageOpen ? <ProgramUsageModal snapshot={(monthlyPreview || monthlySnapshot)?.programUsage || null} onClose={() => setProgramUsageOpen(false)} /> : null}
     <EmployeeAuthModal storeId={storeId} isOpen={needsRefreshPin} onClose={() => setNeedsRefreshPin(false)} onSuccess={() => { setNeedsRefreshPin(false); void refreshReport() }} title="Atualizar Pontos de Atenção" description="Informe o PIN de um gerente para consultar os pontos de atenção salvos." purpose="daily_health_access" />
   </div></main>
 }

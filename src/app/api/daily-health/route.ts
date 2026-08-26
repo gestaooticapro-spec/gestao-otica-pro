@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { getProfileByAdmin } from '@/lib/supabase/admin'
 import { hasDailyHealthManagerGrant } from '@/lib/daily-health-access'
-import { generateDailyStoreHealthReport, getLatestDailyStoreHealthReport } from '@/lib/daily-store-health'
+import { generateDailyStoreHealthReport, generatePeriodicStoreHealthSnapshot, getLatestDailyStoreHealthReport } from '@/lib/daily-store-health'
 
 const storeSchema = z.coerce.number().int().positive()
 
@@ -24,12 +24,15 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const body = z.object({ storeId: storeSchema }).safeParse(await request.json().catch(() => null))
+  const body = z.object({ storeId: storeSchema, monthlyPreview: z.boolean().optional() }).safeParse(await request.json().catch(() => null))
   if (!body.success) return NextResponse.json({ error: 'storeId invalido' }, { status: 400 })
   if (!(await allowed(body.data.storeId))) return NextResponse.json({ error: 'PIN de gerente necessario' }, { status: 403 })
   try {
     const report = await generateDailyStoreHealthReport(body.data.storeId, undefined, { force: true })
-    return NextResponse.json({ report }, { headers: { 'Cache-Control': 'private, no-store' } })
+    const monthlySnapshot = body.data.storeId === 1 && body.data.monthlyPreview
+      ? await generatePeriodicStoreHealthSnapshot(1, 'monthly', report.reportDate, { allowOpenMonthly: true, persist: false })
+      : null
+    return NextResponse.json({ report, monthlySnapshot }, { headers: { 'Cache-Control': 'private, no-store' } })
   } catch (error) {
     console.error('[Daily health] manual generation failed', error)
     return NextResponse.json({ error: 'Nao foi possivel atualizar o resumo.' }, { status: 500 })

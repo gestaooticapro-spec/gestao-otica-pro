@@ -146,6 +146,38 @@ export async function GET(request: Request) {
   if (!(await authorization(storeId))) return NextResponse.json({ error: 'PIN de gerente necessario' }, { status: 403 })
   const admin = createAdminClient({ noStore: true })
   try {
+    if (url.searchParams.get('history') === 'merges') {
+      const issueType = kind.data === 'duplicate-customers' ? 'duplicate_customer' : kind.data === 'duplicate-products' ? 'duplicate_product' : null
+      if (!issueType) return NextResponse.json({ error: 'Historico disponivel apenas para duplicidades.' }, { status: 400 })
+      const [{ data: events, error: eventsError }, { data: reversals, error: reversalsError }] = await Promise.all([
+        (admin.from('daily_health_data_quality_review_events') as any)
+          .select('operation_key,target_record_id,record_ids,before_data,after_data,created_at')
+          .eq('store_id', storeId).eq('issue_type', issueType)
+          .in('action', ['merge_customer', 'merge_product'])
+          .order('created_at', { ascending: false }).limit(10),
+        (admin.from('daily_health_data_quality_review_events') as any)
+          .select('reversal_of_operation_key')
+          .eq('store_id', storeId).not('reversal_of_operation_key', 'is', null),
+      ])
+      if (eventsError) throw eventsError
+      if (reversalsError) throw reversalsError
+      const reversed = new Set((reversals || []).map((event: any) => String(event.reversal_of_operation_key)))
+      const merges = (events || []).map((event: any) => {
+        const records = Array.isArray(event.before_data?.records) ? event.before_data.records : []
+        const target = records.find((record: any) => Number(record.id) === Number(event.target_record_id))
+        return {
+          operationKey: String(event.operation_key),
+          targetId: Number(event.target_record_id),
+          targetLabel: issueType === 'duplicate_customer' ? target?.full_name : target?.nome,
+          removedIds: (Array.isArray(event.after_data?.removedIds) ? event.after_data.removedIds : event.record_ids || []).map(Number).filter((id: number) => id > 0 && id !== Number(event.target_record_id)),
+          createdAt: event.created_at,
+          reversed: reversed.has(String(event.operation_key)),
+          recoverable: Boolean(event.after_data?.targetRecord),
+        }
+      })
+      return NextResponse.json({ merges }, { headers: { 'Cache-Control': 'private, no-store' } })
+    }
+
     if (url.searchParams.get('preview') === 'merge') {
       const issueType = kind.data === 'duplicate-customers' ? 'duplicate_customer' : kind.data === 'duplicate-products' ? 'duplicate_product' : null
       const fingerprint = String(url.searchParams.get('fingerprint') || '')
@@ -199,6 +231,7 @@ export async function GET(request: Request) {
 const actionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('review_duplicate'), storeId: z.number().int().positive(), issueType: z.enum(['duplicate_customer', 'duplicate_product']), fingerprint: z.string().min(5).max(1000), recordIds: z.array(z.number().int().positive()).min(2).max(100), decision: z.enum(['keep_separate', 'defer']) }),
   z.object({ action: z.literal('execute_merge'), storeId: z.number().int().positive(), issueType: z.enum(['duplicate_customer', 'duplicate_product']), fingerprint: z.string().min(5).max(1000), recordIds: z.array(z.number().int().positive()).min(2).max(100), targetId: z.number().int().positive(), operationKey: z.string().uuid() }),
+  z.object({ action: z.literal('undo_merge'), storeId: z.number().int().positive(), mergeOperationKey: z.string().uuid(), undoOperationKey: z.string().uuid() }),
   z.object({ action: z.literal('update_product_cost'), storeId: z.number().int().positive(), productId: z.number().int().positive(), cost: z.number().positive().max(100000000) }),
 ])
 
@@ -211,6 +244,25 @@ export async function POST(request: Request) {
   const action = parsed.data
   const { storeId } = action
   try {
+    if (action.action === 'undo_merge') {
+      const { data: result, error: undoError } = await (admin.rpc as any)('undo_daily_health_record_merge', {
+        p_tenant_id: auth.tenantId,
+        p_store_id: storeId,
+        p_merge_operation_key: action.mergeOperationKey,
+        p_undo_operation_key: action.undoOperationKey,
+        p_actor_user_id: auth.userId,
+        p_actor_employee_id: auth.employeeId,
+      })
+      if (undoError) {
+        const message = String(undoError.message || '')
+        const expectedConflict = ['foi alterado depois', 'ja foi desfeita', 'nao permite recuperacao', 'ja foi recriado', 'nao existe mais']
+          .some((fragment) => message.includes(fragment))
+        if (expectedConflict) return NextResponse.json({ error: message }, { status: 409 })
+        throw undoError
+      }
+      return NextResponse.json({ success: true, result })
+    }
+
     if (action.action === 'execute_merge') {
       const preview = await mergePreview(admin, storeId, action.issueType, action.fingerprint, action.targetId)
       const requestedIds = [...new Set(action.recordIds)].sort((a, b) => a - b)
@@ -277,6 +329,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, cost: roundedCost })
   } catch (error) {
     console.error('[Daily health] unable to apply data quality action', error)
-    return NextResponse.json({ error: action.action === 'execute_merge' ? 'Nao foi possivel concluir a mesclagem. Nenhum cadastro foi alterado parcialmente.' : 'Nao foi possivel salvar a decisao.' }, { status: 500 })
+    const errorMessage = action.action === 'execute_merge'
+      ? 'Nao foi possivel concluir a mesclagem. Nenhum cadastro foi alterado parcialmente.'
+      : action.action === 'undo_merge'
+        ? 'Nao foi possivel desfazer a mesclagem. Nenhum cadastro foi restaurado parcialmente.'
+        : 'Nao foi possivel salvar a decisao.'
+    return NextResponse.json({ error: errorMessage }, { status: 500 })
   }
 }

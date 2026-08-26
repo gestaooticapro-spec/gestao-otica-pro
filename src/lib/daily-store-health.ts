@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getWhatsAppPendencias } from '@/lib/actions/consultas.actions'
 import { phonesMatch } from '@/lib/whatsapp/phone'
 import { customerDuplicateCandidates, productDuplicateCandidates } from '@/lib/daily-health-data-quality'
+import { generateMonthlyProgramUsageSnapshot, type MonthlyProgramUsageSnapshot } from '@/lib/monthly-program-usage'
 
 export type DailyHealthArea = 'financeiro' | 'operacao' | 'relacionamento' | 'cadastros'
 export type DailyHealthPriority = 'critico' | 'atencao' | 'informativo'
@@ -213,6 +214,8 @@ export type PeriodicHealthSnapshot = {
   generatedAt: string | null
   narrative: string
   alerts: DailyHealthAlert[]
+  programUsage: MonthlyProgramUsageSnapshot | null
+  isPreview?: boolean
 }
 
 function reportFromStoredRow(data: any): DailyHealthReport {
@@ -236,6 +239,9 @@ function periodicSnapshotFromStoredRow(data: any): PeriodicHealthSnapshot {
     generatedAt: data.generated_at,
     narrative: data.narrative || '',
     alerts: Array.isArray(data.alerts) ? data.alerts : [],
+    programUsage: data.cadence === 'monthly' && data.metrics?.programUsage
+      ? data.metrics.programUsage as MonthlyProgramUsageSnapshot
+      : null,
   }
 }
 
@@ -333,7 +339,7 @@ function sum(rows: any[], field: string) {
   return rows.reduce((total, row) => total + Number(row?.[field] || 0), 0)
 }
 
-function periodicPeriodForReportDate(reportDate: string, cadence: HealthSnapshotCadence) {
+export function periodicPeriodForReportDate(reportDate: string, cadence: HealthSnapshotCadence, allowOpenMonthly = false) {
   const date = new Date(`${reportDate}T12:00:00-03:00`)
   if (cadence === 'weekly') {
     const daysFromMonday = (date.getDay() + 6) % 7
@@ -341,7 +347,7 @@ function periodicPeriodForReportDate(reportDate: string, cadence: HealthSnapshot
     return { start: previousDateKey(reportDate, daysFromMonday), end: reportDate }
   }
   const nextDay = new Date(date.getTime() + DAY_MS)
-  if (nextDay.getMonth() === date.getMonth()) return null
+  if (!allowOpenMonthly && nextDay.getMonth() === date.getMonth()) return null
   return { start: firstDayOfMonth(reportDate), end: reportDate }
 }
 
@@ -1448,19 +1454,28 @@ export async function getLatestDailyStoreHealthReport(storeId: number): Promise<
   return reportFromStoredRow(data)
 }
 
-export async function generatePeriodicStoreHealthSnapshot(storeId: number, cadence: HealthSnapshotCadence, reportDate = previousDateKey(dateKey(), 1)): Promise<PeriodicHealthSnapshot | null> {
-  const period = periodicPeriodForReportDate(reportDate, cadence)
+export type PeriodicSnapshotGenerationOptions = {
+  allowOpenMonthly?: boolean
+  persist?: boolean
+}
+
+export async function generatePeriodicStoreHealthSnapshot(storeId: number, cadence: HealthSnapshotCadence, reportDate = previousDateKey(dateKey(), 1), options: PeriodicSnapshotGenerationOptions = {}): Promise<PeriodicHealthSnapshot | null> {
+  const allowOpenMonthly = cadence === 'monthly' && options.allowOpenMonthly === true
+  const persist = options.persist !== false
+  const period = periodicPeriodForReportDate(reportDate, cadence, allowOpenMonthly)
   if (!period) return null
 
   const admin = createAdminClient({ noStore: true })
-  const { data: existing, error: existingError } = await (admin.from('daily_store_health_reports') as any)
-    .select('*')
-    .eq('store_id', storeId)
-    .eq('cadence', cadence)
-    .eq('period_start', period.start)
-    .maybeSingle()
-  if (existingError) throw existingError
-  if (existing && isReadySnapshot(existing)) return periodicSnapshotFromStoredRow(existing)
+  if (persist) {
+    const { data: existing, error: existingError } = await (admin.from('daily_store_health_reports') as any)
+      .select('*')
+      .eq('store_id', storeId)
+      .eq('cadence', cadence)
+      .eq('period_start', period.start)
+      .maybeSingle()
+    if (existingError) throw existingError
+    if (existing && isReadySnapshot(existing)) return periodicSnapshotFromStoredRow(existing)
+  }
 
   const { data: dailyRows, error: dailyError } = await (admin.from('daily_store_health_reports') as any)
     .select('report_date,metrics,alerts,source_failures')
@@ -1493,6 +1508,9 @@ export async function generatePeriodicStoreHealthSnapshot(storeId: number, caden
     ? `A varredura ${label} de ${period.start.split('-').reverse().join('/')} a ${period.end.split('-').reverse().join('/')} reuniu ${alerts.length} ponto${alerts.length === 1 ? '' : 's'} de atenção identificados nos relatórios diários.`
     : `A varredura ${label} de ${period.start.split('-').reverse().join('/')} a ${period.end.split('-').reverse().join('/')} não encontrou pontos de atenção nos relatórios diários disponíveis.`
   const generatedAt = new Date().toISOString()
+  const programUsage = cadence === 'monthly'
+    ? await generateMonthlyProgramUsageSnapshot(storeId, period.start, period.end)
+    : null
   const { data: store, error: storeError } = await (admin.from('stores') as any).select('tenant_id').eq('id', storeId).single()
   if (storeError) throw storeError
   const payload = {
@@ -1503,7 +1521,10 @@ export async function generatePeriodicStoreHealthSnapshot(storeId: number, caden
     period_start: period.start,
     period_end: period.end,
     status: 'ready',
-    metrics: dailyRows[dailyRows.length - 1].metrics || {},
+    metrics: {
+      ...(dailyRows[dailyRows.length - 1].metrics || {}),
+      ...(programUsage ? { programUsage } : {}),
+    },
     alerts,
     narrative,
     source_failures: [...new Set(dailyRows.flatMap((row: any) => Array.isArray(row.source_failures) ? row.source_failures : []))],
@@ -1511,6 +1532,7 @@ export async function generatePeriodicStoreHealthSnapshot(storeId: number, caden
     generation_started_at: generatedAt,
     updated_at: generatedAt,
   }
+  if (!persist) return { ...periodicSnapshotFromStoredRow(payload), isPreview: true }
   const { data: saved, error: saveError } = await (admin.from('daily_store_health_reports') as any).insert(payload).select('*').single()
   if (saveError) {
     if (saveError.code === '23505') {

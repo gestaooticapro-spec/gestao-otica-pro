@@ -34,6 +34,7 @@ declare
   v_rows jsonb;
   v_count integer;
   v_after jsonb;
+  v_after_target jsonb;
   v_existing jsonb;
   v_existing_store_id bigint;
   v_existing_issue_type text;
@@ -187,14 +188,19 @@ begin
 
   if p_issue_type = 'duplicate_customer' then
     delete from public.customers where id = any(v_source_ids);
+    select to_jsonb(customer_row) into v_after_target
+    from public.customers customer_row where id = p_target_id;
   else
     delete from public.products where id = any(v_source_ids);
+    select to_jsonb(product_row) into v_after_target
+    from public.products product_row where id = p_target_id;
   end if;
 
   v_after := jsonb_build_object(
     'targetId', p_target_id,
     'removedIds', to_jsonb(v_source_ids),
     'dependencyCounts', v_dependency_counts,
+    'targetRecord', v_after_target,
     'mergedAt', now()
   );
 
