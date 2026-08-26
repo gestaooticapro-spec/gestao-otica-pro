@@ -9,8 +9,9 @@ export type Release = {
 // completam essa mesma versao ate o proximo deploy.
 // Se uma implementacao for desfeita ou substituida antes do deploy, remova ou corrija
 // o respectivo item para que a lista descreva somente o que realmente sera entregue.
-export const PENDING_RELEASE_VERSION: string | null = '1.02.05'
-export const PENDING_RELEASE_CHANGES: readonly string[] = [
+export const PENDING_RELEASE_VERSION: string | null = null
+export const PENDING_RELEASE_CHANGES: readonly string[] = []
+const RELEASE_10205_CHANGES: readonly string[] = [
   'IMPLEMENTAÇÃO DO MÓDULO PONTOS DE ATENÇÃO - A IA VASCULHA OS REGISTROS E AJUDA NA GESTÃO DA EMPRESA.',
   'A pagina Pontos de Atencao ganhou retorno a Central de Operacoes no cabecalho, identificacao Beta e uma descricao da leitura noturna com a referencia do relatorio; a orientacao da lista diaria passou a usar a cor de atencao.',
   'Pendencias de Cadastros passaram a permanecer visiveis diariamente ate receberem uma decisao; a regra de silencio por ausencia de mudanca continua nos modulos analiticos.',
@@ -56,10 +57,15 @@ export const PENDING_RELEASE_CHANGES: readonly string[] = [
 
 // Esta lista contem somente deploys concluidos e deve preservar todo o historico.
 // A versao 1.02.00 e o registro mais antigo atualmente disponivel neste repositorio.
-// Ao iniciar o proximo lote, use 1.02.05 em PENDING_RELEASE_VERSION. Depois do deploy,
+// Ao iniciar o proximo lote, use 1.02.06 em PENDING_RELEASE_VERSION. Depois do deploy,
 // mova as mudancas pendentes para a nova versao e limpe as duas constantes pendentes.
 // Alteracoes de linha/minor (ex.: 1.02.xx -> 1.03.00) exigem solicitacao expressa.
 export const RELEASE_HISTORY: Release[] = [
+  {
+    version: '1.02.05',
+    date: '26/08/2026',
+    changes: [...RELEASE_10205_CHANGES],
+  },
   {
     version: '1.02.04',
     date: '25/08/2026',
