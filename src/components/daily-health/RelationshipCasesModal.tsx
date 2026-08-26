@@ -40,10 +40,10 @@ export default function RelationshipCasesModal({ storeId, alert, onClose }: Prop
         const params = new URLSearchParams({ storeId: String(storeId), ids: alert.records.ids.join(','), alertId: alert.id })
         const response = await fetch(`/api/daily-health/relationship-cases?${params}`, { credentials: 'same-origin', signal: controller.signal })
         const payload = await response.json()
-        if (!response.ok) throw new Error(payload.error || 'Nao foi possivel carregar os casos.')
+        if (!response.ok) throw new Error(payload.error || 'Não foi possível carregar os casos.')
         setCases(Array.isArray(payload.cases) ? payload.cases : [])
       } catch (reason: any) {
-        if (reason.name !== 'AbortError') setError(reason.message || 'Nao foi possivel carregar os casos.')
+        if (reason.name !== 'AbortError') setError(reason.message || 'Não foi possível carregar os casos.')
       } finally {
         if (!controller.signal.aborted) setLoading(false)
       }

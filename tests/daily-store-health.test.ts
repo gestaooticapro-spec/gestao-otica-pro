@@ -55,6 +55,21 @@ test('keeps an unresolved local mounting alert visible on the following day', ()
   assert.match(result.alerts[0].detail, /nao foi resolvido desde ontem/i)
 })
 
+test('keeps an unresolved data-quality alert visible every day until it is decided', () => {
+  const previous = alert({
+    id: 'duplicate-customers',
+    area: 'cadastros',
+    priority: 'atencao',
+    records: { type: 'cliente', ids: [44, 7974] },
+    lifecycle: { state: 'novo', firstSeen: '2026-08-22', daysOpen: 1, previousImpact: null, impactChange: null, newRecords: 2, resolvedRecords: 0, show: true },
+  })
+  const current = { ...previous, lifecycle: undefined }
+  const result = dailyHealthTestables.compareAlerts([current], [previous], '2026-08-22', '2026-08-23')
+
+  assert.equal(result.alerts[0].lifecycle?.state, 'persistente')
+  assert.equal(result.alerts[0].lifecycle?.show, true)
+})
+
 test('starts the 24-hour clock when the lens arrives at the store', () => {
   const reportEnd = new Date('2026-08-24T23:59:59-03:00').getTime()
   const result = dailyHealthTestables.buildMountingAttention([

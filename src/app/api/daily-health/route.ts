@@ -29,8 +29,8 @@ export async function POST(request: Request) {
   if (!(await allowed(body.data.storeId))) return NextResponse.json({ error: 'PIN de gerente necessario' }, { status: 403 })
   try {
     const report = await generateDailyStoreHealthReport(body.data.storeId, undefined, { force: true })
-    const monthlySnapshot = body.data.storeId === 1 && body.data.monthlyPreview
-      ? await generatePeriodicStoreHealthSnapshot(1, 'monthly', report.reportDate, { allowOpenMonthly: true, persist: false })
+    const monthlySnapshot = body.data.monthlyPreview
+      ? await generatePeriodicStoreHealthSnapshot(body.data.storeId, 'monthly', report.reportDate, { allowOpenMonthly: true, persist: false })
       : null
     return NextResponse.json({ report, monthlySnapshot }, { headers: { 'Cache-Control': 'private, no-store' } })
   } catch (error) {

@@ -953,7 +953,8 @@ function compareAlerts(currentAlerts: DailyHealthAlert[], previousAlerts: DailyH
         impactChange: difference,
         newRecords,
         resolvedRecords,
-        show: state !== 'persistente'
+        show: alert.area === 'cadastros'
+          || state !== 'persistente'
           || newRecords > 0
           || ['lens-mounting-overdue', 'lens-mounting-waiting-frame'].includes(alert.id)
           || shouldRepeatAfterMissedGeneration(alert, previous.lifecycle.daysOpen || 0, daysOpen),

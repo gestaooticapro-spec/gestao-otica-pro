@@ -11,8 +11,16 @@ export type Release = {
 // o respectivo item para que a lista descreva somente o que realmente sera entregue.
 export const PENDING_RELEASE_VERSION: string | null = '1.02.05'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'IMPLEMENTAÇÃO DO MÓDULO PONTOS DE ATENÇÃO - A IA VASCULHA OS REGISTROS E AJUDA NA GESTÃO DA EMPRESA.',
+  'A pagina Pontos de Atencao ganhou retorno a Central de Operacoes no cabecalho, identificacao Beta e uma descricao da leitura noturna com a referencia do relatorio; a orientacao da lista diaria passou a usar a cor de atencao.',
+  'Pendencias de Cadastros passaram a permanecer visiveis diariamente ate receberem uma decisao; a regra de silencio por ausencia de mudanca continua nos modulos analiticos.',
+  'O atalho Pontos de Atencao da tela inicial pulsa de forma discreta ate ser aberto uma vez no dia, com controle local por loja e dia.',
+  'Quando um modulo diario nao tiver mudanca material, a Central passa a oferecer a ultima atualizacao relevante salva para aquele modulo, buscando o historico alem de ontem.',
+  'O acesso discreto a Pontos de Atencao foi incluido abaixo da versao na tela inicial da loja; ele exige PIN de gerente e abre no resumo diario. Marca, versao e acesso recebem brilho somente quando cada um recebe foco do mouse.',
+  'Textos visiveis da Central de Pontos de Atencao e de seus modais foram revisados para exibir acentuacao correta em portugues brasileiro.',
   'Resumo de vendas, acumulados e analises de itens passou a considerar a data_fechamento da venda; recebimentos continuam usando a data real do pagamento.',
-  'O botao de refazer da Loja 1 pode gerar uma previa mensal com os dados disponiveis antes do fechamento do mes, sem grava-la como snapshot oficial.',
+  'O botao de refazer de qualquer loja pode gerar uma previa mensal com os dados disponiveis antes do fechamento do mes, sem grava-la como snapshot oficial.',
+  'A Central de Pontos de Atencao deixou de ficar restrita a Loja 1; a pagina, a previa mensal e o job noturno agora respeitam qualquer loja autorizada.',
   'Atualizacao manual da Central pode recalcular o snapshot atual e substitui-lo somente depois que o novo calculo termina com sucesso.',
   'Radar Operacional deixou de listar OS de vendas canceladas, devolvidas ou com fluxo de laboratorio encerrado.',
   'Relacionamento passou a alertar somente quando existem notas 1 ou 2, reclamacoes, insatisfacao ou dificuldade de adaptacao; informacoes normais de pos-venda continuam fora do resumo.',

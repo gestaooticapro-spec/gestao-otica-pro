@@ -32,7 +32,7 @@ function money(value: number) {
 }
 
 function reasonLabel(reason: string) {
-  return ({ cpf: 'CPF igual', telefone: 'telefone igual', nome: 'nome igual', produto_composto: 'nome, marca e referencia compativeis' } as Record<string, string>)[reason] || reason
+  return ({ cpf: 'CPF igual', telefone: 'telefone igual', nome: 'nome igual', produto_composto: 'nome, marca e referência compatíveis' } as Record<string, string>)[reason] || reason
 }
 
 function dependencyDescription(dependency: MergePreview['dependencies'][number]) {
@@ -48,12 +48,12 @@ function CustomerRecord({ record, onPreview, loading, disabled }: { record: Dupl
   return <article className="min-w-0 border border-white/10 bg-black/20 p-4">
     <h4 className="truncate font-bold text-white">{record.full_name} <span className="font-normal text-slate-400">#{record.id}</span></h4>
     <dl className="mt-3 space-y-1 text-sm text-slate-300">
-      <div className="flex justify-between gap-4"><dt>CPF</dt><dd className="text-right text-white">{record.cpf || 'Nao informado'}</dd></div>
-      <div className="flex justify-between gap-4"><dt>Telefone</dt><dd className="text-right text-white">{record.fone_movel || record.phone || 'Nao informado'}</dd></div>
-      <div className="flex justify-between gap-4"><dt>E-mail</dt><dd className="max-w-[65%] truncate text-right text-white">{record.email || 'Nao informado'}</dd></div>
+      <div className="flex justify-between gap-4"><dt>CPF</dt><dd className="text-right text-white">{record.cpf || 'Não informado'}</dd></div>
+      <div className="flex justify-between gap-4"><dt>Telefone</dt><dd className="text-right text-white">{record.fone_movel || record.phone || 'Não informado'}</dd></div>
+      <div className="flex justify-between gap-4"><dt>E-mail</dt><dd className="max-w-[65%] truncate text-right text-white">{record.email || 'Não informado'}</dd></div>
       <div className="flex justify-between gap-4"><dt>Cadastro</dt><dd className="text-right text-white">{date(record.created_at)}</dd></div>
       <div className="flex justify-between gap-4"><dt>Vendas</dt><dd className="text-right text-white">{record.usageCount}</dd></div>
-      <div className="flex justify-between gap-4"><dt>Ultima venda</dt><dd className="text-right text-white">{date(record.lastUsageAt)}</dd></div>
+      <div className="flex justify-between gap-4"><dt>Última venda</dt><dd className="text-right text-white">{date(record.lastUsageAt)}</dd></div>
     </dl>
     <button type="button" disabled={disabled} onClick={onPreview} className="mt-4 inline-flex h-9 items-center gap-2 border border-cyan-300/30 px-3 text-xs font-semibold text-cyan-100 hover:bg-cyan-300/10 disabled:opacity-50">{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <GitMerge className="h-4 w-4" />}Prévia usando este como o principal</button>
   </article>
@@ -63,9 +63,9 @@ function ProductRecord({ record, onPreview, loading, disabled }: { record: Dupli
   return <article className="min-w-0 border border-white/10 bg-black/20 p-4">
     <h4 className="font-bold text-white">{record.nome} <span className="font-normal text-slate-400">#{record.id}</span></h4>
     <dl className="mt-3 space-y-1 text-sm text-slate-300">
-      <div className="flex justify-between gap-4"><dt>Marca</dt><dd className="text-right text-white">{record.marca || 'Nao informada'}</dd></div>
-      <div className="flex justify-between gap-4"><dt>Referencia</dt><dd className="text-right text-white">{record.referencia || 'Nao informada'}</dd></div>
-      <div className="flex justify-between gap-4"><dt>Codigo</dt><dd className="text-right text-white">{record.codigo_barras || 'Nao informado'}</dd></div>
+      <div className="flex justify-between gap-4"><dt>Marca</dt><dd className="text-right text-white">{record.marca || 'Não informada'}</dd></div>
+      <div className="flex justify-between gap-4"><dt>Referência</dt><dd className="text-right text-white">{record.referencia || 'Não informada'}</dd></div>
+      <div className="flex justify-between gap-4"><dt>Código</dt><dd className="text-right text-white">{record.codigo_barras || 'Não informado'}</dd></div>
       <div className="flex justify-between gap-4"><dt>Venda</dt><dd className="text-right text-white">{money(record.preco_venda)}</dd></div>
       <div className="flex justify-between gap-4"><dt>Estoque</dt><dd className="text-right text-white">{record.estoque_atual}</dd></div>
       <div className="flex justify-between gap-4"><dt>Itens vendidos</dt><dd className="text-right text-white">{record.usageCount}</dd></div>
@@ -103,10 +103,10 @@ export default function DataQualityCasesModal({ storeId, alert, onClose, onChang
       if (alert.records.ids.length) params.set('ids', alert.records.ids.join(','))
       const response = await fetch(`/api/daily-health/data-quality-cases?${params}`, { cache: 'no-store' })
       const payload = await response.json()
-      if (!response.ok) throw new Error(payload.error || 'Nao foi possivel carregar a fila.')
+      if (!response.ok) throw new Error(payload.error || 'Não foi possível carregar a fila.')
       setData(payload)
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Nao foi possivel carregar a fila.')
+      setError(loadError instanceof Error ? loadError.message : 'Não foi possível carregar a fila.')
     } finally {
       setLoading(false)
     }
@@ -122,10 +122,10 @@ export default function DataQualityCasesModal({ storeId, alert, onClose, onChang
       const params = new URLSearchParams({ storeId: String(storeId), kind, history: 'merges' })
       const response = await fetch(`/api/daily-health/data-quality-cases?${params}`, { cache: 'no-store' })
       const payload = await response.json()
-      if (!response.ok) throw new Error(payload.error || 'Nao foi possivel carregar as mesclagens recentes.')
+      if (!response.ok) throw new Error(payload.error || 'Não foi possível carregar as mesclagens recentes.')
       setMergeHistory(payload.merges || [])
     } catch (historyError) {
-      setError(historyError instanceof Error ? historyError.message : 'Nao foi possivel carregar as mesclagens recentes.')
+      setError(historyError instanceof Error ? historyError.message : 'Não foi possível carregar as mesclagens recentes.')
     } finally {
       setLoadingMergeHistory(false)
     }
@@ -147,11 +147,11 @@ export default function DataQualityCasesModal({ storeId, alert, onClose, onChang
         body: JSON.stringify({ action: 'review_duplicate', storeId, issueType: kind === 'duplicate-customers' ? 'duplicate_customer' : 'duplicate_product', fingerprint: group.fingerprint, recordIds: group.ids, decision }),
       })
       const payload = await response.json()
-      if (!response.ok) throw new Error(payload.error || 'Nao foi possivel salvar a decisao.')
+      if (!response.ok) throw new Error(payload.error || 'Não foi possível salvar a decisão.')
       onChanged()
       await load()
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Nao foi possivel salvar a decisao.')
+      setError(saveError instanceof Error ? saveError.message : 'Não foi possível salvar a decisão.')
     } finally {
       setSaving(null)
     }
@@ -168,11 +168,11 @@ export default function DataQualityCasesModal({ storeId, alert, onClose, onChang
         body: JSON.stringify({ action: 'update_product_cost', storeId, productId, cost }),
       })
       const payload = await response.json()
-      if (!response.ok) throw new Error(payload.error || 'Nao foi possivel salvar o custo.')
+      if (!response.ok) throw new Error(payload.error || 'Não foi possível salvar o custo.')
       onChanged()
       await load()
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Nao foi possivel salvar o custo.')
+      setError(saveError instanceof Error ? saveError.message : 'Não foi possível salvar o custo.')
     } finally {
       setSaving(null)
     }
@@ -189,11 +189,11 @@ export default function DataQualityCasesModal({ storeId, alert, onClose, onChang
       })
       const response = await fetch(`/api/daily-health/data-quality-cases?${params}`, { cache: 'no-store' })
       const payload = await response.json()
-      if (!response.ok) throw new Error(payload.error || 'Nao foi possivel preparar a previa.')
+      if (!response.ok) throw new Error(payload.error || 'Não foi possível preparar a prévia.')
       setMergePreviews((current) => ({ ...current, [group.fingerprint]: payload.preview }))
       setConfirmingMerge(null)
     } catch (previewError) {
-      setError(previewError instanceof Error ? previewError.message : 'Nao foi possivel preparar a previa.')
+      setError(previewError instanceof Error ? previewError.message : 'Não foi possível preparar a prévia.')
     } finally {
       setLoadingPreview(null)
     }
@@ -214,7 +214,7 @@ export default function DataQualityCasesModal({ storeId, alert, onClose, onChang
         }),
       })
       const payload = await response.json()
-      if (!response.ok) throw new Error(payload.error || 'Nao foi possivel concluir a mesclagem.')
+      if (!response.ok) throw new Error(payload.error || 'Não foi possível concluir a mesclagem.')
       setConfirmingMerge(null)
       setMergePreviews((current) => {
         const next = { ...current }
@@ -226,7 +226,7 @@ export default function DataQualityCasesModal({ storeId, alert, onClose, onChang
       onChanged()
       await load()
     } catch (mergeError) {
-      setError(mergeError instanceof Error ? mergeError.message : 'Nao foi possivel concluir a mesclagem.')
+      setError(mergeError instanceof Error ? mergeError.message : 'Não foi possível concluir a mesclagem.')
     } finally {
       setSaving(null)
     }
@@ -241,23 +241,32 @@ export default function DataQualityCasesModal({ storeId, alert, onClose, onChang
         body: JSON.stringify({ action: 'undo_merge', storeId, mergeOperationKey: merge.operationKey, undoOperationKey: crypto.randomUUID() }),
       })
       const payload = await response.json()
-      if (!response.ok) throw new Error(payload.error || 'Nao foi possivel desfazer a mesclagem.')
+      if (!response.ok) throw new Error(payload.error || 'Não foi possível desfazer a mesclagem.')
       setConfirmingUndo(null)
       await Promise.all([load(), loadMergeHistory()])
       onChanged()
     } catch (undoError) {
-      setError(undoError instanceof Error ? undoError.message : 'Nao foi possivel desfazer a mesclagem.')
+      setError(undoError instanceof Error ? undoError.message : 'Não foi possível desfazer a mesclagem.')
     } finally {
       setSaving(null)
     }
   }
 
   const duplicate = kind === 'duplicate-customers' || kind === 'duplicate-products'
-  const title = kind === 'duplicate-customers' ? 'Revisar clientes parecidos' : kind === 'duplicate-products' ? 'Revisar produtos parecidos' : kind === 'products-without-cost' ? 'Informar custo dos produtos' : 'Vendas abertas ha mais de 7 dias'
+  const title = kind === 'duplicate-customers' ? 'Revisar clientes parecidos' : kind === 'duplicate-products' ? 'Revisar produtos parecidos' : kind === 'products-without-cost' ? 'Informar custo dos produtos' : 'Vendas abertas há mais de 7 dias'
 
   return <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/85 p-4 backdrop-blur-sm" onClick={onClose}>
     <section className="max-h-[90vh] w-full max-w-6xl overflow-y-auto border border-white/10 bg-slate-950 p-5 shadow-2xl md:p-7" onClick={(event) => event.stopPropagation()}>
-      <header className="flex items-start justify-between gap-4 border-b border-white/10 pb-4"><div><h2 className="text-xl font-black text-white">{title}</h2>{data ? <p className="mt-1 text-sm text-slate-400">{duplicate ? `${data.totalGroups || 0} grupos aguardam decisao; este lote traz ate 10.` : `${data.totalRecords} casos ainda aguardam revisao.`}</p> : null}</div><div className="flex items-center gap-2">{duplicate ? <button type="button" onClick={() => void toggleMergeHistory()} className={`inline-flex h-9 items-center gap-2 border px-3 text-xs font-semibold ${showMergeHistory ? 'border-cyan-300/40 bg-cyan-300/10 text-cyan-100' : 'border-white/10 text-slate-300 hover:bg-white/5 hover:text-white'}`}><History className="h-4 w-4" />Mesclagens recentes</button> : null}<button type="button" onClick={onClose} aria-label="Fechar" title="Fechar" className="inline-flex h-9 w-9 items-center justify-center border border-white/10 text-slate-300 hover:bg-white/5 hover:text-white"><X className="h-4 w-4" /></button></div></header>
+      <header className="flex items-start justify-between gap-4 border-b border-white/10 pb-4">
+        <div>
+          <h2 className="text-xl font-black text-white">{title}</h2>
+          {data ? <p className="mt-1 text-sm text-slate-400">{duplicate ? `${data.totalGroups || 0} grupos aguardam decisão; este lote traz até 10.` : `${data.totalRecords} casos ainda aguardam revisão.`}</p> : null}
+        </div>
+        <div className="flex items-center gap-2">
+          {duplicate ? <button type="button" onClick={() => void toggleMergeHistory()} className={`inline-flex h-9 items-center gap-2 border px-3 text-xs font-semibold ${showMergeHistory ? 'border-cyan-300/40 bg-cyan-300/10 text-cyan-100' : 'border-white/10 text-slate-300 hover:bg-white/5 hover:text-white'}`}><History className="h-4 w-4" />Mesclagens recentes</button> : null}
+          <button type="button" onClick={onClose} aria-label="Fechar" title="Fechar" className="inline-flex h-9 w-9 items-center justify-center border border-white/10 text-slate-300 hover:bg-white/5 hover:text-white"><X className="h-4 w-4" /></button>
+        </div>
+      </header>
       {loading ? <div className="flex min-h-48 items-center justify-center text-slate-400"><Loader2 className="mr-2 h-5 w-5 animate-spin" />Carregando casos...</div> : null}
       {error ? <p className="mt-4 border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">{error}</p> : null}
 
@@ -293,11 +302,11 @@ export default function DataQualityCasesModal({ storeId, alert, onClose, onChang
         <div className="mt-4 flex flex-wrap justify-end gap-2"><button type="button" disabled={saving !== null} onClick={() => void review(group, 'defer')} className="inline-flex h-9 items-center gap-2 border border-white/15 px-3 text-xs font-semibold text-slate-200 hover:bg-white/5 disabled:opacity-50"><Clock3 className="h-4 w-4" />Revisar em 7 dias</button><button type="button" disabled={saving !== null} onClick={() => void review(group, 'keep_separate')} className="inline-flex h-9 items-center gap-2 border border-emerald-300/40 px-3 text-xs font-semibold text-emerald-100 hover:bg-emerald-300/10 disabled:opacity-50">{saving === `${group.fingerprint}:keep_separate` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Manter separados</button></div>
       </section>})}</div> : null}
 
-      {!loading && kind === 'products-without-cost' && data?.cases?.length ? <div className="mt-5 grid gap-3 md:grid-cols-2">{data.cases.map((product) => <article key={product.id} className="border border-white/10 bg-black/20 p-4"><h3 className="font-bold text-white">{product.nome}</h3><p className="mt-1 text-xs text-slate-400">{[product.marca, product.referencia, product.tipo_produto].filter(Boolean).join(' · ')}</p><div className="mt-4 flex items-end gap-2"><label className="flex-1 text-xs font-semibold text-slate-300">Custo unitario<input type="text" inputMode="decimal" value={costs[product.id] || ''} onChange={(event) => setCosts((current) => ({ ...current, [product.id]: event.target.value }))} placeholder="0,00" className="mt-1 h-10 w-full border border-white/15 bg-black/30 px-3 text-sm text-white outline-none focus:border-emerald-300/60" /></label><button type="button" disabled={saving !== null} onClick={() => void updateCost(product.id)} className="inline-flex h-10 items-center gap-2 border border-emerald-300/40 px-3 text-xs font-semibold text-emerald-100 hover:bg-emerald-300/10 disabled:opacity-50">{saving === `cost:${product.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Salvar</button></div></article>)}</div> : null}
+      {!loading && kind === 'products-without-cost' && data?.cases?.length ? <div className="mt-5 grid gap-3 md:grid-cols-2">{data.cases.map((product) => <article key={product.id} className="border border-white/10 bg-black/20 p-4"><h3 className="font-bold text-white">{product.nome}</h3><p className="mt-1 text-xs text-slate-400">{[product.marca, product.referencia, product.tipo_produto].filter(Boolean).join(' · ')}</p><div className="mt-4 flex items-end gap-2"><label className="flex-1 text-xs font-semibold text-slate-300">Custo unitário<input type="text" inputMode="decimal" value={costs[product.id] || ''} onChange={(event) => setCosts((current) => ({ ...current, [product.id]: event.target.value }))} placeholder="0,00" className="mt-1 h-10 w-full border border-white/15 bg-black/30 px-3 text-sm text-white outline-none focus:border-emerald-300/60" /></label><button type="button" disabled={saving !== null} onClick={() => void updateCost(product.id)} className="inline-flex h-10 items-center gap-2 border border-emerald-300/40 px-3 text-xs font-semibold text-emerald-100 hover:bg-emerald-300/10 disabled:opacity-50">{saving === `cost:${product.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Salvar</button></div></article>)}</div> : null}
 
       {!loading && kind === 'stale-open-sales' && data?.cases?.length ? <div className="mt-5 space-y-3">{data.cases.map((sale) => <article key={sale.id} className="flex flex-wrap items-center justify-between gap-4 border border-white/10 bg-black/20 p-4"><div><h3 className="font-bold text-white">Venda #{sale.id} · {sale.customerName}</h3><p className="mt-1 text-sm text-slate-400">Aberta em {date(sale.createdAt)} · {money(sale.value)}{sale.employeeName ? ` · ${sale.employeeName}` : ''}</p></div><Link href={`/dashboard/loja/${storeId}/vendas/${sale.id}/experimental`} onClick={onClose} className="inline-flex h-9 items-center gap-2 border border-emerald-300/40 px-3 text-xs font-semibold text-emerald-100 hover:bg-emerald-300/10">Abrir venda<ExternalLink className="h-4 w-4" /></Link></article>)}</div> : null}
 
-      {!loading && data && ((duplicate && !data.groups?.length) || (!duplicate && !data.cases?.length)) ? <div className="flex min-h-48 flex-col items-center justify-center text-center text-slate-300"><Check className="mb-3 h-6 w-6 text-emerald-200" /><p className="font-semibold">Este lote nao tem mais casos pendentes.</p><button type="button" onClick={onClose} className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-emerald-200">Voltar aos pontos de atencao<ArrowRight className="h-4 w-4" /></button></div> : null}
+      {!loading && data && ((duplicate && !data.groups?.length) || (!duplicate && !data.cases?.length)) ? <div className="flex min-h-48 flex-col items-center justify-center text-center text-slate-300"><Check className="mb-3 h-6 w-6 text-emerald-200" /><p className="font-semibold">Este lote não tem mais casos pendentes.</p><button type="button" onClick={onClose} className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-emerald-200">Voltar aos pontos de atenção<ArrowRight className="h-4 w-4" /></button></div> : null}
     </section>
   </div>
 }

@@ -1,5 +1,6 @@
 import { timingSafeEqual } from 'node:crypto'
 import { NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { generateDailyStoreHealthReport, generatePeriodicStoreHealthSnapshot } from '@/lib/daily-store-health'
 
 export const runtime = 'nodejs'
@@ -18,12 +19,21 @@ function authorized(request: Request) {
 export async function GET(request: Request) {
   if (!authorized(request)) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   try {
-    const report = await generateDailyStoreHealthReport(1)
-    await Promise.all([
-      generatePeriodicStoreHealthSnapshot(1, 'weekly', report.reportDate),
-      generatePeriodicStoreHealthSnapshot(1, 'monthly', report.reportDate),
-    ])
-    return NextResponse.json({ success: true, report })
+    const admin = createAdminClient({ noStore: true })
+    const { data: stores, error: storesError } = await (admin.from('stores') as any).select('id').order('id', { ascending: true })
+    if (storesError) throw storesError
+
+    const reports = []
+    for (const store of (stores || []) as Array<{ id: number }>) {
+      const report = await generateDailyStoreHealthReport(Number(store.id))
+      await Promise.all([
+        generatePeriodicStoreHealthSnapshot(Number(store.id), 'weekly', report.reportDate),
+        generatePeriodicStoreHealthSnapshot(Number(store.id), 'monthly', report.reportDate),
+      ])
+      reports.push(report)
+    }
+
+    return NextResponse.json({ success: true, reports, processedStores: reports.length })
   } catch (error) {
     console.error('[Daily health] scheduled generation failed', error)
     return NextResponse.json({ success: false, error: 'Internal error' }, { status: 500 })

@@ -2,11 +2,13 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, ClipboardCheck, Gauge, Handshake, List, Loader2, RefreshCw, ScanSearch } from 'lucide-react'
+import Link from 'next/link'
+import { ArrowLeft, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, ClipboardCheck, Gauge, Handshake, History, List, Loader2, RefreshCw, ScanSearch } from 'lucide-react'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import OperationalCasesModal from '@/components/daily-health/OperationalCasesModal'
 import RelationshipCasesModal from '@/components/daily-health/RelationshipCasesModal'
 import DataQualityCasesModal from '@/components/daily-health/DataQualityCasesModal'
+import LatestRelevantMessageModal from '@/components/daily-health/LatestRelevantMessageModal'
 import ProgramUsageModal from '@/components/daily-health/ProgramUsageModal'
 import type { DailyHealthAmountComparison, DailyHealthAlert, DailyHealthArea, DailyHealthReport, PeriodicHealthSnapshot } from '@/lib/daily-store-health'
 
@@ -51,7 +53,7 @@ function SummaryTable({ title, rows }: { title: string; rows: Array<{ label: str
     <h2 className="text-sm font-bold text-white">{title}</h2>
     <div className="mt-1 overflow-x-auto">
       <table className={`w-full border-collapse ${showHistorical ? 'min-w-[610px]' : 'min-w-[360px]'}`}>
-        <thead><tr className="text-xs font-medium text-slate-400"><th className="pb-3 text-left">&nbsp;</th><th className="pb-3 text-right">Ontem</th><th className="pb-3 text-right">Mes ate ontem</th>{showHistorical && <th className="pb-3 pl-4 text-right">Mes ate esta data no ano passado</th>}</tr></thead>
+        <thead><tr className="text-xs font-medium text-slate-400"><th className="pb-3 text-left">&nbsp;</th><th className="pb-3 text-right">Ontem</th><th className="pb-3 text-right">Mês até ontem</th>{showHistorical && <th className="pb-3 pl-4 text-right">Mês até esta data no ano passado</th>}</tr></thead>
         <tbody>{rows.map((row) => <AmountRow key={row.label} {...row} showHistorical={showHistorical} />)}</tbody>
       </table>
     </div>
@@ -90,39 +92,40 @@ export default function DailyHealthClient({ storeId, report, weeklySnapshot, mon
   const [dataQualityChanged, setDataQualityChanged] = useState(false)
   const [programUsageOpen, setProgramUsageOpen] = useState(false)
   const [monthlyPreview, setMonthlyPreview] = useState<PeriodicHealthSnapshot | null>(null)
+  const [latestRelevantArea, setLatestRelevantArea] = useState<DailyHealthArea | null>(null)
 
   const refreshReport = async () => {
     setRefreshing(true)
     setRefreshError(null)
     try {
-      const response = await fetch('/api/daily-health', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId, monthlyPreview: storeId === 1 && selectedCadence === 'monthly' }) })
+      const response = await fetch('/api/daily-health', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId, monthlyPreview: selectedCadence === 'monthly' }) })
       const data = await response.json()
       if (response.status === 403) {
         setNeedsRefreshPin(true)
         return
       }
-      if (!response.ok) throw new Error(data.error || 'Nao foi possivel atualizar o resumo.')
-      if (storeId === 1 && selectedCadence === 'monthly') setMonthlyPreview(data.monthlySnapshot || null)
+      if (!response.ok) throw new Error(data.error || 'Não foi possível atualizar o resumo.')
+      if (selectedCadence === 'monthly') setMonthlyPreview(data.monthlySnapshot || null)
       router.refresh()
     } catch (error) {
-      setRefreshError(error instanceof Error ? error.message : 'Nao foi possivel atualizar o resumo.')
+      setRefreshError(error instanceof Error ? error.message : 'Não foi possível atualizar o resumo.')
     } finally {
       setRefreshing(false)
     }
   }
 
-  if (needsPin) return <main className="min-h-full p-6 text-white lg:p-10"><div className="mx-auto max-w-7xl"><h1 className="text-3xl font-black">Pontos de Atenção</h1><p className="mt-3 text-sm text-slate-300">Aguardando a confirmação do PIN de um gerente.</p></div><EmployeeAuthModal storeId={storeId} isOpen onClose={() => router.back()} onSuccess={() => router.refresh()} title="Abrir Pontos de Atenção" description="Informe o PIN de um gerente para visualizar os pontos de atenção." purpose="daily_health_access" /></main>
+  if (needsPin) return <main className="min-h-full p-6 text-white lg:p-10"><div className="mx-auto max-w-7xl"><h1 className="text-3xl font-black">Pontos de Atenção (Beta)</h1><p className="mt-3 text-sm text-slate-300">Aguardando a confirmação do PIN de um gerente.</p></div><EmployeeAuthModal storeId={storeId} isOpen onClose={() => router.back()} onSuccess={() => router.refresh()} title="Abrir Pontos de Atenção" description="Informe o PIN de um gerente para visualizar os pontos de atenção." purpose="daily_health_access" /></main>
 
   const referenceDate = report ? new Date(`${report.reportDate}T12:00:00`).toLocaleDateString('pt-BR') : null
   const summary = report?.metrics.salesSummary
 
   return <main className="min-h-full p-6 text-white lg:p-10"><div className="mx-auto max-w-7xl">
-    <header className="flex flex-wrap items-end justify-between gap-5 border-b border-white/10 pb-6"><div><h1 className="text-3xl font-black">Pontos de Atenção</h1><p className="mt-1 text-sm text-slate-300">{referenceDate ? `Referência: ${referenceDate}` : 'Resumo diário ainda não gerado.'}</p></div><div className="flex items-center gap-3"><div className="flex items-center border border-white/10 bg-black/20" role="tablist" aria-label="Período dos pontos de atenção">{([['daily', 'Diário'], ['weekly', 'Semanal'], ['monthly', 'Mensal']] as const).map(([cadence, label]) => <button key={cadence} type="button" onClick={() => setSelectedCadence(cadence)} role="tab" aria-selected={selectedCadence === cadence} className={`px-3 py-2 text-xs font-semibold transition-colors ${selectedCadence === cadence ? 'bg-white/10 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'}`}>{label}</button>)}</div><button type="button" onClick={refreshReport} disabled={refreshing} aria-label="Atualizar pontos de atenção" title="Atualizar pontos de atenção" className="inline-flex h-9 w-9 items-center justify-center border border-white/15 bg-white/5 text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50">{refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}</button></div></header>
+    <header className="flex flex-wrap items-end justify-between gap-5 border-b border-white/10 pb-6"><div className="flex items-start gap-3"><Link href={`/dashboard/loja/${storeId}`} className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-400 transition-all hover:bg-white/10 hover:text-white active:scale-95" title="Voltar para a Central de Operações" aria-label="Voltar para a Central de Operações"><ArrowLeft className="h-5 w-5" /></Link><div><h1 className="text-3xl font-black">Pontos de Atenção (Beta)</h1><p className="mt-1 max-w-4xl text-sm text-slate-300">{referenceDate ? `Durante a noite, a IA vasculhou seus registros e trouxe pontos pra você dar atenção - Referente a ${referenceDate}` : 'A análise noturna ainda não foi gerada.'}</p></div></div><div className="flex items-center gap-3"><div className="flex items-center border border-white/10 bg-black/20" role="tablist" aria-label="Período dos pontos de atenção">{([['daily', 'Diário'], ['weekly', 'Semanal'], ['monthly', 'Mensal']] as const).map(([cadence, label]) => <button key={cadence} type="button" onClick={() => setSelectedCadence(cadence)} role="tab" aria-selected={selectedCadence === cadence} className={`px-3 py-2 text-xs font-semibold transition-colors ${selectedCadence === cadence ? 'bg-white/10 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'}`}>{label}</button>)}</div><button type="button" onClick={refreshReport} disabled={refreshing} aria-label="Atualizar pontos de atenção" title="Atualizar pontos de atenção" className="inline-flex h-9 w-9 items-center justify-center border border-white/15 bg-white/5 text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50">{refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}</button></div></header>
     {refreshError && <p className="mt-4 text-sm text-rose-200">{refreshError}</p>}
     {selectedCadence === 'daily' ? <>
-    {summary ? <div className="mt-7 grid gap-4 xl:grid-cols-2"><SummaryTable title="Vendas" rows={[{ label: 'A vista', amounts: summary.sales.cash }, { label: 'A prazo', amounts: summary.sales.credit }, { label: 'Total', amounts: summary.sales.total, total: true }]} /><SummaryTable title="Valores que entraram" rows={[{ label: 'Vendas', amounts: summary.receipts.sales }, { label: 'Parcelas', amounts: summary.receipts.installments }, { label: 'Total', amounts: summary.receipts.total, total: true }]} /></div> : report ? <p className="mt-6 text-sm text-slate-400">O resumo de vendas e caixa sera incluido na proxima geracao.</p> : null}
-    <section className="mt-10 max-w-5xl" aria-label="Pontos de atenção"><h2 className="text-lg font-bold text-white">Por favor dê atenção aos seguintes pontos:</h2>
-      {!report ? <p className="mt-4 border border-white/10 bg-black/20 px-5 py-5 text-sm text-slate-300">O resumo sera exibido assim que a primeira geracao for concluida.</p> : <div className="mt-5 space-y-10">{modules.map((module) => {
+    {summary ? <div className="mt-7 grid gap-4 xl:grid-cols-2"><SummaryTable title="Vendas" rows={[{ label: 'À vista', amounts: summary.sales.cash }, { label: 'A prazo', amounts: summary.sales.credit }, { label: 'Total', amounts: summary.sales.total, total: true }]} /><SummaryTable title="Valores que entraram" rows={[{ label: 'Vendas', amounts: summary.receipts.sales }, { label: 'Parcelas', amounts: summary.receipts.installments }, { label: 'Total', amounts: summary.receipts.total, total: true }]} /></div> : report ? <p className="mt-6 text-sm text-slate-400">O resumo de vendas e caixa será incluído na próxima geração.</p> : null}
+    <section className="mt-10 max-w-5xl" aria-label="Pontos de atenção"><h2 className="text-lg font-bold text-amber-200">Por favor dê atenção aos seguintes pontos:</h2>
+      {!report ? <p className="mt-4 border border-white/10 bg-black/20 px-5 py-5 text-sm text-slate-300">O resumo será exibido assim que a primeira geração for concluída.</p> : <div className="mt-5 space-y-10">{modules.map((module) => {
         const alerts = report.alerts.filter((alert) => alert.area === module.id && (alert.lifecycle?.show ?? true))
         const narrative = moduleNarrative(report, module.id)
         const resolved = report.metrics.alertLifecycle?.[module.id]?.resolvedCount || 0
@@ -147,17 +150,18 @@ export default function DailyHealthClient({ storeId, report, weeklySnapshot, mon
                 {canInspectRelationship ? <button type="button" onClick={() => setSelectedRelationshipAlert(alert)} className="mt-4 inline-flex h-9 items-center gap-2 border border-white/15 px-3 text-xs font-semibold text-slate-100 transition-colors hover:border-emerald-300/40 hover:bg-emerald-300/10 hover:text-white"><List className="h-4 w-4" />{alert.id === 'post-sales-human-review' ? 'Ver respostas' : 'Ver casos'}</button> : null}
                 {canInspectDataQuality ? <button type="button" onClick={() => { setDataQualityChanged(false); setSelectedDataQualityAlert(alert) }} className="mt-4 inline-flex h-9 items-center gap-2 border border-white/15 px-3 text-xs font-semibold text-slate-100 transition-colors hover:border-emerald-300/40 hover:bg-emerald-300/10 hover:text-white"><List className="h-4 w-4" />{alert.id === 'stale-open-sales' ? 'Ver casos' : alert.id === 'used-products-without-cost' ? 'Corrigir lote de 10' : 'Revisar lote de 10'}</button> : null}
               </article>
-            })}</div> : <div className="mt-4 flex items-center gap-3 text-sm text-emerald-100"><CheckCircle2 className="h-4 w-4 shrink-0" />{resolved ? `${resolved} pendencia${resolved === 1 ? '' : 's'} foi${resolved === 1 ? '' : 'ram'} resolvida${resolved === 1 ? '' : 's'} desde ontem.` : 'Nenhuma mudanca material neste modulo desde ontem.'}</div>}
+            })}</div> : <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-emerald-100"><CheckCircle2 className="h-4 w-4 shrink-0" /><span>{resolved ? `${resolved} pendência${resolved === 1 ? '' : 's'} foi${resolved === 1 ? '' : 'ram'} resolvida${resolved === 1 ? '' : 's'} desde ontem.` : 'Nenhuma mudança material neste módulo desde ontem.'}</span><button type="button" onClick={() => setLatestRelevantArea(module.id)} className="inline-flex h-8 items-center gap-2 border border-white/15 px-2.5 text-xs font-semibold text-slate-200 transition-colors hover:border-emerald-300/40 hover:bg-emerald-300/10 hover:text-white"><History className="h-3.5 w-3.5" />Ver última atualização relevante</button></div>}
           </div>}
         </section>
       })}</div>}
-      {report?.sourceFailures.length ? <p className="mt-5 text-xs text-slate-500">Dados indisponiveis: {report.sourceFailures.join(', ')}.</p> : null}
+      {report?.sourceFailures.length ? <p className="mt-5 text-xs text-slate-500">Dados indisponíveis: {report.sourceFailures.join(', ')}.</p> : null}
     </section>
     </> : <PeriodicSnapshotView snapshot={selectedCadence === 'weekly' ? weeklySnapshot : (monthlyPreview || monthlySnapshot)} cadence={selectedCadence} onOpenProgramUsage={() => setProgramUsageOpen(true)} />}
     {selectedOperationalAlert ? <OperationalCasesModal storeId={storeId} alert={selectedOperationalAlert} onClose={() => setSelectedOperationalAlert(null)} /> : null}
     {selectedRelationshipAlert ? <RelationshipCasesModal storeId={storeId} alert={selectedRelationshipAlert} onClose={() => setSelectedRelationshipAlert(null)} /> : null}
     {selectedDataQualityAlert ? <DataQualityCasesModal storeId={storeId} alert={selectedDataQualityAlert} onChanged={() => setDataQualityChanged(true)} onClose={() => { setSelectedDataQualityAlert(null); if (dataQualityChanged) void refreshReport() }} /> : null}
     {programUsageOpen ? <ProgramUsageModal snapshot={(monthlyPreview || monthlySnapshot)?.programUsage || null} onClose={() => setProgramUsageOpen(false)} /> : null}
+    {latestRelevantArea ? <LatestRelevantMessageModal storeId={storeId} area={latestRelevantArea} label={modules.find((module) => module.id === latestRelevantArea)?.label || 'Pontos de Atenção'} onClose={() => setLatestRelevantArea(null)} /> : null}
     <EmployeeAuthModal storeId={storeId} isOpen={needsRefreshPin} onClose={() => setNeedsRefreshPin(false)} onSuccess={() => { setNeedsRefreshPin(false); void refreshReport() }} title="Atualizar Pontos de Atenção" description="Informe o PIN de um gerente para consultar os pontos de atenção salvos." purpose="daily_health_access" />
   </div></main>
 }
