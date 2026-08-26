@@ -68,6 +68,47 @@ test('starts the 24-hour clock when the lens arrives at the store', () => {
   assert.deepEqual(result.mountingWaitingForFrame.map((order: any) => order.id), [3])
 })
 
+test('flags only mounted glasses that remain in the drawer and separates contact gaps', () => {
+  const reportEnd = new Date('2026-08-24T23:59:59-03:00').getTime()
+  const result = dailyHealthTestables.buildReadyPickupAttention([
+    { id: 1, dt_montado_em: '2026-08-16T10:00:00-03:00', dt_entregue_em: null, customers: { fone_movel: '11999999999' } },
+    { id: 2, dt_montado_em: '2026-07-20T10:00:00-03:00', dt_entregue_em: null, customers: { phone: null } },
+    { id: 3, dt_montado_em: null, dt_entregue_em: null, customers: { fone_movel: '11999999999' } },
+    { id: 4, dt_montado_em: '2026-08-10T10:00:00-03:00', dt_entregue_em: '2026-08-12T10:00:00-03:00', customers: { fone_movel: '11999999999' } },
+  ], [
+    { status: 'sent', payload: { metadata: { osId: 1 } } },
+  ], reportEnd)
+
+  assert.deepEqual(result.readyForPickup.map((order: any) => order.id), [1, 2])
+  assert.deepEqual(result.staleReadyForPickup.map((order: any) => order.id), [1, 2])
+  assert.deepEqual(result.longStay.map((order: any) => order.id), [2])
+  assert.deepEqual(result.withoutPhone.map((order: any) => order.id), [2])
+  assert.deepEqual(result.withoutNotice.map((order: any) => order.id), [])
+})
+
+test('finds data-quality issues with the affected records as evidence', () => {
+  const reportEnd = new Date('2026-08-24T23:59:59-03:00').getTime()
+  const result = dailyHealthTestables.buildDataQualityAnalysis(
+    [
+      { id: 1, full_name: 'Maria de Jesus', cpf: '123.456.789-09', fone_movel: null },
+      { id: 2, full_name: 'Maria de Jesús', cpf: '12345678909', fone_movel: null },
+    ],
+    [
+      { id: 10, nome: 'Lente Prime', marca: 'Marca X', referencia: 'ABC-1', preco_custo: 100, tipo_produto: 'Lente' },
+      { id: 11, nome: 'Lente Prime', marca: 'Marca X', referencia: 'ABC-1', preco_custo: 0, tipo_produto: 'Lente' },
+    ],
+    [{ product_id: 11 }],
+    [{ id: 30, created_at: '2026-08-15T10:00:00-03:00' }],
+    reportEnd,
+  )
+
+  assert.deepEqual(result.duplicateCustomerIds, [1, 2])
+  assert.equal(result.duplicateCustomerCpfGroups, 1)
+  assert.deepEqual(result.duplicateProductIds, [10, 11])
+  assert.deepEqual(result.usedProductsWithoutCostIds, [11])
+  assert.deepEqual(result.staleOpenSaleIds, [30])
+})
+
 test('does not treat a contact-lens sale as an optical OS inconsistency', () => {
   const result = dailyHealthTestables.buildOrderIntegrityAttention([
     { id: 1, venda_id: 100, links: [] },
@@ -82,6 +123,7 @@ test('rejects AI text that invents a number or unsupported explanation', () => {
   const evidence = ['3 OS sem data prometida.']
 
   assert.equal(dailyHealthTestables.isGroundedAiText('Existem 3 OS sem data prometida.', evidence), true)
+  assert.equal(dailyHealthTestables.isGroundedAiText('[[highlight:orders-without-promise]]Existem 3 OS sem data prometida.[[/highlight]]', evidence), true)
   assert.equal(dailyHealthTestables.isGroundedAiText('Existem 9 OS sem data prometida.', evidence), false)
   assert.equal(dailyHealthTestables.isGroundedAiText('Existem 3 OS sem data prometida porque a equipe esqueceu.', evidence), false)
 })
@@ -103,6 +145,26 @@ test('uses only the affected post-sales IDs as alert evidence', () => {
   assert.deepEqual(analysis.deliveryIssueIds, [1, 2])
   assert.deepEqual(analysis.humanReviewIds, [1])
   assert.deepEqual(analysis.satisfactionIds, [])
+})
+
+test('detects low ratings even after post-sale completion without creating delivery noise', () => {
+  const analysis = dailyHealthTestables.buildPostSaleAnalysis(
+    [{ id: 7, status: 'Concluido', service_order_id: 70, avaliacao_cliente: 2, updated_at: '2026-08-23T15:00:00-03:00' }],
+    [],
+    [{ post_sales_id: 7, resumo: 'cliente relatou desconforto na adaptação', created_at: '2026-08-23T16:00:00-03:00' }],
+    [],
+    [],
+    '2026-08-23',
+  )
+
+  assert.equal(analysis.lowRatingCount, 1)
+  assert.equal(analysis.lowRatingYesterdayCount, 1)
+  assert.equal(analysis.lowRatingMonthCount, 1)
+  assert.equal(analysis.complaintOrAdaptationYesterday, 1)
+  assert.equal(analysis.complaintOrAdaptationMonth, 1)
+  assert.deepEqual(analysis.lowRatingIds, [7])
+  assert.deepEqual(analysis.satisfactionIds, [7])
+  assert.deepEqual(analysis.deliveryIssueIds, [])
 })
 
 test('ignores accounts payable when there are no pending balances', () => {

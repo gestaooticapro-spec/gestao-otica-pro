@@ -20,27 +20,37 @@ export function createDailyHealthGrant(storeId: number, employeeId: number) {
   return `${encoded}.${signature(encoded)}`
 }
 
-export function verifyDailyHealthGrant(value: string | undefined, storeId: number) {
-  if (!value || !signingSecret()) return false
+export function readDailyHealthGrant(value: string | undefined, storeId: number): ManagerGrant | null {
+  if (!value || !signingSecret()) return null
   const [encoded, suppliedSignature] = value.split('.')
-  if (!encoded || !suppliedSignature) return false
+  if (!encoded || !suppliedSignature) return null
   const expectedSignature = signature(encoded)
   const left = Buffer.from(suppliedSignature)
   const right = Buffer.from(expectedSignature)
-  if (left.length !== right.length || !timingSafeEqual(left, right)) return false
+  if (left.length !== right.length || !timingSafeEqual(left, right)) return null
   try {
     const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as ManagerGrant
-    return payload.storeId === storeId
+    const valid = payload.storeId === storeId
       && payload.expiresAt > Date.now()
       && payload.expiresAt <= Date.now() + MAX_AGE_SECONDS * 1000
+    return valid ? payload : null
   } catch {
-    return false
+    return null
   }
+}
+
+export function verifyDailyHealthGrant(value: string | undefined, storeId: number) {
+  return readDailyHealthGrant(value, storeId) !== null
 }
 
 export async function hasDailyHealthManagerGrant(storeId: number) {
   const cookieStore = cookies()
   return verifyDailyHealthGrant(cookieStore.get(`${COOKIE_PREFIX}${storeId}`)?.value, storeId)
+}
+
+export async function getDailyHealthManagerGrant(storeId: number) {
+  const cookieStore = cookies()
+  return readDailyHealthGrant(cookieStore.get(`${COOKIE_PREFIX}${storeId}`)?.value, storeId)
 }
 
 export function dailyHealthCookieName(storeId: number) {

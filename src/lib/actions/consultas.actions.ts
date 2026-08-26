@@ -46,19 +46,23 @@ export async function getAlertasOperacionais(storeId: number): Promise<Dashboard
             // Entregas (Cast as any para evitar erro de relacionamento aninhado)
             (supabaseAdmin
                 .from('service_orders') as any)
-                .select('id, created_at, dt_prometido_para, venda_id, customers(full_name)')
+                .select('id, created_at, dt_prometido_para, venda_id, customers(full_name), vendas!inner(status)')
                 .eq('store_id', storeId)
                 .is('dt_entregue_em', null)
+                .is('lab_encerrada_em', null)
+                .not('vendas.status', 'in', '("Cancelada","Devolvida")')
                 .lte('dt_prometido_para', amanha.toISOString())
                 .order('dt_prometido_para', { ascending: true }),
 
             // Laboratório (Parado > 24h sem pedido)
             (supabaseAdmin
                 .from('service_orders') as any)
-                .select('id, created_at, venda_id, customers(full_name)')
+                .select('id, created_at, venda_id, customers(full_name), vendas!inner(status)')
                 .eq('store_id', storeId)
                 .is('dt_pedido_em', null)
                 .is('dt_entregue_em', null)
+                .is('lab_encerrada_em', null)
+                .not('vendas.status', 'in', '("Cancelada","Devolvida")')
                 .order('created_at', { ascending: true }),
 
             // Contagem de Vendas em Aberto há mais de 21 dias (urgência)

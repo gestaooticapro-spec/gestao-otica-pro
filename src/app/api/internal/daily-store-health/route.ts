@@ -1,6 +1,6 @@
 import { timingSafeEqual } from 'node:crypto'
 import { NextResponse } from 'next/server'
-import { generateDailyStoreHealthReport } from '@/lib/daily-store-health'
+import { generateDailyStoreHealthReport, generatePeriodicStoreHealthSnapshot } from '@/lib/daily-store-health'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -19,6 +19,10 @@ export async function GET(request: Request) {
   if (!authorized(request)) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   try {
     const report = await generateDailyStoreHealthReport(1)
+    await Promise.all([
+      generatePeriodicStoreHealthSnapshot(1, 'weekly', report.reportDate),
+      generatePeriodicStoreHealthSnapshot(1, 'monthly', report.reportDate),
+    ])
     return NextResponse.json({ success: true, report })
   } catch (error) {
     console.error('[Daily health] scheduled generation failed', error)

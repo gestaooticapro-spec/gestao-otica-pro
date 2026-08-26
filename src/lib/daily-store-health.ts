@@ -1,8 +1,9 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getWhatsAppPendencias } from '@/lib/actions/consultas.actions'
 import { phonesMatch } from '@/lib/whatsapp/phone'
+import { customerDuplicateCandidates, productDuplicateCandidates } from '@/lib/daily-health-data-quality'
 
-export type DailyHealthArea = 'financeiro' | 'operacao' | 'relacionamento'
+export type DailyHealthArea = 'financeiro' | 'operacao' | 'relacionamento' | 'cadastros'
 export type DailyHealthPriority = 'critico' | 'atencao' | 'informativo'
 export type DailyHealthAlertState = 'novo' | 'piorou' | 'melhorou' | 'persistente'
 
@@ -71,6 +72,10 @@ export type DailyHealthMetrics = {
   activeFinancing: number
   multiFinancingCustomers: number
   readyForPickup: number
+  staleReadyForPickup: number
+  readyForPickupLongStay: number
+  readyForPickupWithoutPhone: number
+  readyForPickupWithoutNotice: number
   overdueOrders: number
   ordersWithoutLabRequest: number
   labArrivalOverdue: number
@@ -90,6 +95,7 @@ export type DailyHealthMetrics = {
   costCoverage: number | null
   creditAnalysis: CreditAnalysis
   accountsPayableAnalysis?: AccountsPayableAnalysis
+  dataQualityAnalysis: DataQualityAnalysis
   areaNarratives?: DailyHealthAreaNarratives
   alertLifecycle?: Record<DailyHealthArea, DailyHealthAreaLifecycle>
 }
@@ -105,6 +111,17 @@ export type AccountsPayableAnalysis = {
   dueTodayCount: number
   overdueRecords: number[]
   dueNext7Records: number[]
+}
+
+export type DataQualityAnalysis = {
+  duplicateCustomerIds: number[]
+  duplicateCustomerCpfGroups: number
+  duplicateCustomerPhoneGroups: number
+  duplicateCustomerNameGroups: number
+  duplicateProductIds: number[]
+  duplicateProductCompositeGroups: number
+  usedProductsWithoutCostIds: number[]
+  staleOpenSaleIds: number[]
 }
 
 export type CreditGroupInsight = {
@@ -148,22 +165,31 @@ export type PostSaleAnalysis = {
   messageNoResponse: number
   customerResponded: number
   ratingsReceived: number
+  lowRatingCount: number
+  lowRatingYesterdayCount: number
+  lowRatingMonthCount: number
   respondedWithoutRating: number
   messageFailed: number
   messageCancelled: number
   noMessageAttempt: number
   complaintOrAdaptation: number
+  complaintOrAdaptationYesterday: number
+  complaintOrAdaptationMonth: number
   awaitingHumanReview: number
   awaitingRating: number
   deliveryIssueIds: number[]
   humanReviewIds: number[]
   satisfactionIds: number[]
+  lowRatingIds: number[]
+  yesterdaySatisfactionIds: number[]
+  monthSatisfactionIds: number[]
 }
 
 export type DailyHealthAreaNarratives = {
   financeiro: string
   operacao: string
   relacionamento: string
+  cadastros: string
   relacionamentoConcern: string | null
 }
 
@@ -178,6 +204,17 @@ export type DailyHealthReport = {
   generatedAt: string | null
 }
 
+export type HealthSnapshotCadence = 'weekly' | 'monthly'
+
+export type PeriodicHealthSnapshot = {
+  cadence: HealthSnapshotCadence
+  periodStart: string
+  periodEnd: string
+  generatedAt: string | null
+  narrative: string
+  alerts: DailyHealthAlert[]
+}
+
 function reportFromStoredRow(data: any): DailyHealthReport {
   return {
     id: data.id,
@@ -188,6 +225,17 @@ function reportFromStoredRow(data: any): DailyHealthReport {
     narrative: data.narrative,
     sourceFailures: data.source_failures || [],
     generatedAt: data.generated_at,
+  }
+}
+
+function periodicSnapshotFromStoredRow(data: any): PeriodicHealthSnapshot {
+  return {
+    cadence: data.cadence,
+    periodStart: data.period_start,
+    periodEnd: data.period_end,
+    generatedAt: data.generated_at,
+    narrative: data.narrative || '',
+    alerts: Array.isArray(data.alerts) ? data.alerts : [],
   }
 }
 
@@ -230,6 +278,7 @@ const DAY_MS = 24 * 60 * 60 * 1000
 const LOCAL_MOUNTING_LIMIT_HOURS = 24
 const CUSTOMER_FRAME_CONCERN_HOURS = 7 * 24
 const ORDER_SEQUENCE_TOLERANCE_MS = 4 * 60 * 60 * 1000
+const MONTHLY_RELATIONSHIP_SIGNAL_THRESHOLD = 3
 
 function dateKey(date = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: SAO_PAULO, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date)
@@ -284,6 +333,18 @@ function sum(rows: any[], field: string) {
   return rows.reduce((total, row) => total + Number(row?.[field] || 0), 0)
 }
 
+function periodicPeriodForReportDate(reportDate: string, cadence: HealthSnapshotCadence) {
+  const date = new Date(`${reportDate}T12:00:00-03:00`)
+  if (cadence === 'weekly') {
+    const daysFromMonday = (date.getDay() + 6) % 7
+    if (date.getDay() !== 0) return null
+    return { start: previousDateKey(reportDate, daysFromMonday), end: reportDate }
+  }
+  const nextDay = new Date(date.getTime() + DAY_MS)
+  if (nextDay.getMonth() === date.getMonth()) return null
+  return { start: firstDayOfMonth(reportDate), end: reportDate }
+}
+
 function buildMountingAttention(orders: any[], reportEnd: number) {
   const elapsedHours = (value: string | null) => value
     ? Math.max(0, (reportEnd - new Date(value).getTime()) / (60 * 60 * 1000))
@@ -292,6 +353,57 @@ function buildMountingAttention(orders: any[], reportEnd: number) {
   const mountingOverdue = openForMounting.filter((order) => order.armacao_com_cliente !== true && elapsedHours(order.dt_lente_chegou) > LOCAL_MOUNTING_LIMIT_HOURS)
   const mountingWaitingForFrame = openForMounting.filter((order) => order.armacao_com_cliente === true && elapsedHours(order.dt_lente_chegou) > CUSTOMER_FRAME_CONCERN_HOURS)
   return { mountingOverdue, mountingWaitingForFrame }
+}
+
+function buildReadyPickupAttention(orders: any[], pickupNotices: any[], reportEnd: number) {
+  const notifiedOrderIds = new Set(pickupNotices
+    .filter((notice) => notice.status === 'sent')
+    .map((notice) => Number(notice.payload?.metadata?.osId))
+    .filter(Number.isFinite))
+  const mounted = orders.filter((order) => Boolean(order.dt_montado_em) && !order.dt_entregue_em)
+  const ageInDays = (order: any) => Math.max(0, (reportEnd - new Date(order.dt_montado_em).getTime()) / DAY_MS)
+  const stale = mounted.filter((order) => ageInDays(order) > 7)
+  const customerFor = (order: any) => Array.isArray(order.customers) ? order.customers[0] : order.customers
+  const hasPhone = (order: any) => normalizedDigits(customerFor(order)?.fone_movel || customerFor(order)?.phone).length >= 8
+  return {
+    readyForPickup: mounted,
+    staleReadyForPickup: stale,
+    longStay: stale.filter((order) => ageInDays(order) >= 30),
+    withoutPhone: stale.filter((order) => !hasPhone(order)),
+    withoutNotice: stale.filter((order) => hasPhone(order) && !notifiedOrderIds.has(Number(order.id))),
+  }
+}
+
+function normalizedDigits(value: unknown) {
+  return String(value || '').replace(/\D/g, '')
+}
+
+function buildDataQualityAnalysis(customers: any[], products: any[], auditItems: any[], openSales: any[], reportEnd: number, resolvedFingerprints = new Set<string>()): DataQualityAnalysis {
+  const customerCandidates = customerDuplicateCandidates(customers)
+  const productCandidates = productDuplicateCandidates(products)
+  const customerGroups = customerCandidates.groups.filter((group) => !resolvedFingerprints.has(group.fingerprint))
+  const productGroups = productCandidates.groups.filter((group) => !resolvedFingerprints.has(group.fingerprint))
+  const customerIds = new Set(customerGroups.flatMap((group) => group.ids))
+  const productIds = new Set(productGroups.flatMap((group) => group.ids))
+  const activeCriteriaCount = (criteria: Array<{ ids: number[]; reason: string }>, reason: string, ids: Set<number>) => criteria.filter((group) => group.reason === reason && group.ids.some((id) => ids.has(id))).length
+  const soldProductIds = new Set(auditItems.map((item) => Number(item.product_id)).filter(Number.isFinite))
+  const usedProductsWithoutCostIds = products
+    .filter((product) => soldProductIds.has(Number(product.id)) && ['Armacao', 'Lente', 'LenteContato'].includes(String(product.tipo_produto)) && Number(product.preco_custo || 0) <= 0)
+    .map((product) => Number(product.id))
+  const staleOpenSaleIds = openSales
+    .filter((sale) => new Date(sale.created_at).getTime() < reportEnd - 7 * DAY_MS)
+    .map((sale) => Number(sale.id))
+    .filter(Number.isFinite)
+  return {
+    duplicateCustomerIds: [...customerIds],
+    duplicateCustomerCpfGroups: activeCriteriaCount(customerCandidates.criteria, 'cpf', customerIds),
+    duplicateCustomerPhoneGroups: activeCriteriaCount(customerCandidates.criteria, 'telefone', customerIds),
+    duplicateCustomerNameGroups: activeCriteriaCount(customerCandidates.criteria, 'nome', customerIds),
+    duplicateProductIds: [...productIds],
+    duplicateProductCompositeGroups: activeCriteriaCount(productCandidates.criteria, 'produto_composto', productIds),
+    usedProductsWithoutCostIds,
+    staleOpenSaleIds,
+  }
 }
 
 function buildSalesSummary(
@@ -495,7 +607,7 @@ async function loadPostSaleInboundMessages(admin: ReturnType<typeof createAdminC
   }
 }
 
-function buildPostSaleAnalysis(postSales: any[], followups: any[], interactions: any[], serviceOrders: any[], inboundMessages: any[]): PostSaleAnalysis {
+function buildPostSaleAnalysis(postSales: any[], followups: any[], interactions: any[], serviceOrders: any[], inboundMessages: any[], reportDate = dateKey()): PostSaleAnalysis {
   const orderById = new Map(serviceOrders.map((order) => [order.id, order]))
   const latestFollowupByPostSale = new Map<number, any>()
   for (const followup of followups) {
@@ -517,57 +629,95 @@ function buildPostSaleAnalysis(postSales: any[], followups: any[], interactions:
   let messageNoResponse = 0
   let customerResponded = 0
   let ratingsReceived = 0
+  let lowRatingCount = 0
+  let lowRatingYesterdayCount = 0
+  let lowRatingMonthCount = 0
   let respondedWithoutRating = 0
   let messageFailed = 0
   let messageCancelled = 0
   let noMessageAttempt = 0
   let complaintOrAdaptation = 0
+  let complaintOrAdaptationYesterday = 0
+  let complaintOrAdaptationMonth = 0
   let awaitingHumanReview = 0
   let awaitingRating = 0
   const deliveryIssueIds = new Set<number>()
   const humanReviewIds = new Set<number>()
   const satisfactionIds = new Set<number>()
+  const lowRatingIds = new Set<number>()
+  const yesterdaySatisfactionIds = new Set<number>()
+  const monthSatisfactionIds = new Set<number>()
 
   for (const postSale of postSales) {
-    const order = orderById.get(postSale.service_order_id)
-    const customer = Array.isArray(order?.customers) ? order.customers[0] : order?.customers
-    const phone = String(customer?.fone_movel || customer?.phone || '').replace(/\\D/g, '')
-    if (!phone) {
-      noPhone += 1
-      deliveryIssueIds.add(postSale.id)
+    const isCompleted = postSale.status === 'Concluido'
+    const hasRating = Number(postSale.avaliacao_cliente) >= 1 && Number(postSale.avaliacao_cliente) <= 5
+    if (hasRating) ratingsReceived += 1
+    if (Number(postSale.avaliacao_cliente) >= 1 && Number(postSale.avaliacao_cliente) <= 2) {
+      lowRatingCount += 1
+      lowRatingIds.add(postSale.id)
+      satisfactionIds.add(postSale.id)
+      const ratingDate = postSale.updated_at ? dateKey(new Date(postSale.updated_at)) : null
+      if (ratingDate?.slice(0, 7) === reportDate.slice(0, 7)) {
+        lowRatingMonthCount += 1
+        monthSatisfactionIds.add(postSale.id)
+      }
+      if (ratingDate === reportDate) {
+        lowRatingYesterdayCount += 1
+        yesterdaySatisfactionIds.add(postSale.id)
+      }
     }
 
-    const followup = latestFollowupByPostSale.get(postSale.id)
-    if (!followup) {
-      noMessageAttempt += 1
-      deliveryIssueIds.add(postSale.id)
-    }
-    else if (followup.status === 'sent') {
-      messageSent += 1
-      const sentAt = new Date(followup.sent_at || followup.created_at).getTime()
-      const hasResponse = inboundMessages.some((inbound) =>
-        Number(inbound.channel_id) === Number(followup.channel_id)
-        && phonesMatch(inbound.remote_phone, followup.remote_phone)
-        && new Date(inbound.provider_created_at || inbound.created_at).getTime() > sentAt
-      )
-      const hasRating = Number(postSale.avaliacao_cliente) >= 1 && Number(postSale.avaliacao_cliente) <= 5
-      if (hasRating) ratingsReceived += 1
-      if (hasResponse) {
-        customerResponded += 1
-        if (!hasRating) respondedWithoutRating += 1
-      } else messageNoResponse += 1
-    }
-    else if (followup.status === 'scheduled' || followup.status === 'sending') messageScheduled += 1
-    else if (followup.status === 'failed') {
-      messageFailed += 1
-      deliveryIssueIds.add(postSale.id)
-    }
-    else if (followup.status === 'cancelled') messageCancelled += 1
+    if (!isCompleted) {
+      const order = orderById.get(postSale.service_order_id)
+      const customer = Array.isArray(order?.customers) ? order.customers[0] : order?.customers
+      const phone = String(customer?.fone_movel || customer?.phone || '').replace(/\\D/g, '')
+      if (!phone) {
+        noPhone += 1
+        deliveryIssueIds.add(postSale.id)
+      }
 
-    const summaries = (interactionByPostSale.get(postSale.id) || []).map((interaction) => String(interaction.resumo || ''))
-    if (summaries.some((summary) => /reclam|adaptaÃ§Ã£o|adaptacao/i.test(summary))) {
+      const followup = latestFollowupByPostSale.get(postSale.id)
+      if (!followup) {
+        noMessageAttempt += 1
+        deliveryIssueIds.add(postSale.id)
+      }
+      else if (followup.status === 'sent') {
+        messageSent += 1
+        const sentAt = new Date(followup.sent_at || followup.created_at).getTime()
+        const hasResponse = inboundMessages.some((inbound) =>
+          Number(inbound.channel_id) === Number(followup.channel_id)
+          && phonesMatch(inbound.remote_phone, followup.remote_phone)
+          && new Date(inbound.provider_created_at || inbound.created_at).getTime() > sentAt
+        )
+        if (hasResponse) {
+          customerResponded += 1
+          if (!hasRating) respondedWithoutRating += 1
+        } else messageNoResponse += 1
+      }
+      else if (followup.status === 'scheduled' || followup.status === 'sending') messageScheduled += 1
+      else if (followup.status === 'failed') {
+        messageFailed += 1
+        deliveryIssueIds.add(postSale.id)
+      }
+      else if (followup.status === 'cancelled') messageCancelled += 1
+    }
+
+    const postSaleInteractions = interactionByPostSale.get(postSale.id) || []
+    const satisfactionInteractions = postSaleInteractions.filter((interaction) => /reclam|adapt|insatisf|desconfort|nao gostei/i.test(String(interaction.resumo || '')))
+    const summaries = postSaleInteractions.map((interaction) => String(interaction.resumo || ''))
+    if (satisfactionInteractions.length > 0) {
       complaintOrAdaptation += 1
       satisfactionIds.add(postSale.id)
+      const hasYesterdayInteraction = satisfactionInteractions.some((interaction) => interaction.created_at && dateKey(new Date(interaction.created_at)) === reportDate)
+      const hasMonthInteraction = satisfactionInteractions.some((interaction) => interaction.created_at && dateKey(new Date(interaction.created_at)).slice(0, 7) === reportDate.slice(0, 7))
+      if (hasYesterdayInteraction) {
+        complaintOrAdaptationYesterday += 1
+        yesterdaySatisfactionIds.add(postSale.id)
+      }
+      if (hasMonthInteraction) {
+        complaintOrAdaptationMonth += 1
+        monthSatisfactionIds.add(postSale.id)
+      }
     }
     if (summaries.some((summary) => /handoff|atendimento humano/i.test(summary))) {
       awaitingHumanReview += 1
@@ -584,16 +734,24 @@ function buildPostSaleAnalysis(postSales: any[], followups: any[], interactions:
     messageNoResponse,
     customerResponded,
     ratingsReceived,
+    lowRatingCount,
+    lowRatingYesterdayCount,
+    lowRatingMonthCount,
     respondedWithoutRating,
     messageFailed,
     messageCancelled,
     noMessageAttempt,
     complaintOrAdaptation,
+    complaintOrAdaptationYesterday,
+    complaintOrAdaptationMonth,
     awaitingHumanReview,
     awaitingRating,
     deliveryIssueIds: [...deliveryIssueIds],
     humanReviewIds: [...humanReviewIds],
     satisfactionIds: [...satisfactionIds],
+    lowRatingIds: [...lowRatingIds],
+    yesterdaySatisfactionIds: [...yesterdaySatisfactionIds],
+    monthSatisfactionIds: [...monthSatisfactionIds],
   }
 }
 
@@ -672,6 +830,9 @@ const ALERT_SOURCE_DEPENDENCIES: Record<string, string[]> = {
   'lenses-not-arrived': ['ordens de servico'],
   'lens-mounting-overdue': ['ordens de servico'],
   'lens-mounting-waiting-frame': ['ordens de servico'],
+  'ready-pickup-stale': ['ordens de servico'],
+  'ready-pickup-without-phone': ['ordens de servico'],
+  'ready-pickup-without-notice': ['ordens de servico', 'avisos de retirada'],
   'orders-without-promise': ['ordens de servico'],
   'orders-without-lens-link': ['ordens de servico', 'lentes das OS'],
   'orders-without-prescription': ['ordens de servico', 'lentes das OS'],
@@ -682,6 +843,10 @@ const ALERT_SOURCE_DEPENDENCIES: Record<string, string[]> = {
   'post-sales-delivery': ['pos-venda', 'envios de pos-venda', 'clientes de pos-venda', 'respostas de WhatsApp para pos-venda'],
   'post-sales-human-review': ['pos-venda', 'interacoes de pos-venda'],
   'post-sales-satisfaction': ['pos-venda', 'interacoes de pos-venda'],
+  'duplicate-customers': ['clientes'],
+  'duplicate-products': ['produtos'],
+  'used-products-without-cost': ['produtos', 'itens de auditoria'],
+  'stale-open-sales': ['vendas em aberto'],
 }
 
 const RETIRED_ALERT_IDS = new Set([
@@ -701,7 +866,7 @@ const DATA_SOURCE_ALERTS: Array<{ id: string; area: DailyHealthArea; sources: st
   {
     id: 'data-unavailable-operation',
     area: 'operacao',
-    sources: ['ordens de servico', 'vendas de lentes', 'lentes das OS'],
+    sources: ['ordens de servico', 'vendas de lentes', 'lentes das OS', 'avisos de retirada'],
     title: 'Parte dos dados operacionais não pôde ser atualizada',
     detail: 'O relatório preservou as pendências anteriores e não tirou conclusões sobre essa fonte hoje.',
   },
@@ -711,6 +876,13 @@ const DATA_SOURCE_ALERTS: Array<{ id: string; area: DailyHealthArea; sources: st
     sources: ['pos-venda', 'envios de pos-venda', 'interacoes de pos-venda', 'clientes de pos-venda', 'respostas de WhatsApp para pos-venda', 'WhatsApp'],
     title: 'Parte dos dados de relacionamento não pôde ser atualizada',
     detail: 'O relatório preservou as pendências anteriores e não tirou conclusões sobre essa fonte hoje.',
+  },
+  {
+    id: 'data-unavailable-data-quality',
+    area: 'cadastros',
+    sources: ['clientes', 'produtos', 'itens de auditoria', 'vendas em aberto'],
+    title: 'Parte da faxina cadastral não pôde ser atualizada',
+    detail: 'O relatório preservou as pendências anteriores e não concluiu que os cadastros foram corrigidos.',
   },
 ]
 
@@ -727,6 +899,7 @@ function compareAlerts(currentAlerts: DailyHealthAlert[], previousAlerts: DailyH
     financeiro: { newCount: 0, worsenedCount: 0, improvedCount: 0, persistentCount: 0, resolvedCount: 0 },
     operacao: { newCount: 0, worsenedCount: 0, improvedCount: 0, persistentCount: 0, resolvedCount: 0 },
     relacionamento: { newCount: 0, worsenedCount: 0, improvedCount: 0, persistentCount: 0, resolvedCount: 0 },
+    cadastros: { newCount: 0, worsenedCount: 0, improvedCount: 0, persistentCount: 0, resolvedCount: 0 },
   }
   const currentIds = new Set(currentAlerts.map((alert) => alert.id))
   for (const previous of previousAlerts) {
@@ -786,9 +959,11 @@ function compareAlerts(currentAlerts: DailyHealthAlert[], previousAlerts: DailyH
 
 export const dailyHealthTestables = {
   buildAccountsPayableAnalysis,
+  buildDataQualityAnalysis,
   buildOrderIntegrityAttention,
   buildPostSaleAnalysis,
   buildMountingAttention,
+  buildReadyPickupAttention,
   compareAlerts,
   isGroundedAiText,
   isReadySnapshot,
@@ -834,18 +1009,27 @@ function fallbackAreaNarratives(metrics: DailyHealthMetrics, alerts: DailyHealth
     metrics.ordersWithoutPromise > 0 ? `${metrics.ordersWithoutPromise} OS sem data prometida` : '',
     metrics.ordersWithoutLensLink > 0 ? `${metrics.ordersWithoutLensLink} OS estao sem lente vinculada` : '',
     metrics.ordersWithoutPrescription > 0 ? `${metrics.ordersWithoutPrescription} OS com lente vinculada estao sem grau preenchido` : '',
-    metrics.readyForPickup > 0 ? `${metrics.readyForPickup} pedidos prontos aguardando retirada` : '',
+    metrics.staleReadyForPickup > 0 ? `${metrics.staleReadyForPickup} oculos prontos estao na gaveta ha mais de 7 dias` : '',
   ].filter(Boolean)
   const relationshipFacts = [
-    `Ontem foram concluidos ${Number(metrics.postSalesCompletedYesterday || 0)} pos-vendas e, nos ultimos 7 dias, ${Number(metrics.postSalesCompletedWeek || 0)}.`,
-    metrics.pendingPostSales > 0
-      ? `${metrics.pendingPostSales} continuam abertos: ${postSale.messageSent} mensagens enviadas, ${postSale.customerResponded} respostas posteriores, ${postSale.ratingsReceived} notas registradas, ${postSale.respondedWithoutRating} respostas sem nota registrada, ${postSale.awaitingRating} aguardando nota e ${postSale.messageFailed} falhas de envio.`
-      : 'Nao ha pos-vendas pendentes.',
-  ]
+    postSale.lowRatingYesterdayCount > 0 ? `Ontem, ${postSale.lowRatingYesterdayCount} nota${postSale.lowRatingYesterdayCount === 1 ? '' : 's'} baixa${postSale.lowRatingYesterdayCount === 1 ? '' : 's'} foi${postSale.lowRatingYesterdayCount === 1 ? '' : 'ram'} registrada${postSale.lowRatingYesterdayCount === 1 ? '' : 's'}.` : '',
+    postSale.complaintOrAdaptationYesterday > 0 ? `Ontem, ${postSale.complaintOrAdaptationYesterday} relato${postSale.complaintOrAdaptationYesterday === 1 ? '' : 's'} indica${postSale.complaintOrAdaptationYesterday === 1 ? '' : 'm'} reclamação ou dificuldade de adaptação.` : '',
+    postSale.lowRatingMonthCount + postSale.complaintOrAdaptationMonth >= MONTHLY_RELATIONSHIP_SIGNAL_THRESHOLD ? `Neste mês, ${postSale.lowRatingMonthCount + postSale.complaintOrAdaptationMonth} sinais de insatisfação já merecem uma observação mais cuidadosa.` : '',
+    postSale.deliveryIssueIds.length > 0 ? `${postSale.deliveryIssueIds.length} pós-venda${postSale.deliveryIssueIds.length === 1 ? '' : 's'} ainda não teve${postSale.deliveryIssueIds.length === 1 ? '' : 'ram'} contato confiável.` : '',
+    postSale.awaitingHumanReview > 0 ? `${postSale.awaitingHumanReview} resposta${postSale.awaitingHumanReview === 1 ? '' : 's'} aguarda${postSale.awaitingHumanReview === 1 ? '' : 'm'} revisão humana.` : '',
+  ].filter(Boolean)
+  const dataQuality = metrics.dataQualityAnalysis
+  const cadastroFacts = [
+    dataQuality.duplicateCustomerIds.length > 0 ? `${dataQuality.duplicateCustomerIds.length} clientes com possivel duplicidade` : '',
+    dataQuality.duplicateProductIds.length > 0 ? `${dataQuality.duplicateProductIds.length} produtos com possivel duplicidade` : '',
+    dataQuality.usedProductsWithoutCostIds.length > 0 ? `${dataQuality.usedProductsWithoutCostIds.length} produtos vendidos sem custo cadastrado` : '',
+    dataQuality.staleOpenSaleIds.length > 0 ? `${dataQuality.staleOpenSaleIds.length} vendas em aberto ha mais de 7 dias` : '',
+  ].filter(Boolean)
   return {
     financeiro: hasUnavailableData('financeiro') ? 'Nao foi possivel atualizar todos os dados financeiros. O relatorio nao concluiu que pendencias anteriores foram resolvidas.' : changed('financeiro') ? fallbackFinancialNarrative(metrics.creditAnalysis) : quiet('financeiro'),
     operacao: hasUnavailableData('operacao') ? 'Nao foi possivel atualizar todos os dados operacionais. O relatorio nao concluiu que pendencias anteriores foram resolvidas.' : changed('operacao') ? (operationFacts.length ? `A operacao pede atencao: ${operationFacts.join('; ')}.` : 'A operacao nao trouxe desvios relevantes nas fontes disponiveis.') : quiet('operacao'),
-    relacionamento: hasUnavailableData('relacionamento') ? 'Nao foi possivel atualizar todos os dados de relacionamento. O relatorio nao concluiu que pendencias anteriores foram resolvidas.' : changed('relacionamento') ? relationshipFacts.join(' ') : quiet('relacionamento'),
+    relacionamento: hasUnavailableData('relacionamento') ? 'Nao foi possivel atualizar todos os dados de relacionamento. O relatorio nao concluiu que pendencias anteriores foram resolvidas.' : changed('relacionamento') && relationshipFacts.length ? relationshipFacts.join(' ') : quiet('relacionamento'),
+    cadastros: hasUnavailableData('cadastros') ? 'Nao foi possivel atualizar todos os dados cadastrais. O relatorio preservou as pendencias anteriores.' : changed('cadastros') && cadastroFacts.length ? `A faxina encontrou: ${cadastroFacts.join('; ')}.` : quiet('cadastros'),
     relacionamentoConcern: !hasUnavailableData('relacionamento') && changed('relacionamento') && postSale.awaitingHumanReview > 0
       ? `Fiquei preocupado com ${postSale.awaitingHumanReview} caso${postSale.awaitingHumanReview === 1 ? '' : 's'} em revisao humana aberta. Confira esses retornos antes de seguirmos com novos contatos.`
       : null,
@@ -862,8 +1046,13 @@ function aiText(value: unknown) {
   return typeof value === 'string' && value.trim().length > 10 && value.trim().length <= 1200 ? value.trim() : null
 }
 
+function normalizeNarrativeHighlights(value: string) {
+  return value.replace(/\[\[highlight:([a-z0-9-]+)\]\]([\s\S]*?)\[\[\/highlight\]\]/gi, '[[highlight:$1]]$2[[/highlight]]')
+}
+
 function isGroundedAiText(value: unknown, evidence: string[]) {
-  const text = aiText(value)
+  const rawText = aiText(value)
+  const text = rawText ? normalizeNarrativeHighlights(rawText) : null
   if (!text) return false
   if (/(?:porque|por isso|devido|caus(?:a|ou)|provoc|recomend|prioriz|\bdeve\b|\bprecisa\b|contat(?:e|ar)|\bfaca\b|\bfaça\b)/i.test(text)) return false
   const supportedNumbers = new Set(evidence.flatMap((item) => item.match(/\d+(?:[.,]\d+)?/g) || []))
@@ -872,7 +1061,7 @@ function isGroundedAiText(value: unknown, evidence: string[]) {
 }
 
 function groundedAiText(value: unknown, fallbackValue: string, evidence: string[]) {
-  return isGroundedAiText(value, evidence) ? String(value).trim() : fallbackValue
+  return isGroundedAiText(value, evidence) ? normalizeNarrativeHighlights(String(value).trim()) : fallbackValue
 }
 
 async function createNarrative(metrics: DailyHealthMetrics, alerts: DailyHealthAlert[]): Promise<DailyHealthNarrativeResult> {
@@ -903,7 +1092,7 @@ async function createNarrative(metrics: DailyHealthMetrics, alerts: DailyHealthA
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'gpt-4.1-mini',
-        input: `Voce escreve a leitura diaria de uma otica em portugues brasileiro. Retorne SOMENTE JSON valido, sem markdown, neste formato: {"geral":"...","financeiro":"...","operacao":"...","relacionamento":"...","relacionamentoConcern":"texto ou null","cards":{"id-do-alerta":{"title":"...","detail":"..."}}}. Use SOMENTE os fatos estruturados abaixo. Nao invente causas, valores, clientes ou acoes. Cada leitura deve ser humana, direta e curta. Os textos financeiro, operacao e relacionamento sao leituras de modulo, nao listas de botoes. O relatorio e diario: use lifecycle.show para decidir o que merece ser mencionado. Se um modulo nao tiver alerta com show=true, diga apenas que nao houve mudanca material desde ontem, citando resolucoes quando houver; nao repita numeros persistentes. No financeiro, quando houver mudanca relevante, fale de inadimplencia atual: parcelas que continuam vencidas em aberto, valor, envelhecimento acima de 90 dias e quantos clientes desse grupo ainda nao estao no SPC. Se houver alerta de contas a pagar com lifecycle.show=true, mencione somente o vencimento em aberto ou a concentracao material nos proximos 7 dias. Nunca mencione parcelas que foram quitadas com atraso, historico de atraso ou comparacoes de pagamento passado. Mencione varias compras parceladas apenas se multiplePurchaseSignal existir e houver mudanca relevante no financeiro, como associacao atual observada e nao causa. Os cards sao excecoes com lifecycle.show=true: reescreva titulo e detalhe de forma variada e concreta. Quando houver lens-mounting-overdue persistente, deixe claro que a montagem local ainda nao foi registrada desde ontem. Quando houver lens-mounting-waiting-frame persistente, deixe claro que a armação do cliente ainda nao foi recebida desde ontem. Para CADA card, use exclusivamente os fatos do alerta com o mesmo id; nao acrescente porcentagens, causas, comparacoes, estados de resposta ou conclusoes que nao estejam no titulo e detalhe daquele alerta. Nao crie uma acao nova nem repita literalmente o titulo original. Em relacionamento, explique os pos-vendas concluidos ontem e na semana somente quando relacionamento tiver mudanca relevante. Nunca escreva que uma resposta foi 'avaliada' quando o fato e apenas nao haver nota registrada. Preencha relacionamentoConcern somente quando houver revisao humana aberta e show=true, em tom de consultor preocupado. ${JSON.stringify({ metrics: aiMetrics, lifecycle: metrics.alertLifecycle, alerts: alerts.map(({ id, title, detail, priority, area, lifecycle }) => ({ id, title, detail, priority, area, lifecycle })) })}`,
+        input: `Voce escreve a leitura diaria de uma otica em portugues brasileiro. Retorne SOMENTE JSON valido, sem markdown, neste formato: {"geral":"...","financeiro":"...","operacao":"...","relacionamento":"...","cadastros":"...","relacionamentoConcern":"texto ou null","cards":{"id-do-alerta":{"title":"...","detail":"..."}}}. Use SOMENTE os fatos estruturados abaixo. Nao invente causas, valores, clientes ou acoes. Cada leitura deve ser humana, direta e curta. Quando quiser destacar uma parte do texto, use [[highlight:id-do-alerta]]trecho[[/highlight]]. Use apenas o id de um alerta fornecido abaixo e marque a frase ou ideia relevante, nunca um numero isolado. A prioridade e a cor sao definidas exclusivamente pelo sistema a partir do alerta; voce nao decide se algo e critico ou atencao. Os textos financeiro, operacao, relacionamento e cadastros sao leituras de modulo, nao listas de botoes. O relatorio e diario: use lifecycle.show para decidir o que merece ser mencionado. Se um modulo nao tiver alerta com show=true, diga apenas que nao houve mudanca material desde ontem, citando resolucoes quando houver; nao repita numeros persistentes. No financeiro, quando houver mudanca relevante, fale de inadimplencia atual: parcelas que continuam vencidas em aberto, valor, envelhecimento acima de 90 dias e quantos clientes desse grupo ainda nao estao no SPC. Se houver alerta de contas a pagar com lifecycle.show=true, mencione somente o vencimento em aberto ou a concentracao material nos proximos 7 dias. Nunca mencione parcelas que foram quitadas com atraso, historico de atraso ou comparacoes de pagamento passado. Mencione varias compras parceladas apenas se multiplePurchaseSignal existir e houver mudanca relevante no financeiro, como associacao atual observada e nao causa. Os cards sao excecoes com lifecycle.show=true: reescreva titulo e detalhe de forma variada e concreta. Quando houver lens-mounting-overdue persistente, deixe claro que a data da montagem local ainda nao foi preenchida desde ontem. Quando houver lens-mounting-waiting-frame persistente, deixe claro que a armação do cliente ainda nao foi recebida desde ontem. Para CADA card, use exclusivamente os fatos do alerta com o mesmo id; nao acrescente porcentagens, causas, comparacoes, estados de resposta ou conclusoes que nao estejam no titulo e detalhe daquele alerta. Nao crie uma acao nova nem repita literalmente o titulo original. Em relacionamento, explique os pos-vendas concluidos ontem e na semana somente quando relacionamento tiver mudanca relevante. Nunca escreva que uma resposta foi 'avaliada' quando o fato e apenas nao haver nota registrada. Preencha relacionamentoConcern somente quando houver revisao humana aberta e show=true, em tom de consultor preocupado. ${JSON.stringify({ metrics: aiMetrics, lifecycle: metrics.alertLifecycle, alerts: alerts.map(({ id, title, detail, priority, area, lifecycle }) => ({ id, title, detail, priority, area, lifecycle })) })}`,
       }),
       cache: 'no-store',
     })
@@ -925,7 +1114,7 @@ async function createNarrative(metrics: DailyHealthMetrics, alerts: DailyHealthA
       console.warn(`[Daily health][IA] JSON invalido: ${text.slice(0, 1000)}`)
       return fallback
     }
-    let parsed: Partial<Record<'geral' | 'financeiro' | 'operacao' | 'relacionamento' | 'relacionamentoConcern', unknown>> & { cards?: unknown }
+    let parsed: Partial<Record<'geral' | 'financeiro' | 'operacao' | 'relacionamento' | 'cadastros' | 'relacionamentoConcern', unknown>> & { cards?: unknown }
     try {
       parsed = JSON.parse(text.slice(jsonStart, jsonEnd + 1))
     } catch {
@@ -937,6 +1126,8 @@ async function createNarrative(metrics: DailyHealthMetrics, alerts: DailyHealthA
     const financialEvidence = [fallback.areas.financeiro, ...alerts.filter((alert) => alert.area === 'financeiro').flatMap((alert) => [alert.title, alert.detail])]
     const operationEvidence = [fallback.areas.operacao, ...alerts.filter((alert) => alert.area === 'operacao').flatMap((alert) => [alert.title, alert.detail])]
     const relationshipEvidence = [fallback.areas.relacionamento, ...alerts.filter((alert) => alert.area === 'relacionamento').flatMap((alert) => [alert.title, alert.detail])]
+    const dataQualityEvidence = [fallback.areas.cadastros, ...alerts.filter((alert) => alert.area === 'cadastros').flatMap((alert) => [alert.title, alert.detail])]
+    const hasNormalRelationshipLanguage = (value: string) => /conclu|mensagens? (enviadas|recebidas)|respostas? (recebidas|posteriores)|notas? registradas|aguardando nota|nao ha pos-vendas pendentes/i.test(value)
     const financeiroDaIa = groundedAiText(parsed.financeiro, fallback.areas.financeiro, financialEvidence)
     const financeiro = hasForbiddenCreditHistoryLanguage(financeiroDaIa)
       ? fallback.areas.financeiro
@@ -944,6 +1135,7 @@ async function createNarrative(metrics: DailyHealthMetrics, alerts: DailyHealthA
     const financeiroTemMudanca = Boolean(metrics.alertLifecycle && (metrics.alertLifecycle.financeiro.newCount + metrics.alertLifecycle.financeiro.worsenedCount + metrics.alertLifecycle.financeiro.improvedCount > 0))
     const operacaoTemMudanca = Boolean(metrics.alertLifecycle && (metrics.alertLifecycle.operacao.newCount + metrics.alertLifecycle.operacao.worsenedCount + metrics.alertLifecycle.operacao.improvedCount > 0))
     const relacionamentoTemMudanca = Boolean(metrics.alertLifecycle && (metrics.alertLifecycle.relacionamento.newCount + metrics.alertLifecycle.relacionamento.worsenedCount + metrics.alertLifecycle.relacionamento.improvedCount > 0))
+    const cadastrosTemMudanca = Boolean(metrics.alertLifecycle && (metrics.alertLifecycle.cadastros.newCount + metrics.alertLifecycle.cadastros.worsenedCount + metrics.alertLifecycle.cadastros.improvedCount > 0))
     const dadosIndisponiveis = (area: DailyHealthArea) => alerts.some((alert) => alert.area === area && alert.id.startsWith('data-unavailable-'))
     const financeiroComSinal = financeiroTemMudanca && metrics.creditAnalysis.multiplePurchaseSignal && !financeiro.includes('duas ou mais compras')
       ? `${financeiro} ${metrics.creditAnalysis.multiplePurchaseSignal}`
@@ -953,7 +1145,8 @@ async function createNarrative(metrics: DailyHealthMetrics, alerts: DailyHealthA
       areas: {
         financeiro: !dadosIndisponiveis('financeiro') && financeiroTemMudanca ? financeiroComSinal : fallback.areas.financeiro,
         operacao: !dadosIndisponiveis('operacao') && operacaoTemMudanca ? groundedAiText(parsed.operacao, fallback.areas.operacao, operationEvidence) : fallback.areas.operacao,
-        relacionamento: !dadosIndisponiveis('relacionamento') && relacionamentoTemMudanca ? groundedAiText(parsed.relacionamento, fallback.areas.relacionamento, relationshipEvidence) : fallback.areas.relacionamento,
+        relacionamento: !dadosIndisponiveis('relacionamento') && relacionamentoTemMudanca && !hasNormalRelationshipLanguage(String(parsed.relacionamento || '')) ? groundedAiText(parsed.relacionamento, fallback.areas.relacionamento, relationshipEvidence) : fallback.areas.relacionamento,
+        cadastros: !dadosIndisponiveis('cadastros') && cadastrosTemMudanca ? groundedAiText(parsed.cadastros, fallback.areas.cadastros, dataQualityEvidence) : fallback.areas.cadastros,
         relacionamentoConcern: !dadosIndisponiveis('relacionamento') && relacionamentoTemMudanca && isGroundedAiText(parsed.relacionamentoConcern, [fallback.areas.relacionamentoConcern || '', ...relationshipEvidence]) && /revis/i.test(String(parsed.relacionamentoConcern)) && !/reclama/i.test(String(parsed.relacionamentoConcern))
           ? String(parsed.relacionamentoConcern).trim()
           : fallback.areas.relacionamentoConcern,
@@ -966,15 +1159,17 @@ async function createNarrative(metrics: DailyHealthMetrics, alerts: DailyHealthA
   }
 }
 
-export async function generateDailyStoreHealthReport(storeId = 1, reportDate = previousDateKey(dateKey(), 1)): Promise<DailyHealthReport> {
+export async function generateDailyStoreHealthReport(storeId = 1, reportDate = previousDateKey(dateKey(), 1), options: { force?: boolean } = {}): Promise<DailyHealthReport> {
   const admin = createAdminClient({ noStore: true })
+  const force = options.force === true
   const { data: existingReport, error: existingReportError } = await (admin.from('daily_store_health_reports') as any)
     .select('*')
     .eq('store_id', storeId)
+    .eq('cadence', 'daily')
     .eq('report_date', reportDate)
     .maybeSingle()
   if (existingReportError) throw existingReportError
-  if (isReadySnapshot(existingReport)) return reportFromStoredRow(existingReport)
+  if (!force && isReadySnapshot(existingReport)) return reportFromStoredRow(existingReport)
   const failures: string[] = []
   const target = rangeForDate(reportDate)
   const monthTarget = rangeFromStartOfMonth(reportDate)
@@ -990,9 +1185,9 @@ export async function generateDailyStoreHealthReport(storeId = 1, reportDate = p
   const [storeResult, settingsResult, salesResult, monthSalesResult, lastYearSalesResult, paymentsResult, monthPaymentsResult, lastYearPaymentsResult, financingsResult, monthFinancingsResult, lastYearFinancingsResult, installmentsResult, accountsPayableResult, ordersResult, lensSalesResult, postSalesResult, postSalesCompletedYesterdayResult, postSalesCompletedWeekResult, postSaleFollowupsResult, postSaleInteractionsResult, postSaleOrdersResult, itemsResult, whatsAppResult] = await Promise.allSettled([
     (admin.from('stores') as any).select('tenant_id,created_at').eq('id', storeId).single(),
     (admin.from('daily_store_health_settings') as any).select('settings').eq('store_id', storeId).maybeSingle(),
-    loadAllRows((from, to) => (admin.from('vendas') as any).select('id,valor_final,valor_restante,financiamento_loja!financiamento_loja_venda_id_fkey(valor_total_financiado)').eq('store_id', storeId).eq('status', 'Fechada').gte('created_at', target.start).lte('created_at', target.end).range(from, to)),
-    loadAllRows((from, to) => (admin.from('vendas') as any).select('id,valor_final,valor_restante,financiamento_loja!financiamento_loja_venda_id_fkey(valor_total_financiado)').eq('store_id', storeId).eq('status', 'Fechada').gte('created_at', monthTarget.start).lte('created_at', monthTarget.end).range(from, to)),
-    loadAllRows((from, to) => (admin.from('vendas') as any).select('id,valor_final,valor_restante,financiamento_loja!financiamento_loja_venda_id_fkey(valor_total_financiado)').eq('store_id', storeId).eq('status', 'Fechada').gte('created_at', lastYearTarget.start).lte('created_at', lastYearTarget.end).range(from, to)),
+    loadAllRows((from, to) => (admin.from('vendas') as any).select('id,valor_final,valor_restante,data_fechamento,financiamento_loja!financiamento_loja_venda_id_fkey(valor_total_financiado)').eq('store_id', storeId).eq('status', 'Fechada').gte('data_fechamento', target.start).lte('data_fechamento', target.end).range(from, to)),
+    loadAllRows((from, to) => (admin.from('vendas') as any).select('id,valor_final,valor_restante,data_fechamento,financiamento_loja!financiamento_loja_venda_id_fkey(valor_total_financiado)').eq('store_id', storeId).eq('status', 'Fechada').gte('data_fechamento', monthTarget.start).lte('data_fechamento', monthTarget.end).range(from, to)),
+    loadAllRows((from, to) => (admin.from('vendas') as any).select('id,valor_final,valor_restante,data_fechamento,financiamento_loja!financiamento_loja_venda_id_fkey(valor_total_financiado)').eq('store_id', storeId).eq('status', 'Fechada').gte('data_fechamento', lastYearTarget.start).lte('data_fechamento', lastYearTarget.end).range(from, to)),
     loadAllRows((from, to) => (admin.from('pagamentos') as any).select('valor_pago,parcela_id').eq('store_id', storeId).gte('data_pagamento', paymentTarget.start).lt('data_pagamento', paymentTarget.end).range(from, to)),
     loadAllRows((from, to) => (admin.from('pagamentos') as any).select('valor_pago,parcela_id').eq('store_id', storeId).gte('data_pagamento', paymentMonthTarget.start).lt('data_pagamento', paymentMonthTarget.end).range(from, to)),
     loadAllRows((from, to) => (admin.from('pagamentos') as any).select('valor_pago,parcela_id').eq('store_id', storeId).gte('data_pagamento', lastYearPaymentTarget.start).lt('data_pagamento', lastYearPaymentTarget.end).range(from, to)),
@@ -1001,15 +1196,15 @@ export async function generateDailyStoreHealthReport(storeId = 1, reportDate = p
     loadAllRows((from, to) => (admin.from('financiamento_loja') as any).select('valor_total_financiado').eq('store_id', storeId).gte('created_at', lastYearTarget.start).lte('created_at', lastYearTarget.end).range(from, to)),
     loadInstallments(admin, storeId),
     loadAllRows((from, to) => (admin.from('accounts_payable') as any).select('id,amount,amount_paid,due_date,status').eq('store_id', storeId).range(from, to)),
-    loadAllRows((from, to) => (admin.from('service_orders') as any).select('id,venda_id,created_at,dt_prometido_para,dt_pedido_em,dt_lente_chegou,dt_montado_em,dt_montado_no_lab,dt_recebido_na_loja,dt_entregue_em,lab_encerrada_em,os_enviada_ao_lab,armacao_com_cliente,receita_longe_od_esferico,receita_longe_od_cilindrico,receita_longe_oe_esferico,receita_longe_oe_cilindrico,receita_perto_od_esferico,receita_perto_od_cilindrico,receita_perto_oe_esferico,receita_perto_oe_cilindrico,links:venda_itens_os_links(venda_item_id,uso_na_os),vendas(status)').eq('store_id', storeId).range(from, to)),
-    loadAllRows((from, to) => (admin.from('venda_itens') as any).select('venda_id,products!inner(tipo_produto),vendas!inner(status,created_at)').eq('store_id', storeId).eq('products.tipo_produto', 'Lente').eq('vendas.status', 'Fechada').gte('vendas.created_at', rangeForDate(previousDateKey(reportDate, 30)).start).lte('vendas.created_at', target.end).range(from, to)),
-    loadAllRows((from, to) => (admin.from('post_sales') as any).select('id,status,service_order_id,avaliacao_cliente').eq('store_id', storeId).neq('status', 'Concluido').range(from, to)),
+    loadAllRows((from, to) => (admin.from('service_orders') as any).select('id,venda_id,created_at,dt_prometido_para,dt_pedido_em,dt_lente_chegou,dt_montado_em,dt_montado_no_lab,dt_recebido_na_loja,dt_entregue_em,lab_encerrada_em,os_enviada_ao_lab,armacao_com_cliente,receita_longe_od_esferico,receita_longe_od_cilindrico,receita_longe_oe_esferico,receita_longe_oe_cilindrico,receita_perto_od_esferico,receita_perto_od_cilindrico,receita_perto_oe_esferico,receita_perto_oe_cilindrico,customers(fone_movel,phone),links:venda_itens_os_links(venda_item_id,uso_na_os),vendas(status)').eq('store_id', storeId).range(from, to)),
+    loadAllRows((from, to) => (admin.from('venda_itens') as any).select('venda_id,products!inner(tipo_produto),vendas!inner(status,data_fechamento)').eq('store_id', storeId).eq('products.tipo_produto', 'Lente').eq('vendas.status', 'Fechada').gte('vendas.data_fechamento', rangeForDate(previousDateKey(reportDate, 30)).start).lte('vendas.data_fechamento', target.end).range(from, to)),
+    loadAllRows((from, to) => (admin.from('post_sales') as any).select('id,status,service_order_id,avaliacao_cliente,created_at,updated_at').eq('store_id', storeId).range(from, to)),
     loadAllRows((from, to) => (admin.from('post_sales') as any).select('id').eq('store_id', storeId).eq('status', 'Concluido').gte('updated_at', target.start).lte('updated_at', target.end).range(from, to)),
     loadAllRows((from, to) => (admin.from('post_sales') as any).select('id').eq('store_id', storeId).eq('status', 'Concluido').gte('updated_at', rangeForDate(previousDateKey(reportDate, 6)).start).lte('updated_at', target.end).range(from, to)),
     loadAllRows((from, to) => (admin.from('whatsapp_post_sale_followups') as any).select('post_sales_id,channel_id,remote_phone,status,sent_at,created_at').eq('store_id', storeId).not('post_sales_id', 'is', null).order('created_at', { ascending: false }).range(from, to)),
     loadAllRows((from, to) => (admin.from('post_sales_interactions') as any).select('post_sales_id,tipo_contato,resumo,created_at').eq('store_id', storeId).order('created_at', { ascending: false }).range(from, to)),
     loadAllRows((from, to) => (admin.from('service_orders') as any).select('id,customers(phone,fone_movel)').eq('store_id', storeId).range(from, to)),
-    loadAllRows((from, to) => (admin.from('venda_itens') as any).select('id,product_id,valor_total_item,products(preco_custo),vendas!inner(created_at,status)').eq('store_id', storeId).eq('vendas.status', 'Fechada').gte('vendas.created_at', target.start).lte('vendas.created_at', target.end).range(from, to)),
+    loadAllRows((from, to) => (admin.from('venda_itens') as any).select('id,product_id,valor_total_item,products(preco_custo),vendas!inner(data_fechamento,status)').eq('store_id', storeId).eq('vendas.status', 'Fechada').gte('vendas.data_fechamento', target.start).lte('vendas.data_fechamento', target.end).range(from, to)),
     getWhatsAppPendencias(storeId),
   ])
 
@@ -1018,6 +1213,15 @@ export async function generateDailyStoreHealthReport(storeId = 1, reportDate = p
     if (result.value?.error) { failures.push(source); return fallback }
     return (result.value?.data ?? result.value) as T
   }
+
+  const [customersResult, productsResult, auditItemsResult, openSalesResult, pickupNoticesResult, dataQualityReviewsResult] = await Promise.allSettled([
+    loadAllRows((from, to) => (admin.from('customers') as any).select('id,full_name,cpf,fone_movel,phone').eq('store_id', storeId).range(from, to)),
+    loadAllRows((from, to) => (admin.from('products') as any).select('id,nome,marca,referencia,preco_custo,tipo_produto').eq('store_id', storeId).range(from, to)),
+    loadAllRows((from, to) => (admin.from('venda_itens') as any).select('product_id,vendas!inner(status,data_fechamento)').eq('store_id', storeId).eq('vendas.status', 'Fechada').gte('vendas.data_fechamento', rangeForDate(previousDateKey(reportDate, 90)).start).lte('vendas.data_fechamento', target.end).range(from, to)),
+    loadAllRows((from, to) => (admin.from('vendas') as any).select('id,created_at').eq('store_id', storeId).eq('status', 'Em Aberto').range(from, to)),
+    loadAllRows((from, to) => (admin.from('whatsapp_outbound_messages') as any).select('status,payload').eq('store_id', storeId).eq('message_type', 'service_order').contains('payload', { source: 'gaveta.ready_pickup_button' }).range(from, to)),
+    loadAllRows((from, to) => (admin.from('daily_health_data_quality_reviews') as any).select('fingerprint').eq('store_id', storeId).eq('decision', 'keep_separate').range(from, to)),
+  ])
 
   const store = read<any>(storeResult, 'loja', null)
   if (!store?.tenant_id) throw new Error('Loja nao encontrada para o relatorio diario.')
@@ -1042,6 +1246,12 @@ export async function generateDailyStoreHealthReport(storeId = 1, reportDate = p
   const postSaleInteractions = read<any[]>(postSaleInteractionsResult, 'interacoes de pos-venda', [])
   const postSaleOrders = read<any[]>(postSaleOrdersResult, 'clientes de pos-venda', [])
   const soldItems = read<any[]>(itemsResult, 'itens vendidos', [])
+  const customers = read<any[]>(customersResult, 'clientes', [])
+  const products = read<any[]>(productsResult, 'produtos', [])
+  const auditItems = read<any[]>(auditItemsResult, 'itens de auditoria', [])
+  const openSales = read<any[]>(openSalesResult, 'vendas em aberto', [])
+  const pickupNotices = read<any[]>(pickupNoticesResult, 'avisos de retirada', [])
+  const dataQualityReviews = read<any[]>(dataQualityReviewsResult, 'revisoes cadastrais', [])
   const whatsApp = whatsAppResult.status === 'fulfilled' ? whatsAppResult.value : (failures.push('WhatsApp'), [])
   const earliestPostSaleMessage = postSaleFollowups
     .filter((followup) => followup.status === 'sent' && followup.sent_at)
@@ -1070,7 +1280,8 @@ export async function generateDailyStoreHealthReport(storeId = 1, reportDate = p
   }
   const activeOrders = orders.filter((order) => !order.lab_encerrada_em && !order.dt_entregue_em && !['Cancelada', 'Devolvida'].includes(saleStatus(order)))
   const reportEnd = new Date(target.end).getTime()
-  const readyForPickup = activeOrders.filter((order) => order.dt_recebido_na_loja)
+  const pickupOrders = orders.filter((order) => !order.dt_entregue_em && !['Cancelada', 'Devolvida'].includes(saleStatus(order)))
+  const pickupAttention = buildReadyPickupAttention(pickupOrders, pickupNotices, reportEnd)
   const oldWithoutLab = activeOrders.filter((order) => !order.dt_pedido_em && new Date(order.created_at).getTime() < reportEnd - settings.labRequestHours * 60 * 60 * 1000)
   const lensNotArrivedByPromise = activeOrders.filter((order) => Boolean(order.dt_pedido_em) && !order.dt_lente_chegou && orderDate(order.dt_prometido_para) !== null && orderDate(order.dt_prometido_para)! <= asOfDateKey)
   const { mountingOverdue, mountingWaitingForFrame } = buildMountingAttention(activeOrders, reportEnd)
@@ -1098,9 +1309,11 @@ export async function generateDailyStoreHealthReport(storeId = 1, reportDate = p
   const lensSaleIds = new Set(lensSales.map((item) => Number(item.venda_id)).filter(Number.isFinite))
   const ordersBySale = new Set(orders.map((order) => Number(order.venda_id)).filter(Number.isFinite))
   const lensSalesWithoutOrder = [...lensSaleIds].filter((saleId) => !ordersBySale.has(saleId))
+  const resolvedDataQualityFingerprints = new Set(dataQualityReviews.map((review) => String(review.fingerprint)))
+  const dataQualityAnalysis = buildDataQualityAnalysis(customers, products, auditItems, openSales, reportEnd, resolvedDataQualityFingerprints)
   const soldValue = sum(soldItems, 'valor_total_item')
   const coveredValue = soldItems.filter((item) => Number(item.products?.preco_custo || 0) > 0).reduce((total, item) => total + Number(item.valor_total_item || 0), 0)
-  const postSaleAnalysis = buildPostSaleAnalysis(postSales, postSaleFollowups, postSaleInteractions, postSaleOrders, postSaleInboundMessages)
+  const postSaleAnalysis = buildPostSaleAnalysis(postSales, postSaleFollowups, postSaleInteractions, postSaleOrders, postSaleInboundMessages, reportDate)
   const hasAnnualHistory = !store.created_at || new Date(store.created_at).getTime() <= new Date(lastYearTarget.end).getTime()
   const salesSummary = buildSalesSummary(
     sales, monthSales, hasAnnualHistory ? lastYearSales : null,
@@ -1114,7 +1327,11 @@ export async function generateDailyStoreHealthReport(storeId = 1, reportDate = p
     overdueInstallments: overdue.length, dueSoon: dueSoon.reduce((total, item) => total + outstanding(item), 0),
     activeFinancing: new Set(unpaid.map((item) => item.financiamento_id)).size,
     multiFinancingCustomers: [...activeByCustomer.values()].filter((count) => count > 1).length,
-    readyForPickup: readyForPickup.length,
+    readyForPickup: pickupAttention.readyForPickup.length,
+    staleReadyForPickup: pickupAttention.staleReadyForPickup.length,
+    readyForPickupLongStay: pickupAttention.longStay.length,
+    readyForPickupWithoutPhone: pickupAttention.withoutPhone.length,
+    readyForPickupWithoutNotice: pickupAttention.withoutNotice.length,
     overdueOrders: lensNotArrivedByPromise.length,
     ordersWithoutLabRequest: oldWithoutLab.length,
     labArrivalOverdue: lensNotArrivedByPromise.length,
@@ -1126,7 +1343,7 @@ export async function generateDailyStoreHealthReport(storeId = 1, reportDate = p
     inconsistentOrderTimeline: inconsistentOrderTimeline.length,
     lensSalesWithoutOrder: lensSalesWithoutOrder.length,
     cancelledSalesWithOpenOrder: cancelledSalesWithOpenOrder.length,
-    pendingPostSales: postSales.length,
+    pendingPostSales: postSales.filter((postSale) => postSale.status !== 'Concluido').length,
     postSalesCompletedYesterday: postSalesCompletedYesterday.length,
     postSalesCompletedWeek: postSalesCompletedWeek.length,
     postSaleAnalysis,
@@ -1134,6 +1351,7 @@ export async function generateDailyStoreHealthReport(storeId = 1, reportDate = p
     costCoverage: soldValue > 0 ? coveredValue / soldValue : null,
     creditAnalysis,
     accountsPayableAnalysis,
+    dataQualityAnalysis,
   }
 
   const unavailableSources = new Set(failures)
@@ -1142,18 +1360,49 @@ export async function generateDailyStoreHealthReport(storeId = 1, reportDate = p
   if (sourceAvailable('parcelas') && metrics.overdue > 0) alerts.push({ id: 'overdue-installments', area: 'financeiro', priority: metrics.overdue > settings.overdueCriticalValue ? 'critico' : 'atencao', title: `${metrics.overdueInstallments} parcelas vencidas`, detail: `${money(metrics.overdue)} permanecem em aberto.`, impact: metrics.overdue, confidence: 'alta', href: `/dashboard/loja/${storeId}/financeiro/parcelas`, records: { type: 'parcela', ids: overdue.map((item) => item.id) } })
   if (sourceAvailable('ordens de servico') && metrics.ordersWithoutLabRequest > 0) alerts.push({ id: 'orders-without-lab', area: 'operacao', priority: 'critico', title: `${metrics.ordersWithoutLabRequest} lentes ainda nao foram pedidas ao laboratorio`, detail: `Essas OS estao abertas ha mais de ${settings.labRequestHours} horas sem pedido registrado.`, impact: metrics.ordersWithoutLabRequest, confidence: 'alta', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: oldWithoutLab.map((item) => item.id) } })
   if (sourceAvailable('ordens de servico') && metrics.labArrivalOverdue > 0) alerts.push({ id: 'lenses-not-arrived', area: 'operacao', priority: 'critico', title: `${metrics.labArrivalOverdue} lentes nao chegaram ate a data prometida`, detail: 'O pedido foi registrado no laboratorio, mas a lente ainda nao chegou para a montagem.', impact: metrics.labArrivalOverdue, confidence: 'alta', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: lensNotArrivedByPromise.map((item) => item.id) } })
-  if (sourceAvailable('ordens de servico') && metrics.mountingOverdue > 0) alerts.push({ id: 'lens-mounting-overdue', area: 'operacao', priority: 'critico', title: `${metrics.mountingOverdue} oculos aguardam montagem ha mais de 24 horas`, detail: 'A lente ja chegou na loja, mas a montagem local ainda nao foi registrada.', impact: metrics.mountingOverdue, confidence: 'alta', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: mountingOverdue.map((item) => item.id) } })
+  if (sourceAvailable('ordens de servico') && metrics.mountingOverdue > 0) alerts.push({ id: 'lens-mounting-overdue', area: 'operacao', priority: 'critico', title: `${metrics.mountingOverdue} oculos aguardam montagem ha mais de 24 horas`, detail: 'A lente ja chegou na loja, mas a data da montagem local ainda nao foi preenchida.', impact: metrics.mountingOverdue, confidence: 'alta', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: mountingOverdue.map((item) => item.id) } })
   if (sourceAvailable('ordens de servico') && metrics.mountingWaitingForFrame > 0) alerts.push({ id: 'lens-mounting-waiting-frame', area: 'operacao', priority: 'atencao', title: `${metrics.mountingWaitingForFrame} oculos aguardam a armação do cliente ha mais de 7 dias`, detail: 'A lente chegou na loja, mas a montagem depende da armação que ainda esta com o cliente.', impact: metrics.mountingWaitingForFrame, confidence: 'alta', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: mountingWaitingForFrame.map((item) => item.id) } })
+  if (sourceAvailable('ordens de servico') && metrics.staleReadyForPickup > 0) alerts.push({ id: 'ready-pickup-stale', area: 'operacao', priority: metrics.readyForPickupLongStay > 0 ? 'critico' : 'atencao', title: `${metrics.staleReadyForPickup} oculos prontos estao na gaveta ha mais de 7 dias`, detail: metrics.readyForPickupLongStay > 0 ? `${metrics.readyForPickupLongStay} ja ultrapassaram 30 dias. Confira se houve abandono do cliente ou se a entrega ficou sem baixa.` : 'Confira se o cliente foi avisado e se a entrega foi registrada corretamente.', impact: metrics.staleReadyForPickup, confidence: 'alta', href: `/dashboard/loja/${storeId}/gaveta`, records: { type: 'os', ids: pickupAttention.staleReadyForPickup.map((item) => item.id) } })
+  if (sourceAvailable('ordens de servico') && metrics.readyForPickupWithoutPhone > 0) alerts.push({ id: 'ready-pickup-without-phone', area: 'operacao', priority: 'atencao', title: `${metrics.readyForPickupWithoutPhone} oculos na gaveta estao sem telefone valido`, detail: 'Esses clientes esperam ha mais de 7 dias e a loja nao tem telefone valido registrado para confirmar a retirada.', impact: metrics.readyForPickupWithoutPhone, confidence: 'alta', href: `/dashboard/loja/${storeId}/gaveta`, records: { type: 'os', ids: pickupAttention.withoutPhone.map((item) => item.id) } })
+  if (sourceAvailable('ordens de servico', 'avisos de retirada') && metrics.readyForPickupWithoutNotice > 0) alerts.push({ id: 'ready-pickup-without-notice', area: 'operacao', priority: 'atencao', title: `${metrics.readyForPickupWithoutNotice} oculos na gaveta nao possuem aviso de retirada registrado`, detail: 'Existe telefone valido, mas nao ha envio registrado pelo botao da Gaveta. Confira antes de concluir que o cliente foi avisado.', impact: metrics.readyForPickupWithoutNotice, confidence: 'alta', href: `/dashboard/loja/${storeId}/gaveta`, records: { type: 'os', ids: pickupAttention.withoutNotice.map((item) => item.id) } })
   if (sourceAvailable('ordens de servico') && metrics.ordersWithoutPromise > 0) alerts.push({ id: 'orders-without-promise', area: 'operacao', priority: 'atencao', title: `${metrics.ordersWithoutPromise} OS estao sem data prometida`, detail: 'Sem uma data combinada, a loja nao consegue acompanhar corretamente o prazo da lente e da entrega.', impact: metrics.ordersWithoutPromise, confidence: 'alta', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: ordersWithoutPromise.map((item) => item.id) } })
   if (sourceAvailable('ordens de servico', 'lentes das OS') && metrics.ordersWithoutLensLink > 0) alerts.push({ id: 'orders-without-lens-link', area: 'operacao', priority: 'atencao', title: `${metrics.ordersWithoutLensLink} OS abertas sem lente vinculada`, detail: 'A OS nao possui item de lente OD ou OE relacionado a venda. Confira se a lente ainda sera escolhida ou se houve falha no cadastro.', impact: metrics.ordersWithoutLensLink, confidence: 'media', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: ordersWithoutLensLink.map((item) => item.id) } })
   if (sourceAvailable('ordens de servico', 'lentes das OS') && metrics.ordersWithoutPrescription > 0) alerts.push({ id: 'orders-without-prescription', area: 'operacao', priority: 'atencao', title: `${metrics.ordersWithoutPrescription} OS com lente vinculada estao sem grau`, detail: 'A OS possui lente relacionada, mas nenhum campo de receita foi preenchido. Confira antes de enviar ou montar.', impact: metrics.ordersWithoutPrescription, confidence: 'media', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: ordersWithoutPrescription.map((item) => item.id) } })
   if (sourceAvailable('ordens de servico') && metrics.cancelledSalesWithOpenOrder > 0) alerts.push({ id: 'cancelled-sales-with-open-order', area: 'operacao', priority: 'atencao', title: `${metrics.cancelledSalesWithOpenOrder} vendas canceladas ou devolvidas ainda possuem OS aberta`, detail: 'Essas OS precisam ser encerradas para nao continuarem na fila operacional.', impact: metrics.cancelledSalesWithOpenOrder, confidence: 'alta', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: cancelledSalesWithOpenOrder.map((item) => item.id) } })
   if (sourceAvailable('ordens de servico', 'vendas de lentes') && metrics.lensSalesWithoutOrder > 0) alerts.push({ id: 'lens-sales-without-order', area: 'operacao', priority: 'atencao', title: `${metrics.lensSalesWithoutOrder} vendas de lentes oftalmicas nao possuem OS`, detail: 'Essas vendas recentes de lentes oftalmicas precisam ser conferidas para garantir que o processo de laboratorio foi aberto. Lentes de contato nao entram nesta verificacao.', impact: metrics.lensSalesWithoutOrder, confidence: 'media', href: `/dashboard/loja/${storeId}/vendas`, records: { type: 'venda', ids: lensSalesWithoutOrder } })
+  if (sourceAvailable('clientes') && dataQualityAnalysis.duplicateCustomerIds.length > 0) {
+    const groups = [
+      dataQualityAnalysis.duplicateCustomerCpfGroups > 0 ? `${dataQualityAnalysis.duplicateCustomerCpfGroups} por CPF` : '',
+      dataQualityAnalysis.duplicateCustomerPhoneGroups > 0 ? `${dataQualityAnalysis.duplicateCustomerPhoneGroups} por telefone` : '',
+      dataQualityAnalysis.duplicateCustomerNameGroups > 0 ? `${dataQualityAnalysis.duplicateCustomerNameGroups} por nome igual` : '',
+    ].filter(Boolean).join(', ')
+    alerts.push({ id: 'duplicate-customers', area: 'cadastros', priority: dataQualityAnalysis.duplicateCustomerCpfGroups > 0 || dataQualityAnalysis.duplicateCustomerPhoneGroups > 0 ? 'critico' : 'atencao', title: `${dataQualityAnalysis.duplicateCustomerIds.length} clientes parecem estar duplicados`, detail: `Foram encontrados ${groups}. Revise antes de qualquer mesclagem.`, impact: dataQualityAnalysis.duplicateCustomerIds.length, confidence: dataQualityAnalysis.duplicateCustomerNameGroups > 0 ? 'media' : 'alta', href: `/dashboard/loja/${storeId}/clientes`, records: { type: 'cliente', ids: dataQualityAnalysis.duplicateCustomerIds } })
+  }
+  if (sourceAvailable('produtos') && dataQualityAnalysis.duplicateProductIds.length > 0) {
+    const groups = dataQualityAnalysis.duplicateProductCompositeGroups
+    alerts.push({ id: 'duplicate-products', area: 'cadastros', priority: 'atencao', title: `${dataQualityAnalysis.duplicateProductIds.length} produtos parecem estar duplicados`, detail: `Foram encontrados ${groups} grupos com nome, marca e referencia compativeis. Confira os registros antes de alterar estoque ou preco.`, impact: dataQualityAnalysis.duplicateProductIds.length, confidence: 'alta', href: `/dashboard/loja/${storeId}/cadastros`, records: { type: 'produto', ids: dataQualityAnalysis.duplicateProductIds } })
+  }
+  if (sourceAvailable('produtos', 'itens de auditoria') && dataQualityAnalysis.usedProductsWithoutCostIds.length > 0) alerts.push({ id: 'used-products-without-cost', area: 'cadastros', priority: 'atencao', title: `${dataQualityAnalysis.usedProductsWithoutCostIds.length} produtos vendidos estao sem custo`, detail: 'Esses produtos tiveram venda nos ultimos 90 dias, mas ainda nao possuem custo positivo cadastrado.', impact: dataQualityAnalysis.usedProductsWithoutCostIds.length, confidence: 'alta', href: `/dashboard/loja/${storeId}/cadastros`, records: { type: 'produto', ids: dataQualityAnalysis.usedProductsWithoutCostIds } })
+  if (sourceAvailable('vendas em aberto') && dataQualityAnalysis.staleOpenSaleIds.length > 0) alerts.push({ id: 'stale-open-sales', area: 'cadastros', priority: 'atencao', title: `${dataQualityAnalysis.staleOpenSaleIds.length} vendas continuam abertas ha mais de 7 dias`, detail: 'Revise se a venda deve ser concluida, cancelada ou tratada pelo protocolo de abandono.', impact: dataQualityAnalysis.staleOpenSaleIds.length, confidence: 'alta', href: `/dashboard/loja/${storeId}/vendas?mode=pendencias`, records: { type: 'venda', ids: dataQualityAnalysis.staleOpenSaleIds } })
   if (sourceAvailable('WhatsApp') && metrics.pendingWhatsApp > 0) alerts.push({ id: 'whatsapp-pending', area: 'relacionamento', priority: 'atencao', title: `${metrics.pendingWhatsApp} conversas de WhatsApp aguardando humano`, detail: 'Ha atendimentos transferidos que ainda precisam de continuidade.', impact: metrics.pendingWhatsApp, confidence: 'alta', href: `/dashboard/loja/${storeId}/atendimento`, records: { type: 'conversa', ids: whatsApp.map((item) => item.id) } })
   const postSalesWithDeliveryIssue = postSaleAnalysis.deliveryIssueIds.length
   if (sourceAvailable('pos-venda', 'envios de pos-venda', 'clientes de pos-venda') && postSalesWithDeliveryIssue > 0) alerts.push({ id: 'post-sales-delivery', area: 'relacionamento', priority: 'atencao', title: `${postSalesWithDeliveryIssue} pos-vendas sem contato confiavel`, detail: `${postSaleAnalysis.messageFailed} falharam no envio, ${postSaleAnalysis.noMessageAttempt} nao possuem tentativa registrada e ${postSaleAnalysis.noPhone} nao possuem telefone valido.`, impact: postSalesWithDeliveryIssue, confidence: 'alta', href: `/dashboard/loja/${storeId}/pos-venda`, records: { type: 'pos-venda', ids: postSaleAnalysis.deliveryIssueIds } })
   if (sourceAvailable('pos-venda', 'interacoes de pos-venda') && postSaleAnalysis.awaitingHumanReview > 0) alerts.push({ id: 'post-sales-human-review', area: 'relacionamento', priority: 'atencao', title: `${postSaleAnalysis.awaitingHumanReview} respostas de pos-venda aguardam revisao`, detail: 'Esses clientes responderam e ainda precisam de continuidade humana registrada.', impact: postSaleAnalysis.awaitingHumanReview, confidence: 'alta', href: `/dashboard/loja/${storeId}/pos-venda`, records: { type: 'pos-venda', ids: postSaleAnalysis.humanReviewIds } })
-  if (sourceAvailable('pos-venda', 'interacoes de pos-venda') && postSaleAnalysis.complaintOrAdaptation > 0) alerts.push({ id: 'post-sales-satisfaction', area: 'relacionamento', priority: 'critico', title: `${postSaleAnalysis.complaintOrAdaptation} sinais de reclamacao ou adaptacao`, detail: 'O pos-venda registrou relato que pede acompanhamento humano antes de encerrar o caso.', impact: postSaleAnalysis.complaintOrAdaptation, confidence: 'alta', href: `/dashboard/loja/${storeId}/pos-venda`, records: { type: 'pos-venda', ids: postSaleAnalysis.satisfactionIds } })
+  const yesterdaySatisfactionCount = postSaleAnalysis.lowRatingYesterdayCount + postSaleAnalysis.complaintOrAdaptationYesterday
+  const monthlySatisfactionCount = postSaleAnalysis.lowRatingMonthCount + postSaleAnalysis.complaintOrAdaptationMonth
+  const hasMonthlySatisfactionSignal = monthlySatisfactionCount >= MONTHLY_RELATIONSHIP_SIGNAL_THRESHOLD
+  if (sourceAvailable('pos-venda', 'interacoes de pos-venda') && (yesterdaySatisfactionCount > 0 || hasMonthlySatisfactionSignal)) {
+    const satisfactionSignals = [
+      postSaleAnalysis.lowRatingYesterdayCount > 0 ? `Ontem, ${postSaleAnalysis.lowRatingYesterdayCount} nota${postSaleAnalysis.lowRatingYesterdayCount === 1 ? '' : 's'} baixa${postSaleAnalysis.lowRatingYesterdayCount === 1 ? '' : 's'}` : '',
+      postSaleAnalysis.complaintOrAdaptationYesterday > 0 ? `Ontem, ${postSaleAnalysis.complaintOrAdaptationYesterday} relato${postSaleAnalysis.complaintOrAdaptationYesterday === 1 ? '' : 's'} de reclamação ou adaptação` : '',
+      hasMonthlySatisfactionSignal ? `Neste mês, ${monthlySatisfactionCount} sinais de insatisfação` : '',
+    ].filter(Boolean).join('; ')
+    const satisfactionIds = [...new Set([
+      ...(yesterdaySatisfactionCount > 0 ? postSaleAnalysis.yesterdaySatisfactionIds : []),
+      ...(hasMonthlySatisfactionSignal ? postSaleAnalysis.monthSatisfactionIds : []),
+    ])]
+    alerts.push({ id: 'post-sales-satisfaction', area: 'relacionamento', priority: 'critico', title: `${satisfactionSignals} pedem acompanhamento`, detail: 'O pós-venda registrou uma avaliação baixa ou um relato de insatisfação. Confira os casos novos e observe se existe um padrão no mês.', impact: yesterdaySatisfactionCount > 0 ? yesterdaySatisfactionCount : monthlySatisfactionCount, confidence: 'alta', href: `/dashboard/loja/${storeId}/pos-venda`, records: { type: 'pos-venda', ids: satisfactionIds } })
+  }
   if (sourceAvailable('contas a pagar') && accountsPayableAnalysis?.overdueCount) alerts.push({ id: 'payable-overdue', area: 'financeiro', priority: accountsPayableAnalysis.overdueValue > settings.overdueCriticalValue ? 'critico' : 'atencao', title: `${accountsPayableAnalysis.overdueCount} contas a pagar vencidas`, detail: `${money(accountsPayableAnalysis.overdueValue)} continuam em aberto; a mais antiga está vencida há ${accountsPayableAnalysis.oldestOverdueDays} dias.`, impact: accountsPayableAnalysis.overdueValue, confidence: 'alta', href: `/dashboard/loja/${storeId}/financeiro/contas`, records: { type: 'conta a pagar', ids: accountsPayableAnalysis.overdueRecords } })
   if (sourceAvailable('contas a pagar') && accountsPayableAnalysis && accountsPayableAnalysis.dueNext7Count >= 5 && accountsPayableAnalysis.dueNext7Value > settings.overdueCriticalValue) alerts.push({ id: 'payable-next-7-days', area: 'financeiro', priority: 'atencao', title: `${accountsPayableAnalysis.dueNext7Count} contas a pagar concentram vencimento nos próximos 7 dias`, detail: `${money(accountsPayableAnalysis.dueNext7Value)} precisam ser acompanhados até ${previousDateKey(asOfDateKey, -7).split('-').reverse().join('/')}.`, impact: accountsPayableAnalysis.dueNext7Value, confidence: 'alta', href: `/dashboard/loja/${storeId}/financeiro/contas`, records: { type: 'conta a pagar', ids: accountsPayableAnalysis.dueNext7Records } })
   if (sourceAvailable('itens vendidos') && metrics.costCoverage !== null && metrics.costCoverage < settings.minimumCostCoverage) alerts.push({ id: 'cost-coverage', area: 'financeiro', priority: 'atencao', title: 'Margem indisponivel por custo incompleto', detail: `Somente ${(metrics.costCoverage * 100).toFixed(0)}% do valor vendido possui custo positivo cadastrado; lucro e margem foram ocultados.`, impact: null, confidence: 'alta', href: `/dashboard/loja/${storeId}/reports/financeiro`, records: { type: 'produto', ids: [] } })
@@ -1166,6 +1415,7 @@ export async function generateDailyStoreHealthReport(storeId = 1, reportDate = p
   const { data: previousReport } = await (admin.from('daily_store_health_reports') as any)
     .select('report_date,alerts')
     .eq('store_id', storeId)
+    .eq('cadence', 'daily')
     .eq('status', 'ready')
     .lt('report_date', reportDate)
     .order('report_date', { ascending: false })
@@ -1177,10 +1427,13 @@ export async function generateDailyStoreHealthReport(storeId = 1, reportDate = p
   metrics.areaNarratives = narratives.areas
   const presentedAlerts = compared.alerts.map((alert) => ({ ...alert, presentation: narratives.cards[alert.id] || { title: alert.title, detail: alert.detail } }))
   const report: DailyHealthReport = { reportDate, status: 'ready', metrics, alerts: presentedAlerts.sort((a, b) => ({ critico: 0, atencao: 1, informativo: 2 }[a.priority] - { critico: 0, atencao: 1, informativo: 2 }[b.priority])), narrative: narratives.narrative, sourceFailures: failures, generatedAt: new Date().toISOString() }
-  const { data: saved, error } = await (admin.from('daily_store_health_reports') as any).insert({ tenant_id: store.tenant_id, store_id: storeId, report_date: reportDate, status: 'ready', metrics: report.metrics, alerts: report.alerts, narrative: report.narrative, source_failures: report.sourceFailures, generated_at: report.generatedAt, generation_started_at: report.generatedAt, updated_at: report.generatedAt }).select('id').single()
+  const snapshotPayload = { tenant_id: store.tenant_id, store_id: storeId, report_date: reportDate, cadence: 'daily', period_start: reportDate, period_end: reportDate, status: 'ready', metrics: report.metrics, alerts: report.alerts, narrative: report.narrative, source_failures: report.sourceFailures, generated_at: report.generatedAt, generation_started_at: report.generatedAt, updated_at: report.generatedAt }
+  const { data: saved, error } = force && existingReport
+    ? await (admin.from('daily_store_health_reports') as any).update(snapshotPayload).eq('store_id', storeId).eq('cadence', 'daily').eq('report_date', reportDate).select('id').single()
+    : await (admin.from('daily_store_health_reports') as any).insert(snapshotPayload).select('id').single()
   if (error) {
     if (error.code === '23505') {
-      const { data: concurrentReport, error: concurrentReportError } = await (admin.from('daily_store_health_reports') as any).select('*').eq('store_id', storeId).eq('report_date', reportDate).maybeSingle()
+      const { data: concurrentReport, error: concurrentReportError } = await (admin.from('daily_store_health_reports') as any).select('*').eq('store_id', storeId).eq('cadence', 'daily').eq('report_date', reportDate).maybeSingle()
       if (!concurrentReportError && isReadySnapshot(concurrentReport)) return reportFromStoredRow(concurrentReport)
     }
     throw error
@@ -1190,7 +1443,95 @@ export async function generateDailyStoreHealthReport(storeId = 1, reportDate = p
 
 export async function getLatestDailyStoreHealthReport(storeId: number): Promise<DailyHealthReport | null> {
   const admin = createAdminClient({ noStore: true })
-  const { data, error } = await (admin.from('daily_store_health_reports') as any).select('*').eq('store_id', storeId).eq('status', 'ready').order('report_date', { ascending: false }).limit(1).maybeSingle()
+  const { data, error } = await (admin.from('daily_store_health_reports') as any).select('*').eq('store_id', storeId).eq('cadence', 'daily').eq('status', 'ready').order('report_date', { ascending: false }).limit(1).maybeSingle()
   if (error || !data) return null
   return reportFromStoredRow(data)
+}
+
+export async function generatePeriodicStoreHealthSnapshot(storeId: number, cadence: HealthSnapshotCadence, reportDate = previousDateKey(dateKey(), 1)): Promise<PeriodicHealthSnapshot | null> {
+  const period = periodicPeriodForReportDate(reportDate, cadence)
+  if (!period) return null
+
+  const admin = createAdminClient({ noStore: true })
+  const { data: existing, error: existingError } = await (admin.from('daily_store_health_reports') as any)
+    .select('*')
+    .eq('store_id', storeId)
+    .eq('cadence', cadence)
+    .eq('period_start', period.start)
+    .maybeSingle()
+  if (existingError) throw existingError
+  if (existing && isReadySnapshot(existing)) return periodicSnapshotFromStoredRow(existing)
+
+  const { data: dailyRows, error: dailyError } = await (admin.from('daily_store_health_reports') as any)
+    .select('report_date,metrics,alerts,source_failures')
+    .eq('store_id', storeId)
+    .eq('cadence', 'daily')
+    .eq('status', 'ready')
+    .gte('report_date', period.start)
+    .lte('report_date', period.end)
+    .order('report_date', { ascending: true })
+  if (dailyError) throw dailyError
+  if (!dailyRows?.length) return null
+
+  const latestByAlertId = new Map<string, any>()
+  const occurrenceCount = new Map<string, number>()
+  for (const row of dailyRows) {
+    for (const alert of Array.isArray(row.alerts) ? row.alerts : []) {
+      if (!alert?.id) continue
+      latestByAlertId.set(alert.id, alert)
+      occurrenceCount.set(alert.id, (occurrenceCount.get(alert.id) || 0) + 1)
+    }
+  }
+  const alerts = [...latestByAlertId.values()].map((alert) => {
+    const occurrences = occurrenceCount.get(alert.id) || 1
+    return occurrences > 1
+      ? { ...alert, detail: `${alert.detail} Foi identificado em ${occurrences} dias do periodo.` }
+      : alert
+  })
+  const label = cadence === 'weekly' ? 'semanal' : 'mensal'
+  const narrative = alerts.length
+    ? `A varredura ${label} de ${period.start.split('-').reverse().join('/')} a ${period.end.split('-').reverse().join('/')} reuniu ${alerts.length} ponto${alerts.length === 1 ? '' : 's'} de atenção identificados nos relatórios diários.`
+    : `A varredura ${label} de ${period.start.split('-').reverse().join('/')} a ${period.end.split('-').reverse().join('/')} não encontrou pontos de atenção nos relatórios diários disponíveis.`
+  const generatedAt = new Date().toISOString()
+  const { data: store, error: storeError } = await (admin.from('stores') as any).select('tenant_id').eq('id', storeId).single()
+  if (storeError) throw storeError
+  const payload = {
+    tenant_id: store.tenant_id,
+    store_id: storeId,
+    report_date: period.end,
+    cadence,
+    period_start: period.start,
+    period_end: period.end,
+    status: 'ready',
+    metrics: dailyRows[dailyRows.length - 1].metrics || {},
+    alerts,
+    narrative,
+    source_failures: [...new Set(dailyRows.flatMap((row: any) => Array.isArray(row.source_failures) ? row.source_failures : []))],
+    generated_at: generatedAt,
+    generation_started_at: generatedAt,
+    updated_at: generatedAt,
+  }
+  const { data: saved, error: saveError } = await (admin.from('daily_store_health_reports') as any).insert(payload).select('*').single()
+  if (saveError) {
+    if (saveError.code === '23505') {
+      const { data: concurrent } = await (admin.from('daily_store_health_reports') as any).select('*').eq('store_id', storeId).eq('cadence', cadence).eq('period_start', period.start).maybeSingle()
+      if (concurrent && isReadySnapshot(concurrent)) return periodicSnapshotFromStoredRow(concurrent)
+    }
+    throw saveError
+  }
+  return periodicSnapshotFromStoredRow(saved)
+}
+
+export async function getLatestPeriodicStoreHealthSnapshot(storeId: number, cadence: HealthSnapshotCadence): Promise<PeriodicHealthSnapshot | null> {
+  const admin = createAdminClient({ noStore: true })
+  const { data, error } = await (admin.from('daily_store_health_reports') as any)
+    .select('*')
+    .eq('store_id', storeId)
+    .eq('cadence', cadence)
+    .eq('status', 'ready')
+    .order('period_end', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error || !data) return null
+  return periodicSnapshotFromStoredRow(data)
 }

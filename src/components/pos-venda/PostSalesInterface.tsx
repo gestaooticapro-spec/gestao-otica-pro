@@ -2,7 +2,7 @@
 'use client'
 
 import { useState, useEffect, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
     PostSaleQueueItem,
@@ -51,6 +51,7 @@ function StarRating({ value, onChange }: { value: number, onChange: (v: number) 
 
 export default function PostSalesInterface({ initialQueue, storeId }: { initialQueue: PostSaleQueueItem[], storeId: number }) {
     const router = useRouter()
+    const searchParams = useSearchParams()
     const { preference } = useBackgroundPreference()
     const [selectedId, setSelectedId] = useState<number | null>(null)
     const [searchName, setSearchName] = useState('')
@@ -91,6 +92,13 @@ export default function PostSalesInterface({ initialQueue, storeId }: { initialQ
             normalizeSearchText(item.titular_nome).includes(normalizedQuery)
         )
     })
+
+    useEffect(() => {
+        const requestedOsId = Number(searchParams.get('os_id'))
+        if (Number.isInteger(requestedOsId) && initialQueue.some((item) => item.os_id === requestedOsId)) {
+            setSelectedId(requestedOsId)
+        }
+    }, [initialQueue, searchParams])
 
     const resetClientFormState = () => {
         setTipoContato('WhatsApp')

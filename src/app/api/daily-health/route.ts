@@ -28,7 +28,7 @@ export async function POST(request: Request) {
   if (!body.success) return NextResponse.json({ error: 'storeId invalido' }, { status: 400 })
   if (!(await allowed(body.data.storeId))) return NextResponse.json({ error: 'PIN de gerente necessario' }, { status: 403 })
   try {
-    const report = await generateDailyStoreHealthReport(body.data.storeId)
+    const report = await generateDailyStoreHealthReport(body.data.storeId, undefined, { force: true })
     return NextResponse.json({ report }, { headers: { 'Cache-Control': 'private, no-store' } })
   } catch (error) {
     console.error('[Daily health] manual generation failed', error)
