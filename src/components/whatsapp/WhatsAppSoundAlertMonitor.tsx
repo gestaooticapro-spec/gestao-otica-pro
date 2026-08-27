@@ -6,6 +6,8 @@ import { getWhatsAppLatestInboundMessage } from '@/lib/actions/whatsapp-operator
 type BrowserAudioContext = AudioContext & { state: AudioContextState }
 
 export const WHATSAPP_SOUND_ALERT_CHANGED = 'whatsapp-local-sound-alert-change'
+const VISIBLE_POLL_INTERVAL_MS = 30_000
+const HIDDEN_POLL_INTERVAL_MS = 120_000
 
 export function whatsappSoundAlertStorageKey(storeId: number) {
   return `whatsapp-local-sound-alert:${storeId}`
@@ -58,6 +60,7 @@ export default function WhatsAppSoundAlertMonitor({ storeId }: { storeId: number
   const latestMessageIdRef = useRef<number | null>(null)
   const isCheckingRef = useRef(false)
   const audioContextRef = useRef<BrowserAudioContext | null>(null)
+  const [visibilityState, setVisibilityState] = useState<DocumentVisibilityState>('visible')
 
   useEffect(() => {
     const syncEnabled = () => setEnabled(window.localStorage.getItem(whatsappSoundAlertStorageKey(storeId)) === 'enabled')
@@ -73,6 +76,13 @@ export default function WhatsAppSoundAlertMonitor({ storeId }: { storeId: number
     }
     document.addEventListener('pointerdown', unlockAudio, { capture: true })
     return () => document.removeEventListener('pointerdown', unlockAudio, { capture: true })
+  }, [])
+
+  useEffect(() => {
+    const syncVisibility = () => setVisibilityState(document.visibilityState)
+    syncVisibility()
+    document.addEventListener('visibilitychange', syncVisibility)
+    return () => document.removeEventListener('visibilitychange', syncVisibility)
   }, [])
 
   useEffect(() => {
@@ -107,12 +117,15 @@ export default function WhatsAppSoundAlertMonitor({ storeId }: { storeId: number
     }
 
     void checkForNewMessage()
-    const timer = window.setInterval(checkForNewMessage, 5_000)
+    const timer = window.setInterval(
+      checkForNewMessage,
+      visibilityState === 'visible' ? VISIBLE_POLL_INTERVAL_MS : HIDDEN_POLL_INTERVAL_MS,
+    )
     return () => {
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [enabled, storeId])
+  }, [enabled, storeId, visibilityState])
 
   return null
 }

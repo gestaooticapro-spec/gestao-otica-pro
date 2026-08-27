@@ -281,12 +281,18 @@ export default function OperatorMenuLojaVazia({
             }
         }
 
-        fetchSupportStatus();
-        const interval = window.setInterval(fetchSupportStatus, 30000);
+        const refreshVisibleSupportStatus = () => {
+            if (document.visibilityState === 'visible') void fetchSupportStatus();
+        };
+
+        refreshVisibleSupportStatus();
+        const interval = window.setInterval(refreshVisibleSupportStatus, 60000);
+        document.addEventListener('visibilitychange', refreshVisibleSupportStatus);
 
         return () => {
             cancelled = true;
             window.clearInterval(interval);
+            document.removeEventListener('visibilitychange', refreshVisibleSupportStatus);
         };
     }, [storeId, isSupportModalOpen]);
 

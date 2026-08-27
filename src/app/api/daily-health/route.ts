@@ -6,6 +6,8 @@ import { hasDailyHealthManagerGrant } from '@/lib/daily-health-access'
 import { generateDailyStoreHealthReport, generatePeriodicStoreHealthSnapshot, getLatestDailyStoreHealthReport } from '@/lib/daily-store-health'
 
 const storeSchema = z.coerce.number().int().positive()
+// Mantém os relatórios agendados pelo cron, mas bloqueia recalculos manuais temporariamente.
+const MANUAL_DAILY_HEALTH_REFRESH_ENABLED = false
 
 async function allowed(storeId: number) {
   const client = createClient()
@@ -24,6 +26,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (!MANUAL_DAILY_HEALTH_REFRESH_ENABLED) {
+    return NextResponse.json({ error: 'A atualização manual dos Pontos de Atenção está temporariamente desativada.' }, { status: 503 })
+  }
   const body = z.object({ storeId: storeSchema, monthlyPreview: z.boolean().optional() }).safeParse(await request.json().catch(() => null))
   if (!body.success) return NextResponse.json({ error: 'storeId invalido' }, { status: 400 })
   if (!(await allowed(body.data.storeId))) return NextResponse.json({ error: 'PIN de gerente necessario' }, { status: 403 })
