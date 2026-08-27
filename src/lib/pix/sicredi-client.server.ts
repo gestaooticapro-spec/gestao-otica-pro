@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { request as httpsRequest } from 'node:https'
 import { resolve } from 'node:path'
 
-const DEFAULT_HML_BASE_URL = 'https://api-pix-h.sicredi.com.br'
+const DEFAULT_PROD_BASE_URL = 'https://api-pix.sicredi.com.br'
 const DEFAULT_CERT_PATH = '.sicredicharles/23758870000120.cer'
 const DEFAULT_KEY_PATH = '.sicredicharles/api-pix-oticaocular (3).key'
 const DEFAULT_CA_PATH = '.sicredicharles/CadeiaCompletaSicredi 1.cer'
@@ -87,22 +87,20 @@ function readSecretFile(pathValue: string | undefined, fallback: string, envLabe
 }
 
 function getSicrediPixConfig(): SicrediPixConfig {
-  const configuredBaseUrl = process.env.SICREDI_PIX_HML_BASE_URL?.trim()
-  if (configuredBaseUrl) {
-    const normalizedConfiguredUrl = configuredBaseUrl.replace(/\/+$/, '')
-    if (normalizedConfiguredUrl !== DEFAULT_HML_BASE_URL) {
-      throw new Error('A integracao Pix Sicredi desta versao aceita somente o ambiente de homologacao oficial.')
-    }
+  const configuredBaseUrl = process.env.SICREDI_PIX_PROD_BASE_URL?.trim() || DEFAULT_PROD_BASE_URL
+  const normalizedConfiguredUrl = configuredBaseUrl.replace(/\/+$/, '')
+  if (normalizedConfiguredUrl !== DEFAULT_PROD_BASE_URL) {
+    throw new Error('A integracao Pix Sicredi desta versao aceita somente o ambiente oficial de producao.')
   }
 
   return {
-    baseUrl: new URL(DEFAULT_HML_BASE_URL),
-    clientId: required(process.env.SICREDI_PIX_HML_CLIENT_ID, 'SICREDI_PIX_HML_CLIENT_ID'),
-    clientSecret: required(process.env.SICREDI_PIX_HML_CLIENT_SECRET, 'SICREDI_PIX_HML_CLIENT_SECRET'),
-    certificate: readSecretFile(process.env.SICREDI_PIX_CERT_PATH, DEFAULT_CERT_PATH, 'SICREDI_PIX_CERT_PATH'),
-    privateKey: readSecretFile(process.env.SICREDI_PIX_KEY_PATH, DEFAULT_KEY_PATH, 'SICREDI_PIX_KEY_PATH'),
-    certificateChain: readSecretFile(process.env.SICREDI_PIX_CA_PATH, DEFAULT_CA_PATH, 'SICREDI_PIX_CA_PATH'),
-    keyPassphrase: process.env.SICREDI_PIX_KEY_PASSPHRASE?.trim() || undefined,
+    baseUrl: new URL(normalizedConfiguredUrl),
+    clientId: required(process.env.SICREDI_PIX_PROD_CLIENT_ID, 'SICREDI_PIX_PROD_CLIENT_ID'),
+    clientSecret: required(process.env.SICREDI_PIX_PROD_CLIENT_SECRET, 'SICREDI_PIX_PROD_CLIENT_SECRET'),
+    certificate: readSecretFile(process.env.SICREDI_PIX_PROD_CERT_PATH, DEFAULT_CERT_PATH, 'SICREDI_PIX_PROD_CERT_PATH'),
+    privateKey: readSecretFile(process.env.SICREDI_PIX_PROD_KEY_PATH, DEFAULT_KEY_PATH, 'SICREDI_PIX_PROD_KEY_PATH'),
+    certificateChain: readSecretFile(process.env.SICREDI_PIX_PROD_CA_PATH, DEFAULT_CA_PATH, 'SICREDI_PIX_PROD_CA_PATH'),
+    keyPassphrase: process.env.SICREDI_PIX_PROD_KEY_PASSPHRASE?.trim() || undefined,
   }
 }
 

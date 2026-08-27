@@ -8,7 +8,7 @@ async function main() {
 
   console.log(JSON.stringify({
     success: true,
-    environment: 'homologacao',
+    environment: 'producao',
     tokenType: token.tokenType,
     expiresInSeconds: token.expiresIn,
     scopes: token.scope.split(/\s+/).filter(Boolean),

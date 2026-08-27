@@ -4,12 +4,15 @@ import test from 'node:test'
 
 const readSource = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
 
-test('Sicredi Pix permanece limitado ao ambiente de homologacao', () => {
+test('Sicredi Pix permanece limitado ao ambiente oficial de producao', () => {
   const source = readSource('src/lib/pix/sicredi-client.server.ts')
 
-  assert.match(source, /const DEFAULT_HML_BASE_URL = 'https:\/\/api-pix-h\.sicredi\.com\.br'/)
-  assert.match(source, /normalizedConfiguredUrl !== DEFAULT_HML_BASE_URL/)
-  assert.match(source, /baseUrl: new URL\(DEFAULT_HML_BASE_URL\)/)
+  assert.match(source, /const DEFAULT_PROD_BASE_URL = 'https:\/\/api-pix\.sicredi\.com\.br'/)
+  assert.match(source, /normalizedConfiguredUrl !== DEFAULT_PROD_BASE_URL/)
+  assert.match(source, /baseUrl: new URL\(normalizedConfiguredUrl\)/)
+  assert.match(source, /SICREDI_PIX_PROD_CLIENT_ID/)
+  assert.match(source, /SICREDI_PIX_PROD_CLIENT_SECRET/)
+  assert.doesNotMatch(source, /SICREDI_PIX_HML_/)
   assert.doesNotMatch(source, /process\.env\.client_id/)
   assert.doesNotMatch(source, /process\.env\.client_secret/)
 })
@@ -61,6 +64,7 @@ test('PDV Express protege baixa, estoque, replay e fila da maquininha', () => {
   const safetyMigration = readSource('supabase/migrations/20260818160000_sicredi_pix_express_safety.sql')
 
   assert.match(saleActions, /settlement_idempotency_key/)
+  assert.match(saleActions, /SICREDI_PIX_PROD_CHARGE_EXPIRATION_SECONDS/)
   assert.match(saleActions, /in\('obs', \[obs, legacyObs\]\)/)
   assert.match(saleActions, /eq\('status', 'CREATING'\)/)
   assert.match(saleActions, /CREATION_RECOVERY_DELAY_MS/)

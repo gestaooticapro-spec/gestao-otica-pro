@@ -291,8 +291,8 @@ export async function processSicrediPixWebhookPayload(payload: unknown) {
 }
 
 function getSicrediPixKey() {
-  const pixKey = process.env.SICREDI_PIX_HML_PIX_KEY?.trim()
-  if (!pixKey) throw new Error('Configuracao Sicredi ausente: SICREDI_PIX_HML_PIX_KEY.')
+  const pixKey = process.env.SICREDI_PIX_PROD_PIX_KEY?.trim()
+  if (!pixKey) throw new Error('Configuracao Sicredi ausente: SICREDI_PIX_PROD_PIX_KEY.')
   return pixKey
 }
 
@@ -462,7 +462,7 @@ export async function createPixInstallmentCharge(input: z.input<typeof CreateCha
 
     const pixKey = getSicrediPixKey()
 
-    const configuredExpiration = Number(process.env.SICREDI_PIX_HML_CHARGE_EXPIRATION_SECONDS || 86_400)
+    const configuredExpiration = Number(process.env.SICREDI_PIX_PROD_CHARGE_EXPIRATION_SECONDS || 86_400)
     const expirationSeconds = Number.isInteger(configuredExpiration) && configuredExpiration >= 60 ? configuredExpiration : 86_400
     const reservationExpiresAt = new Date(Date.now() + expirationSeconds * 1000).toISOString()
     const reservationTxid = randomUUID().replace(/-/g, '')

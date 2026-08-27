@@ -90,8 +90,8 @@ async function access(storeId: number) {
 }
 
 function pixKey() {
-  const value = process.env.SICREDI_PIX_HML_PIX_KEY?.trim()
-  if (!value) throw new Error('Configuracao Sicredi ausente: SICREDI_PIX_HML_PIX_KEY.')
+  const value = process.env.SICREDI_PIX_PROD_PIX_KEY?.trim()
+  if (!value) throw new Error('Configuracao Sicredi ausente: SICREDI_PIX_PROD_PIX_KEY.')
   return value
 }
 
@@ -140,7 +140,8 @@ export async function createPixSaleCharge(input: z.input<typeof CreateSchema>): 
       await table(admin).update({ status: 'ERROR', provider_response: { recovery: 'creating_timeout' }, updated_at: new Date().toISOString() }).eq('id', active.id).eq('status', 'CREATING')
     }
 
-    const expirationSeconds = 86_400
+    const configuredExpiration = Number(process.env.SICREDI_PIX_PROD_CHARGE_EXPIRATION_SECONDS || 86_400)
+    const expirationSeconds = Number.isInteger(configuredExpiration) && configuredExpiration >= 60 ? configuredExpiration : 86_400
     const txid = randomUUID().replace(/-/g, '')
     const { data: reservation, error: reservationError } = await table(admin).insert({
       tenant_id: venda.tenant_id || profile.tenant_id,
