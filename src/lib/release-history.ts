@@ -9,12 +9,8 @@ export type Release = {
 // completam essa mesma versao ate o proximo deploy.
 // Se uma implementacao for desfeita ou substituida antes do deploy, remova ou corrija
 // o respectivo item para que a lista descreva somente o que realmente sera entregue.
-export const PENDING_RELEASE_VERSION: string | null = '1.02.06'
-export const PENDING_RELEASE_CHANGES: readonly string[] = [
-  'Cron de limpeza de relatórios compartilhados da Torre temporariamente desativado durante o desenvolvimento.',
-  'Pollings operacionais do WhatsApp e suporte foram reduzidos e passaram a evitar consultas desnecessárias em abas ocultas.',
-  'Atualização manual de Pontos de Atenção foi temporariamente bloqueada; a geração noturna agendada permanece ativa.',
-]
+export const PENDING_RELEASE_VERSION: string | null = null
+export const PENDING_RELEASE_CHANGES: readonly string[] = []
 const RELEASE_10205_CHANGES: readonly string[] = [
   'IMPLEMENTAÇÃO DO MÓDULO PONTOS DE ATENÇÃO - A IA VASCULHA OS REGISTROS E AJUDA NA GESTÃO DA EMPRESA.',
   'A pagina Pontos de Atencao ganhou retorno a Central de Operacoes no cabecalho, identificacao Beta e uma descricao da leitura noturna com a referencia do relatorio; a orientacao da lista diaria passou a usar a cor de atencao.',

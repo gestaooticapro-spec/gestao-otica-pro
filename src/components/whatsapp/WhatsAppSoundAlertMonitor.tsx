@@ -6,6 +6,8 @@ import { getWhatsAppLatestInboundMessage } from '@/lib/actions/whatsapp-operator
 type BrowserAudioContext = AudioContext & { state: AudioContextState }
 
 export const WHATSAPP_SOUND_ALERT_CHANGED = 'whatsapp-local-sound-alert-change'
+// Desativação emergencial temporária; voltar para false após a janela de risco.
+const TEMPORARILY_DISABLE_WHATSAPP_SOUND_ALERT = true
 const VISIBLE_POLL_INTERVAL_MS = 30_000
 const HIDDEN_POLL_INTERVAL_MS = 120_000
 
@@ -63,6 +65,7 @@ export default function WhatsAppSoundAlertMonitor({ storeId }: { storeId: number
   const [visibilityState, setVisibilityState] = useState<DocumentVisibilityState>('visible')
 
   useEffect(() => {
+    if (TEMPORARILY_DISABLE_WHATSAPP_SOUND_ALERT) return
     const syncEnabled = () => setEnabled(window.localStorage.getItem(whatsappSoundAlertStorageKey(storeId)) === 'enabled')
     syncEnabled()
     window.addEventListener(WHATSAPP_SOUND_ALERT_CHANGED, syncEnabled)
@@ -70,6 +73,7 @@ export default function WhatsAppSoundAlertMonitor({ storeId }: { storeId: number
   }, [storeId])
 
   useEffect(() => {
+    if (TEMPORARILY_DISABLE_WHATSAPP_SOUND_ALERT) return
     const unlockAudio = () => {
       if (!audioContextRef.current) audioContextRef.current = createBrowserAudioContext()
       if (audioContextRef.current?.state === 'suspended') void audioContextRef.current.resume().catch(() => undefined)
@@ -79,6 +83,7 @@ export default function WhatsAppSoundAlertMonitor({ storeId }: { storeId: number
   }, [])
 
   useEffect(() => {
+    if (TEMPORARILY_DISABLE_WHATSAPP_SOUND_ALERT) return
     const syncVisibility = () => setVisibilityState(document.visibilityState)
     syncVisibility()
     document.addEventListener('visibilitychange', syncVisibility)
@@ -86,6 +91,7 @@ export default function WhatsAppSoundAlertMonitor({ storeId }: { storeId: number
   }, [])
 
   useEffect(() => {
+    if (TEMPORARILY_DISABLE_WHATSAPP_SOUND_ALERT) return
     if (!enabled) {
       latestMessageIdRef.current = null
       return

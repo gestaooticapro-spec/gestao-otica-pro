@@ -19,6 +19,9 @@ import {
     type OperatorWhatsAppWakePingAuditFlag,
 } from '@/components/whatsapp/OperatorWhatsAppWakePing';
 
+// Desativação emergencial temporária; voltar para false após a janela de risco.
+const TEMPORARILY_DISABLE_SUPPORT_STATUS_POLLING = true;
+
 // Tipos importados (ou definidos localmente se preferir não importar do server action em client component)
 // Para evitar erros de build se o arquivo de actions não exportar tipos para client, definimos aqui compatível.
 interface AlertaEntrega {
@@ -241,6 +244,7 @@ export default function OperatorMenuLojaVazia({
     }, [storeId]);
 
     useEffect(() => {
+        if (TEMPORARILY_DISABLE_SUPPORT_STATUS_POLLING) return;
         let cancelled = false;
 
         async function fetchSupportStatus() {
