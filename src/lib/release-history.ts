@@ -12,6 +12,7 @@ export type Release = {
 export const PENDING_RELEASE_VERSION: string | null = '1.02.06'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
   'A integraÃ§Ã£o Pix Sicredi passou a usar exclusivamente as credenciais e a API oficial de produÃ§Ã£o, mantendo a liberaÃ§Ã£o restrita Ã  Ã“tica Ocular configurada como loja-piloto.',
+  'Certificados do Pix Sicredi podem ser configurados como segredos Base64 no ambiente hospedado, preservando os arquivos locais apenas para desenvolvimento.',
 ]
 const RELEASE_10205_CHANGES: readonly string[] = [
   'IMPLEMENTAÇÃO DO MÓDULO PONTOS DE ATENÇÃO - A IA VASCULHA OS REGISTROS E AJUDA NA GESTÃO DA EMPRESA.',

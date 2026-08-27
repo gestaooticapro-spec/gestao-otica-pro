@@ -86,6 +86,29 @@ function readSecretFile(pathValue: string | undefined, fallback: string, envLabe
   }
 }
 
+function readSecretMaterial(input: {
+  base64Value: string | undefined
+  base64EnvLabel: string
+  pathValue: string | undefined
+  fallbackPath: string
+  pathEnvLabel: string
+}) {
+  const normalizedBase64 = input.base64Value?.replace(/\s/g, '')
+  if (!normalizedBase64) {
+    return readSecretFile(input.pathValue, input.fallbackPath, input.pathEnvLabel)
+  }
+
+  try {
+    const material = Buffer.from(normalizedBase64, 'base64')
+    if (!material.length || !material.toString('utf8').startsWith('-----BEGIN ')) {
+      throw new Error('invalid pem')
+    }
+    return material
+  } catch {
+    throw new Error(`Configuracao Sicredi invalida: ${input.base64EnvLabel} deve conter um PEM codificado em Base64.`)
+  }
+}
+
 function getSicrediPixConfig(): SicrediPixConfig {
   const configuredBaseUrl = process.env.SICREDI_PIX_PROD_BASE_URL?.trim() || DEFAULT_PROD_BASE_URL
   const normalizedConfiguredUrl = configuredBaseUrl.replace(/\/+$/, '')
@@ -97,9 +120,27 @@ function getSicrediPixConfig(): SicrediPixConfig {
     baseUrl: new URL(normalizedConfiguredUrl),
     clientId: required(process.env.SICREDI_PIX_PROD_CLIENT_ID, 'SICREDI_PIX_PROD_CLIENT_ID'),
     clientSecret: required(process.env.SICREDI_PIX_PROD_CLIENT_SECRET, 'SICREDI_PIX_PROD_CLIENT_SECRET'),
-    certificate: readSecretFile(process.env.SICREDI_PIX_PROD_CERT_PATH, DEFAULT_CERT_PATH, 'SICREDI_PIX_PROD_CERT_PATH'),
-    privateKey: readSecretFile(process.env.SICREDI_PIX_PROD_KEY_PATH, DEFAULT_KEY_PATH, 'SICREDI_PIX_PROD_KEY_PATH'),
-    certificateChain: readSecretFile(process.env.SICREDI_PIX_PROD_CA_PATH, DEFAULT_CA_PATH, 'SICREDI_PIX_PROD_CA_PATH'),
+    certificate: readSecretMaterial({
+      base64Value: process.env.SICREDI_PIX_PROD_CERT_PEM_BASE64,
+      base64EnvLabel: 'SICREDI_PIX_PROD_CERT_PEM_BASE64',
+      pathValue: process.env.SICREDI_PIX_PROD_CERT_PATH,
+      fallbackPath: DEFAULT_CERT_PATH,
+      pathEnvLabel: 'SICREDI_PIX_PROD_CERT_PATH',
+    }),
+    privateKey: readSecretMaterial({
+      base64Value: process.env.SICREDI_PIX_PROD_KEY_PEM_BASE64,
+      base64EnvLabel: 'SICREDI_PIX_PROD_KEY_PEM_BASE64',
+      pathValue: process.env.SICREDI_PIX_PROD_KEY_PATH,
+      fallbackPath: DEFAULT_KEY_PATH,
+      pathEnvLabel: 'SICREDI_PIX_PROD_KEY_PATH',
+    }),
+    certificateChain: readSecretMaterial({
+      base64Value: process.env.SICREDI_PIX_PROD_CA_PEM_BASE64,
+      base64EnvLabel: 'SICREDI_PIX_PROD_CA_PEM_BASE64',
+      pathValue: process.env.SICREDI_PIX_PROD_CA_PATH,
+      fallbackPath: DEFAULT_CA_PATH,
+      pathEnvLabel: 'SICREDI_PIX_PROD_CA_PATH',
+    }),
     keyPassphrase: process.env.SICREDI_PIX_PROD_KEY_PASSPHRASE?.trim() || undefined,
   }
 }
