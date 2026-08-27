@@ -2,112 +2,169 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowRight, CheckCircle2, Loader2, RefreshCw } from 'lucide-react'
+import Link from 'next/link'
+import { ArrowLeft, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, ClipboardCheck, Gauge, Handshake, History, List, Loader2, RefreshCw, ScanSearch } from 'lucide-react'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
-import type { DailyHealthAlert, DailyHealthAmountComparison, DailyHealthReport } from '@/lib/daily-store-health'
+import OperationalCasesModal from '@/components/daily-health/OperationalCasesModal'
+import RelationshipCasesModal from '@/components/daily-health/RelationshipCasesModal'
+import DataQualityCasesModal from '@/components/daily-health/DataQualityCasesModal'
+import LatestRelevantMessageModal from '@/components/daily-health/LatestRelevantMessageModal'
+import ProgramUsageModal from '@/components/daily-health/ProgramUsageModal'
+import type { DailyHealthAmountComparison, DailyHealthAlert, DailyHealthArea, DailyHealthReport, PeriodicHealthSnapshot } from '@/lib/daily-store-health'
 
-type Props = { storeId: number; report: DailyHealthReport | null; needsPin: boolean; canConfigure: boolean }
+// O cron noturno continua sendo a única geração automática enquanto investigamos o consumo na Vercel.
+const MANUAL_DAILY_HEALTH_REFRESH_ENABLED = false
+
+type Props = { storeId: number; report: DailyHealthReport | null; weeklySnapshot: PeriodicHealthSnapshot | null; monthlySnapshot: PeriodicHealthSnapshot | null; needsPin: boolean; canConfigure: boolean }
+
+const modules: Array<{ id: DailyHealthArea; label: string; icon: typeof CircleDollarSign }> = [
+  { id: 'financeiro', label: 'Financeiro', icon: CircleDollarSign },
+  { id: 'operacao', label: 'Operação', icon: ClipboardCheck },
+  { id: 'relacionamento', label: 'Relacionamento', icon: Handshake },
+  { id: 'cadastros', label: 'Cadastros', icon: ScanSearch },
+]
 
 function money(value: number | null) {
-  if (value === null) return 'Historico indisponivel'
+  if (value === null) return ''
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
 }
 
-function AmountRow({ label, amounts, total = false }: { label: string; amounts: DailyHealthAmountComparison; total?: boolean }) {
+function HighlightedNarrative({ text, alerts = [] }: { text: string; alerts?: DailyHealthAlert[] }) {
+  const priorities = new Map(alerts.map((alert) => [alert.id, alert.priority]))
+  const parts = text.split(/(\[\[highlight:[a-z0-9-]+\]\][\s\S]*?\[\[\/highlight\]\])/gi)
+  return <>{parts.map((part, index) => {
+    const match = part.match(/^\[\[highlight:([a-z0-9-]+)\]\]([\s\S]*?)\[\[\/highlight\]\]$/i)
+    if (!match) return part
+    const priority = priorities.get(match[1])
+    if (!priority || priority === 'informativo') return match[2]
+    return <strong key={`${part}-${index}`} className={priority === 'critico' ? 'text-rose-300' : 'text-amber-200'}>{match[2]}</strong>
+  })}</>
+}
+
+function AmountRow({ label, amounts, total = false, showHistorical }: { label: string; amounts: DailyHealthAmountComparison; total?: boolean; showHistorical: boolean }) {
   return <tr className={total ? 'border-t border-white/15 text-white' : 'border-t border-white/5 text-slate-300'}>
-    <th scope="row" className={`py-3 pr-4 text-left text-sm ${total ? 'font-bold' : 'font-medium'}`}>{label}</th>
-    <td className={`py-3 text-right text-sm ${total ? 'font-bold' : ''}`}>{money(amounts.yesterday)}</td>
-    <td className={`py-3 text-right text-sm ${total ? 'font-bold' : ''}`}>{money(amounts.monthToDate)}</td>
-    <td className={`py-3 pl-4 text-right text-sm ${total ? 'font-bold' : 'text-slate-400'}`}>{money(amounts.samePeriodLastYear)}</td>
+    <th scope="row" className={`py-1 pr-4 text-left text-sm ${total ? 'font-bold' : 'font-medium'}`}>{label}</th>
+    <td className={`py-1 text-right text-sm ${total ? 'font-bold' : ''}`}>{money(amounts.yesterday)}</td>
+    <td className={`py-1 text-right text-sm ${total ? 'font-bold' : ''}`}>{money(amounts.monthToDate)}</td>
+    {showHistorical && <td className={`py-1 pl-4 text-right text-sm ${total ? 'font-bold' : 'text-slate-400'}`}>{money(amounts.samePeriodLastYear)}</td>}
   </tr>
 }
 
 function SummaryTable({ title, rows }: { title: string; rows: Array<{ label: string; amounts: DailyHealthAmountComparison; total?: boolean }> }) {
-  return <section className="border border-white/10 bg-black/20 px-5 py-5 sm:px-6" aria-label={title}>
+  const showHistorical = rows.some((row) => row.amounts.samePeriodLastYear !== null)
+  return <section className="border border-white/10 bg-black/20 px-4 py-2.5 sm:px-5" aria-label={title}>
     <h2 className="text-sm font-bold text-white">{title}</h2>
-    <div className="mt-3 overflow-x-auto">
-      <table className="w-full min-w-[610px] border-collapse">
-        <thead><tr className="text-xs font-medium text-slate-400"><th className="pb-3 text-left">&nbsp;</th><th className="pb-3 text-right">Ontem</th><th className="pb-3 text-right">Mes ate ontem</th><th className="pb-3 pl-4 text-right">Mes ate esta data no ano passado</th></tr></thead>
-        <tbody>{rows.map((row) => <AmountRow key={row.label} {...row} />)}</tbody>
+    <div className="mt-1 overflow-x-auto">
+      <table className={`w-full border-collapse ${showHistorical ? 'min-w-[610px]' : 'min-w-[360px]'}`}>
+        <thead><tr className="text-xs font-medium text-slate-400"><th className="pb-3 text-left">&nbsp;</th><th className="pb-3 text-right">Ontem</th><th className="pb-3 text-right">Mês até ontem</th>{showHistorical && <th className="pb-3 pl-4 text-right">Mês até esta data no ano passado</th>}</tr></thead>
+        <tbody>{rows.map((row) => <AmountRow key={row.label} {...row} showHistorical={showHistorical} />)}</tbody>
       </table>
     </div>
   </section>
 }
 
-function actionLabel(alert: DailyHealthAlert, requeueCandidates: number) {
-  if (alert.id === 'post-sales-delivery' && requeueCandidates > 0) return `Vamos recolocar ${requeueCandidates} pos-vendas na fila`
-  const labels: Record<string, string> = {
-    'overdue-installments': 'Abrir parcelas vencidas para cobrar',
-    'multiple-financing': 'Revisar clientes com mais de um contrato',
-    'orders-without-lab': 'Abrir lentes que precisam ser pedidas',
-    'lenses-not-arrived': 'Abrir lentes que nao chegaram do laboratorio',
-    'lab-orders-without-update': 'Conferir pedidos sem prazo ou atualizacao',
-    'orders-without-promise': 'Preencher datas prometidas das OS',
-    'invalid-order-timeline': 'Revisar datas inconsistentes das OS',
-    'cancelled-sales-with-open-order': 'Encerrar OS de vendas canceladas',
-    'duplicate-open-orders': 'Comparar OS abertas da mesma venda',
-    'lens-sales-without-order': 'Conferir vendas de lente sem OS',
-    'whatsapp-pending': 'Abrir conversas aguardando a equipe',
-    'post-sales-delivery': 'Abrir pos-vendas com falha de contato',
-    'post-sales-human-review': 'Abrir respostas para revisao humana',
-    'post-sales-satisfaction': 'Revisar casos de adaptacao e reclamacao',
-    'cost-coverage': 'Abrir produtos com custo pendente',
-  }
-  return labels[alert.id] || 'Abrir para resolver'
+function moduleNarrative(report: DailyHealthReport, area: DailyHealthArea) {
+  const narratives = report.metrics.areaNarratives
+  if (area === 'financeiro') return narratives?.financeiro || null
+  if (area === 'operacao') return narratives?.operacao || null
+  if (area === 'relacionamento') return narratives?.relacionamento || null
+  return narratives?.cadastros || null
 }
 
-export default function DailyHealthClient({ storeId, report, needsPin }: Props) {
+function PeriodicSnapshotView({ snapshot, cadence, onOpenProgramUsage }: { snapshot: PeriodicHealthSnapshot | null; cadence: 'weekly' | 'monthly'; onOpenProgramUsage: () => void }) {
+  const usageButton = cadence === 'monthly' ? <button type="button" onClick={onOpenProgramUsage} className="inline-flex h-9 items-center gap-2 border border-emerald-300/30 bg-emerald-300/[0.06] px-3 text-xs font-semibold text-emerald-100 transition-colors hover:border-emerald-200/50 hover:bg-emerald-300/10"><Gauge className="h-4 w-4" />Sub-uso do programa</button> : null
+  if (!snapshot) {
+    const isWeekly = cadence === 'weekly'
+    return <section className="mt-8 max-w-5xl border border-white/10 bg-black/20 px-5 py-6"><div className="flex flex-wrap items-center justify-between gap-4"><h2 className="text-lg font-bold text-white">{isWeekly ? 'Varredura semanal' : 'Varredura mensal'}</h2>{usageButton}</div><p className="mt-3 text-sm leading-6 text-slate-300">{isWeekly ? 'Ainda não existe uma varredura semanal salva. A primeira será disponibilizada na próxima segunda-feira.' : 'Ainda não existe uma varredura mensal salva. A primeira será disponibilizada no primeiro dia do próximo mês.'}</p></section>
+  }
+  const period = `${new Date(`${snapshot.periodStart}T12:00:00`).toLocaleDateString('pt-BR')} a ${new Date(`${snapshot.periodEnd}T12:00:00`).toLocaleDateString('pt-BR')}`
+  const alerts = snapshot.alerts
+  return <section className="mt-8 max-w-6xl" aria-label={cadence === 'weekly' ? 'Varredura semanal' : 'Varredura mensal'}><div className="flex flex-wrap items-end justify-between gap-4 border-b border-white/10 pb-5"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-200">Snapshot salvo</p><h2 className="mt-2 text-2xl font-black text-white">{cadence === 'weekly' ? 'Varredura semanal' : 'Varredura mensal'}</h2><p className="mt-2 text-sm text-slate-400">Período: {period}. Esta leitura é somente consulta.</p></div>{usageButton}</div><p className="mt-6 max-w-6xl text-lg leading-8 text-slate-100">{snapshot.narrative}</p>{alerts.length ? <div className="mt-6 space-y-3">{alerts.map((alert: DailyHealthAlert) => <article key={alert.id} className={`border-l-4 bg-black/20 px-5 py-4 ${alert.priority === 'critico' ? 'border-rose-400' : 'border-amber-300'}`}><p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">{alert.area}</p><h3 className="mt-1 text-base font-bold text-white">{alert.presentation?.title || alert.title}</h3><p className="mt-1 text-sm leading-6 text-slate-200">{alert.presentation?.detail || alert.detail}</p></article>)}</div> : <div className="mt-6 flex items-center gap-3 text-sm text-emerald-100"><CheckCircle2 className="h-4 w-4" />Nenhum ponto de atenção foi consolidado neste período.</div>}</section>
+}
+
+export default function DailyHealthClient({ storeId, report, weeklySnapshot, monthlySnapshot, needsPin }: Props) {
   const router = useRouter()
   const [refreshing, setRefreshing] = useState(false)
   const [refreshError, setRefreshError] = useState<string | null>(null)
-  const [requeueing, setRequeueing] = useState(false)
-  const [actionMessage, setActionMessage] = useState<string | null>(null)
-  const [actionError, setActionError] = useState<string | null>(null)
+  const [needsRefreshPin, setNeedsRefreshPin] = useState(false)
+  const [selectedCadence, setSelectedCadence] = useState<'daily' | 'weekly' | 'monthly'>('daily')
+  const [expandedAreas, setExpandedAreas] = useState<Partial<Record<DailyHealthArea, boolean>>>({})
+  const [selectedOperationalAlert, setSelectedOperationalAlert] = useState<DailyHealthAlert | null>(null)
+  const [selectedRelationshipAlert, setSelectedRelationshipAlert] = useState<DailyHealthAlert | null>(null)
+  const [selectedDataQualityAlert, setSelectedDataQualityAlert] = useState<DailyHealthAlert | null>(null)
+  const [dataQualityChanged, setDataQualityChanged] = useState(false)
+  const [programUsageOpen, setProgramUsageOpen] = useState(false)
+  const [monthlyPreview, setMonthlyPreview] = useState<PeriodicHealthSnapshot | null>(null)
+  const [latestRelevantArea, setLatestRelevantArea] = useState<DailyHealthArea | null>(null)
 
   const refreshReport = async () => {
-    setRefreshing(true); setRefreshError(null)
+    setRefreshing(true)
+    setRefreshError(null)
     try {
-      const response = await fetch('/api/daily-health', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId }) })
+      const response = await fetch('/api/daily-health', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId, monthlyPreview: selectedCadence === 'monthly' }) })
       const data = await response.json()
-      if (!response.ok) throw new Error(data.error || 'Nao foi possivel refazer o resumo.')
+      if (response.status === 403) {
+        setNeedsRefreshPin(true)
+        return
+      }
+      if (!response.ok) throw new Error(data.error || 'Não foi possível atualizar o resumo.')
+      if (selectedCadence === 'monthly') setMonthlyPreview(data.monthlySnapshot || null)
       router.refresh()
     } catch (error) {
-      setRefreshError(error instanceof Error ? error.message : 'Nao foi possivel refazer o resumo.')
-    } finally { setRefreshing(false) }
+      setRefreshError(error instanceof Error ? error.message : 'Não foi possível atualizar o resumo.')
+    } finally {
+      setRefreshing(false)
+    }
   }
 
-  const requeuePostSales = async () => {
-    setRequeueing(true); setActionMessage(null); setActionError(null)
-    try {
-      const response = await fetch('/api/daily-health/post-sales/requeue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId }) })
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.error || 'Nao foi possivel recolocar os pos-vendas na fila.')
-      const result = data.result || {}
-      const requeued = Number(result.requeuedFailures || 0) + Number(result.scheduledMissingAttempts || 0)
-      setActionMessage(`${requeued} caso${requeued === 1 ? '' : 's'} foi${requeued === 1 ? '' : 'ram'} recolocado${requeued === 1 ? '' : 's'} na fila para o proximo horario comercial.`)
-      router.refresh()
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Nao foi possivel recolocar os pos-vendas na fila.')
-    } finally { setRequeueing(false) }
-  }
-
-  if (needsPin) return <main className="min-h-full p-6 text-white lg:p-10"><div className="mx-auto max-w-7xl"><p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-200">Central diaria</p><h1 className="mt-2 text-3xl font-black">Saude da Loja</h1><p className="mt-3 text-sm text-slate-300">Aguardando a confirmacao do PIN de um gerente.</p></div><EmployeeAuthModal storeId={storeId} isOpen onClose={() => router.back()} onSuccess={() => router.refresh()} title="Abrir Saude da Loja" description="Informe o PIN de um gerente para visualizar o resumo diario." purpose="daily_health_access" /></main>
+  if (needsPin) return <main className="min-h-full p-6 text-white lg:p-10"><div className="mx-auto max-w-7xl"><h1 className="text-3xl font-black">Pontos de Atenção (Beta)</h1><p className="mt-3 text-sm text-slate-300">Aguardando a confirmação do PIN de um gerente.</p></div><EmployeeAuthModal storeId={storeId} isOpen onClose={() => router.back()} onSuccess={() => router.refresh()} title="Abrir Pontos de Atenção" description="Informe o PIN de um gerente para visualizar os pontos de atenção." purpose="daily_health_access" /></main>
 
   const referenceDate = report ? new Date(`${report.reportDate}T12:00:00`).toLocaleDateString('pt-BR') : null
   const summary = report?.metrics.salesSummary
-  const requeueCandidates = report?.metrics.postSaleAnalysis ? report.metrics.postSaleAnalysis.messageFailed + report.metrics.postSaleAnalysis.noMessageAttempt : 0
 
   return <main className="min-h-full p-6 text-white lg:p-10"><div className="mx-auto max-w-7xl">
-    <header className="flex flex-wrap items-start justify-between gap-5 border-b border-white/10 pb-6"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-200">Central diaria</p><h1 className="mt-2 text-3xl font-black">Saude da Loja</h1><p className="mt-1 text-sm text-slate-300">{referenceDate ? `Referencia: ${referenceDate}` : 'Resumo diario ainda nao gerado.'}</p></div><button type="button" onClick={refreshReport} disabled={refreshing} className="inline-flex h-10 items-center gap-2 border border-white/15 bg-white/5 px-3 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50">{refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}Refazer</button></header>
+    <header className="flex flex-wrap items-end justify-between gap-5 border-b border-white/10 pb-6"><div className="flex items-start gap-3"><Link href={`/dashboard/loja/${storeId}`} className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-400 transition-all hover:bg-white/10 hover:text-white active:scale-95" title="Voltar para a Central de Operações" aria-label="Voltar para a Central de Operações"><ArrowLeft className="h-5 w-5" /></Link><div><h1 className="text-3xl font-black">Pontos de Atenção (Beta)</h1><p className="mt-1 max-w-4xl text-sm text-slate-300">{referenceDate ? `Durante a noite, a IA vasculhou seus registros e trouxe pontos pra você dar atenção - Referente a ${referenceDate}` : 'A análise noturna ainda não foi gerada.'}</p></div></div><div className="flex items-center gap-3"><div className="flex items-center border border-white/10 bg-black/20" role="tablist" aria-label="Período dos pontos de atenção">{([['daily', 'Diário'], ['weekly', 'Semanal'], ['monthly', 'Mensal']] as const).map(([cadence, label]) => <button key={cadence} type="button" onClick={() => setSelectedCadence(cadence)} role="tab" aria-selected={selectedCadence === cadence} className={`px-3 py-2 text-xs font-semibold transition-colors ${selectedCadence === cadence ? 'bg-white/10 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'}`}>{label}</button>)}</div>{MANUAL_DAILY_HEALTH_REFRESH_ENABLED && <button type="button" onClick={refreshReport} disabled={refreshing} aria-label="Atualizar pontos de atenção" title="Atualizar pontos de atenção" className="inline-flex h-9 w-9 items-center justify-center border border-white/15 bg-white/5 text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50">{refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}</button>}</div></header>
     {refreshError && <p className="mt-4 text-sm text-rose-200">{refreshError}</p>}
-    {summary && <div className="mt-7 grid gap-4 xl:grid-cols-2"><SummaryTable title="Vendas" rows={[{ label: 'A vista', amounts: summary.sales.cash }, { label: 'A prazo', amounts: summary.sales.credit }, { label: 'Total', amounts: summary.sales.total, total: true }]} /><SummaryTable title="Valores que entraram" rows={[{ label: 'Vendas', amounts: summary.receipts.sales }, { label: 'Parcelas', amounts: summary.receipts.installments }, { label: 'Total', amounts: summary.receipts.total, total: true }]} /></div>}
-    <section className="mt-9 max-w-5xl" aria-label="Pontos que precisam de atencao"><h2 className="text-lg font-bold text-white">O que merece atencao hoje</h2>
-      {!report ? <p className="mt-4 border border-white/10 bg-black/20 px-5 py-5 text-sm text-slate-300">O resumo sera exibido assim que a primeira geracao for concluida.</p> : report.alerts.length === 0 ? <div className="mt-4 flex items-center gap-3 border border-emerald-300/30 bg-emerald-300/10 px-5 py-5 text-emerald-50"><CheckCircle2 className="h-5 w-5 shrink-0" /><p className="text-sm font-medium">Nenhuma inconsistencia relevante foi encontrada nas fontes disponiveis.</p></div> : <div className="mt-4 space-y-4">{report.alerts.map((alert) => {
-        const isRequeueAction = alert.id === 'post-sales-delivery' && requeueCandidates > 0
-        const presentation = alert.presentation || { title: alert.title, detail: alert.detail }
-        return <article key={alert.id} className={`border-l-4 bg-black/20 px-5 py-5 sm:px-6 ${alert.priority === 'critico' ? 'border-rose-400' : 'border-amber-300'}`}><p className={`text-xs font-bold uppercase tracking-[0.12em] ${alert.priority === 'critico' ? 'text-rose-200' : 'text-amber-100'}`}>{alert.area}</p><h3 className="mt-2 text-lg font-bold leading-7 text-white">{presentation.title}</h3><p className="mt-2 max-w-3xl text-sm leading-6 text-slate-200">{presentation.detail}</p><button type="button" onClick={() => isRequeueAction ? void requeuePostSales() : router.push(alert.href)} disabled={isRequeueAction && requeueing} className="mt-5 inline-flex min-h-11 items-center gap-2 border border-emerald-300/40 bg-emerald-300/10 px-4 py-2 text-sm font-bold text-emerald-50 transition-colors hover:bg-emerald-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-50">{isRequeueAction && requeueing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}{actionLabel(alert, requeueCandidates)}</button></article>
+    {selectedCadence === 'daily' ? <>
+    {summary ? <div className="mt-7 grid gap-4 xl:grid-cols-2"><SummaryTable title="Vendas" rows={[{ label: 'À vista', amounts: summary.sales.cash }, { label: 'A prazo', amounts: summary.sales.credit }, { label: 'Total', amounts: summary.sales.total, total: true }]} /><SummaryTable title="Valores que entraram" rows={[{ label: 'Vendas', amounts: summary.receipts.sales }, { label: 'Parcelas', amounts: summary.receipts.installments }, { label: 'Total', amounts: summary.receipts.total, total: true }]} /></div> : report ? <p className="mt-6 text-sm text-slate-400">O resumo de vendas e caixa será incluído na próxima geração.</p> : null}
+    <section className="mt-10 max-w-5xl" aria-label="Pontos de atenção"><h2 className="text-lg font-bold text-amber-200">Por favor dê atenção aos seguintes pontos:</h2>
+      {!report ? <p className="mt-4 border border-white/10 bg-black/20 px-5 py-5 text-sm text-slate-300">O resumo será exibido assim que a primeira geração for concluída.</p> : <div className="mt-5 space-y-10">{modules.map((module) => {
+        const alerts = report.alerts.filter((alert) => alert.area === module.id && (alert.lifecycle?.show ?? true))
+        const narrative = moduleNarrative(report, module.id)
+        const resolved = report.metrics.alertLifecycle?.[module.id]?.resolvedCount || 0
+        const isExpanded = expandedAreas[module.id] === true
+        return <section key={module.id} className="border-t border-white/10 pt-6" aria-label={module.label}>
+          <button type="button" onClick={() => setExpandedAreas((current) => ({ ...current, [module.id]: !isExpanded }))} aria-expanded={isExpanded} aria-label="Expandir ou recolher módulo" className="group flex w-full cursor-pointer items-center justify-between gap-4 rounded-sm py-2 text-left transition-colors hover:bg-white/5">
+            <span className="flex items-center gap-3 text-xl font-bold text-white"><module.icon className="h-6 w-6 text-emerald-200" strokeWidth={2} />{module.label}</span>
+            <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-400 group-hover:text-white">{isExpanded ? 'Fechar' : 'Abrir'}{isExpanded ? <ChevronUp className="h-5 w-5 shrink-0 text-slate-200" /> : <ChevronDown className="h-5 w-5 shrink-0 text-slate-200" />}</span>
+          </button>
+          {isExpanded && <div>
+            {narrative && <p className="mt-3 max-w-6xl text-lg leading-8 text-slate-100"><HighlightedNarrative text={narrative} alerts={alerts} /></p>}
+            {module.id === 'relacionamento' && report.metrics.areaNarratives?.relacionamentoConcern && <p className="mt-4 border-l-2 border-amber-300 pl-4 text-sm font-medium leading-6 text-amber-100"><HighlightedNarrative text={report.metrics.areaNarratives.relacionamentoConcern} alerts={alerts} /></p>}
+            {alerts.length ? <div className="mt-5 grid gap-3 md:grid-cols-2">{alerts.map((alert) => {
+              const presentation = alert.presentation || { title: alert.title, detail: alert.detail }
+              const canInspect = module.id === 'operacao' && alert.records.type === 'os' && alert.records.ids.length > 0
+              const canInspectRelationship = module.id === 'relacionamento' && alert.records.type === 'pos-venda' && alert.records.ids.length > 0
+              const canInspectDataQuality = module.id === 'cadastros' && ['duplicate-customers', 'duplicate-products', 'used-products-without-cost', 'stale-open-sales'].includes(alert.id)
+              return <article key={alert.id} className={`border-l-4 bg-black/20 px-5 py-4 ${alert.priority === 'critico' ? 'border-rose-400' : 'border-amber-300'}`}>
+                <h4 className="text-base font-bold text-white">{presentation.title}</h4>
+                <p className="mt-1 text-sm leading-6 text-slate-200"><HighlightedNarrative text={presentation.detail} alerts={[alert]} /></p>
+                {canInspect ? <button type="button" onClick={() => setSelectedOperationalAlert(alert)} className="mt-4 inline-flex h-9 items-center gap-2 border border-white/15 px-3 text-xs font-semibold text-slate-100 transition-colors hover:border-emerald-300/40 hover:bg-emerald-300/10 hover:text-white"><List className="h-4 w-4" />Ver casos</button> : null}
+                {canInspectRelationship ? <button type="button" onClick={() => setSelectedRelationshipAlert(alert)} className="mt-4 inline-flex h-9 items-center gap-2 border border-white/15 px-3 text-xs font-semibold text-slate-100 transition-colors hover:border-emerald-300/40 hover:bg-emerald-300/10 hover:text-white"><List className="h-4 w-4" />{alert.id === 'post-sales-human-review' ? 'Ver respostas' : 'Ver casos'}</button> : null}
+                {canInspectDataQuality ? <button type="button" onClick={() => { setDataQualityChanged(false); setSelectedDataQualityAlert(alert) }} className="mt-4 inline-flex h-9 items-center gap-2 border border-white/15 px-3 text-xs font-semibold text-slate-100 transition-colors hover:border-emerald-300/40 hover:bg-emerald-300/10 hover:text-white"><List className="h-4 w-4" />{alert.id === 'stale-open-sales' ? 'Ver casos' : alert.id === 'used-products-without-cost' ? 'Corrigir lote de 10' : 'Revisar lote de 10'}</button> : null}
+              </article>
+            })}</div> : <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-emerald-100"><CheckCircle2 className="h-4 w-4 shrink-0" /><span>{resolved ? `${resolved} pendência${resolved === 1 ? '' : 's'} foi${resolved === 1 ? '' : 'ram'} resolvida${resolved === 1 ? '' : 's'} desde ontem.` : 'Nenhuma mudança material neste módulo desde ontem.'}</span><button type="button" onClick={() => setLatestRelevantArea(module.id)} className="inline-flex h-8 items-center gap-2 border border-white/15 px-2.5 text-xs font-semibold text-slate-200 transition-colors hover:border-emerald-300/40 hover:bg-emerald-300/10 hover:text-white"><History className="h-3.5 w-3.5" />Ver última atualização relevante</button></div>}
+          </div>}
+        </section>
       })}</div>}
-      {actionMessage && <p className="mt-4 text-sm text-emerald-100">{actionMessage}</p>}{actionError && <p className="mt-4 text-sm text-rose-200">{actionError}</p>}{report?.sourceFailures.length ? <p className="mt-5 text-xs text-slate-500">Dados indisponiveis: {report.sourceFailures.join(', ')}.</p> : null}
+      {report?.sourceFailures.length ? <p className="mt-5 text-xs text-slate-500">Dados indisponíveis: {report.sourceFailures.join(', ')}.</p> : null}
     </section>
+    </> : <PeriodicSnapshotView snapshot={selectedCadence === 'weekly' ? weeklySnapshot : (monthlyPreview || monthlySnapshot)} cadence={selectedCadence} onOpenProgramUsage={() => setProgramUsageOpen(true)} />}
+    {selectedOperationalAlert ? <OperationalCasesModal storeId={storeId} alert={selectedOperationalAlert} onClose={() => setSelectedOperationalAlert(null)} /> : null}
+    {selectedRelationshipAlert ? <RelationshipCasesModal storeId={storeId} alert={selectedRelationshipAlert} onClose={() => setSelectedRelationshipAlert(null)} /> : null}
+    {selectedDataQualityAlert ? <DataQualityCasesModal storeId={storeId} alert={selectedDataQualityAlert} onChanged={() => setDataQualityChanged(true)} onClose={() => { setSelectedDataQualityAlert(null); if (dataQualityChanged) router.refresh() }} /> : null}
+    {programUsageOpen ? <ProgramUsageModal snapshot={(monthlyPreview || monthlySnapshot)?.programUsage || null} onClose={() => setProgramUsageOpen(false)} /> : null}
+    {latestRelevantArea ? <LatestRelevantMessageModal storeId={storeId} area={latestRelevantArea} label={modules.find((module) => module.id === latestRelevantArea)?.label || 'Pontos de Atenção'} onClose={() => setLatestRelevantArea(null)} /> : null}
+    <EmployeeAuthModal storeId={storeId} isOpen={needsRefreshPin} onClose={() => setNeedsRefreshPin(false)} onSuccess={() => { setNeedsRefreshPin(false); void refreshReport() }} title="Atualizar Pontos de Atenção" description="Informe o PIN de um gerente para consultar os pontos de atenção salvos." purpose="daily_health_access" />
   </div></main>
 }

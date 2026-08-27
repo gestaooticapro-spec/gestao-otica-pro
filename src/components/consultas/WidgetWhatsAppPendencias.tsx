@@ -3,13 +3,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, BellOff, BellRing, ChevronDown, ChevronUp, MessageSquareText } from 'lucide-react'
 import { WhatsAppPendencia } from '@/lib/actions/consultas.actions'
-import { getWhatsAppLatestInboundMessage } from '@/lib/actions/whatsapp-operator.actions'
+import { WHATSAPP_SOUND_ALERT_CHANGED, whatsappSoundAlertStorageKey } from '@/components/whatsapp/WhatsAppSoundAlertMonitor'
 
 type LocalAlertState = 'active' | 'inactive' | 'blocked' | 'unsupported'
-
-function storageKey(storeId: number) {
-  return `whatsapp-local-sound-alert:${storeId}`
-}
 
 type BrowserAudioContext = AudioContext & { state: AudioContextState }
 
@@ -71,8 +67,6 @@ export default function WidgetWhatsAppPendencias({
 }) {
   const [isOpen, setIsOpen] = useState(false)
   const [alertState, setAlertState] = useState<LocalAlertState>('inactive')
-  const latestMessageIdRef = useRef<number | null>(null)
-  const isCheckingRef = useRef(false)
   const audioContextRef = useRef<BrowserAudioContext | null>(null)
   const attachmentPendingCount = pendencias.filter((item) => item.origin === 'attachment').length
   const pendingCount = pendencias.length
@@ -93,56 +87,18 @@ export default function WidgetWhatsAppPendencias({
       return
     }
 
-    const enabled = window.localStorage.getItem(storageKey(storeId)) === 'enabled'
+    const enabled = window.localStorage.getItem(whatsappSoundAlertStorageKey(storeId)) === 'enabled'
     setAlertState(Notification.permission === 'denied' ? 'blocked' : enabled ? 'active' : 'inactive')
   }, [storeId])
-
-  useEffect(() => {
-    if (alertState !== 'active' || !isConnected) return
-
-    let cancelled = false
-    const checkForNewMessage = async () => {
-      if (isCheckingRef.current) return
-      isCheckingRef.current = true
-      try {
-        const result = await getWhatsAppLatestInboundMessage(storeId)
-        if (cancelled || !result.success || result.latestMessageId === null) return
-
-        if (latestMessageIdRef.current === null) {
-          latestMessageIdRef.current = result.latestMessageId
-          return
-        }
-        if (result.latestMessageId <= latestMessageIdRef.current) return
-
-        latestMessageIdRef.current = result.latestMessageId
-        playIncomingSound(audioContextRef.current)
-        if (document.visibilityState !== 'visible' && Notification.permission === 'granted') {
-          new Notification('Nova mensagem no WhatsApp', {
-            body: 'Abra o Radar Operacional para atender.',
-            tag: `whatsapp-inbound-${storeId}`,
-          })
-        }
-      } finally {
-        isCheckingRef.current = false
-      }
-    }
-
-    void checkForNewMessage()
-    const timer = window.setInterval(checkForNewMessage, 5_000)
-    return () => {
-      cancelled = true
-      window.clearInterval(timer)
-    }
-  }, [alertState, isConnected, storeId])
 
   const toggleLocalAlert = async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation()
     if (alertState === 'unsupported') return
 
     if (alertState === 'active') {
-      window.localStorage.setItem(storageKey(storeId), 'disabled')
+      window.localStorage.setItem(whatsappSoundAlertStorageKey(storeId), 'disabled')
+      window.dispatchEvent(new Event(WHATSAPP_SOUND_ALERT_CHANGED))
       setAlertState('inactive')
-      latestMessageIdRef.current = null
       return
     }
 
@@ -166,8 +122,8 @@ export default function WidgetWhatsAppPendencias({
       return
     }
 
-    window.localStorage.setItem(storageKey(storeId), 'enabled')
-    latestMessageIdRef.current = null
+    window.localStorage.setItem(whatsappSoundAlertStorageKey(storeId), 'enabled')
+    window.dispatchEvent(new Event(WHATSAPP_SOUND_ALERT_CHANGED))
     setAlertState('active')
     playIncomingSound(audioContextRef.current)
   }

@@ -28,6 +28,24 @@ function formatWeeklySchedule(config: StoreHoursConfig): string {
     return parts.join(' | ')
 }
 
+function formatWeeklyScheduleWithBreaks(config: StoreHoursConfig): string {
+    const parts: string[] = []
+    for (let i = 0; i < 7; i++) {
+        const day = config.weekly_schedule[i]
+        if (!day) continue
+        if (!day.is_open) {
+            parts.push(`${DAYS_MAP[i]}: Fechado`)
+            continue
+        }
+        const breaks = config.break_windows
+            .filter((breakWindow) => breakWindow.days.includes(i))
+            .map((breakWindow) => `${breakWindow.start_time} - ${breakWindow.end_time}`)
+        const breakText = breaks.length > 0 ? ` (intervalo: ${breaks.join(', ')})` : ''
+        parts.push(`${DAYS_MAP[i]}: ${day.open_time} - ${day.close_time}${breakText}`)
+    }
+    return parts.join(' | ')
+}
+
 function parseTime(timeStr: string): number {
     const [h, m] = timeStr.split(':').map(Number)
     return h * 60 + m
@@ -43,7 +61,7 @@ export function evaluateStoreHours(config: StoreHoursConfig, referenceDateInput:
     const m = parseInt(formatInTimeZone(referenceDateInput, tz, 'm'), 10)
     const currentTimeMinutes = h * 60 + m
 
-    const fullWeeklySchedule = formatWeeklySchedule(config)
+    const fullWeeklySchedule = formatWeeklyScheduleWithBreaks(config)
 
     let isExceptionalClosure = false
     let exceptionalClosureReason = ''

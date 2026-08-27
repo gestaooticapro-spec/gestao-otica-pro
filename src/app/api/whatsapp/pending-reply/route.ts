@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     if (!inbound) return NextResponse.json({ shouldReply: false })
 
     const { data: outbound, error: outboundError } = await (supabase.from('whatsapp_outbound_messages') as any)
-      .select('id, remote_phone, message_text, status')
+      .select('id, remote_phone, message_text, status, error_message')
       .eq('channel_id', channel.id)
       .eq('inbound_message_id', inbound.id)
       .order('created_at', { ascending: false })
@@ -52,6 +52,16 @@ export async function POST(request: Request) {
       .maybeSingle()
 
     if (outboundError) throw outboundError
+    if (outbound?.status === 'failed' || outbound?.status === 'sending') {
+      return NextResponse.json({
+        shouldReply: false,
+        terminalFailure: true,
+        outboundMessageId: outbound.id,
+        outboundStatus: outbound.status,
+        errorMessage: outbound.error_message || null,
+      })
+    }
+
     if (!outbound || outbound.status !== 'pending' || !outbound.message_text) {
       return NextResponse.json({ shouldReply: false })
     }

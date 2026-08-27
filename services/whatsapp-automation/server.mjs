@@ -26,9 +26,20 @@ const STORE_ONE_WATCHDOG_ENABLED = process.env.WHATSAPP_STORE_ONE_WATCHDOG_ENABL
 const STORE_ONE_WATCHDOG_INSTANCE_KEY = process.env.WHATSAPP_STORE_ONE_WATCHDOG_INSTANCE_KEY || 'loja-1-otica-prisma-guaira'
 const STORE_ONE_WATCHDOG_INTERVAL_MS = Math.max(30000, Number(process.env.WHATSAPP_STORE_ONE_WATCHDOG_INTERVAL_MS || 60000))
 const STORE_ONE_WATCHDOG_RESTART_COOLDOWN_MS = Math.max(60000, Number(process.env.WHATSAPP_STORE_ONE_WATCHDOG_RESTART_COOLDOWN_MS || 300000))
+const STORE_ONE_RECONCILIATION_ENABLED = process.env.WHATSAPP_STORE_ONE_RECONCILIATION_ENABLED !== 'false'
+const STORE_ONE_RECONCILIATION_INTERVAL_MS = Math.max(30000, Number(process.env.WHATSAPP_STORE_ONE_RECONCILIATION_INTERVAL_MS || 60000))
+const STORE_ONE_RECONCILIATION_LOOKBACK_MS = Math.max(60000, Number(process.env.WHATSAPP_STORE_ONE_RECONCILIATION_LOOKBACK_MS || 24 * 60 * 60 * 1000))
+const INBOUND_FORWARD_RETRY_ATTEMPTS = Math.max(1, Number(process.env.WHATSAPP_INBOUND_FORWARD_RETRY_ATTEMPTS || 5))
+const INBOUND_FORWARD_RETRY_BASE_MS = Math.max(1000, Number(process.env.WHATSAPP_INBOUND_FORWARD_RETRY_BASE_MS || 5000))
+const WEBHOOK_REPLAY_MAX_AGE_MS = Math.max(60000, Number(process.env.WHATSAPP_WEBHOOK_REPLAY_MAX_AGE_MS || 15 * 60 * 1000))
+const RECONCILIATION_PAGE_SIZE = 500
+const RECONCILIATION_MAX_PAGES = 10
 const inboundBuffers = new Map()
+const recentlyObservedProviderIds = new Map()
 let storeOneWatchdogRunning = false
 let storeOneWatchdogLastRestartAt = 0
+let storeOneReconciliationRunning = false
+const serviceStartedAt = Date.now()
 
 function requiredEnv(name) {
   const value = process.env[name]?.trim()
@@ -246,9 +257,21 @@ function extractInbound(payload) {
     || data.sender
     || data.pushNameJid
     || ''
-  const phoneSource = remoteJid === 'status@broadcast' ? participant : remoteJid
+  const alternatePhoneJid = key.remoteJidAlt
+    || data.remoteJidAlt
+    || key.senderPn
+    || data.senderPn
+    || ''
+  const phoneSource = remoteJid === 'status@broadcast'
+    ? participant
+    : (remoteJid.endsWith('@lid') ? alternatePhoneJid : remoteJid)
   const phone = String(phoneSource).split('@')[0].replace(/\D/g, '')
-  if (!phone) return null
+  if (!phone || phone.length < 10 || phone.length > 15) {
+    if (remoteJid.endsWith('@lid')) {
+      console.warn(`[webhook] ignored unresolved lid provider_message_id=${providerMessageId}`)
+    }
+    return null
+  }
   if (remoteJid === 'status@broadcast' && !statusReference) return null
 
   return {
@@ -387,6 +410,74 @@ async function appRequest(path, payload, timeoutMs = APP_REQUEST_TIMEOUT_MS) {
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function rememberProviderMessage(providerMessageId) {
+  if (!providerMessageId) return
+  recentlyObservedProviderIds.set(String(providerMessageId), Date.now())
+  const cutoff = Date.now() - Math.max(STORE_ONE_RECONCILIATION_LOOKBACK_MS * 2, 60 * 60 * 1000)
+  for (const [id, observedAt] of recentlyObservedProviderIds) {
+    if (observedAt < cutoff) recentlyObservedProviderIds.delete(id)
+  }
+}
+
+function forgetProviderMessage(providerMessageId) {
+  if (providerMessageId) recentlyObservedProviderIds.delete(String(providerMessageId))
+}
+
+function providerCreatedAtMs(inbound) {
+  const value = Date.parse(String(inbound?.providerCreatedAt || ''))
+  return Number.isFinite(value) ? value : 0
+}
+
+function isStaleWebhookReplay(inbound) {
+  const createdAt = providerCreatedAtMs(inbound)
+  return createdAt > 0 && createdAt < Date.now() - WEBHOOK_REPLAY_MAX_AGE_MS
+}
+
+async function auditWebhookEvent(instanceKey, inbound, source, processingStatus = 'received', errorMessage = null) {
+  try {
+    await appRequest('/api/whatsapp/webhook-events', {
+      instanceKey,
+      providerMessageId: String(inbound.providerMessageId),
+      phone: inbound.phone || null,
+      eventName: 'messages.upsert',
+      source,
+      providerCreatedAt: inbound.providerCreatedAt || null,
+      processingStatus,
+      errorMessage,
+      metadata: {
+        attachmentKind: inbound.attachmentKind || null,
+        recovered: source === 'reconciliation',
+      },
+    }, 10000)
+  } catch (error) {
+    console.error(`[audit] failed instance=${instanceKey} provider_message_id=${inbound.providerMessageId}:`, error)
+  }
+}
+
+async function processInboundWithRetry(instanceKey, inbound, payload, source = 'webhook') {
+  await auditWebhookEvent(instanceKey, inbound, source)
+  let lastError = null
+
+  for (let attempt = 1; attempt <= INBOUND_FORWARD_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      const result = await processInbound(instanceKey, inbound, payload)
+      await auditWebhookEvent(instanceKey, inbound, source, 'forwarded')
+      rememberProviderMessage(inbound.providerMessageId)
+      return result
+    } catch (error) {
+      lastError = error
+      console.error(`[webhook] inbound forwarding failed instance=${instanceKey} provider_message_id=${inbound.providerMessageId} attempt=${attempt}:`, error)
+      if (attempt < INBOUND_FORWARD_RETRY_ATTEMPTS) {
+        await wait(INBOUND_FORWARD_RETRY_BASE_MS * attempt)
+      }
+    }
+  }
+
+  await auditWebhookEvent(instanceKey, inbound, source, 'failed', String(lastError?.message || lastError))
+  forgetProviderMessage(inbound.providerMessageId)
+  throw lastError
 }
 
 async function recoverPendingReply(instanceKey, providerMessageId) {
@@ -827,39 +918,20 @@ async function updateDelivery(outboundMessageId, status, details = {}) {
   }
 }
 
-async function processInbound(instanceKey, inbound, payload) {
-  let status
-  try {
-    status = await appRequest('/api/whatsapp/customer-status', {
-      instanceKey,
-      ...inbound,
-      payload: prepareInboundPayloadForApp(payload, inbound.attachmentKind),
-    })
-  } catch (error) {
-    if (!isTimeoutError(error)) throw error
-
-    console.error(`[webhook] app request timed out instance=${instanceKey} provider_message_id=${inbound.providerMessageId}; checking for the outbound created by the request.`)
-    status = await recoverPendingReply(instanceKey, inbound.providerMessageId)
-    if (!status) throw error
-  }
-  logAiDiagnostics(status)
-
-  if (!status.shouldReply) {
-    console.log(`[webhook] ignored instance=${instanceKey} phone=${inbound.phone} duplicate=${Boolean(status.duplicate)}`)
-    return { ignored: true, duplicate: Boolean(status.duplicate) }
-  }
+async function deliverPendingReply(instanceKey, status) {
+  const attemptSynced = await updateDelivery(status.outboundMessageId, 'sending')
+  if (!attemptSynced) throw new Error(`Could not mark outbound ${status.outboundMessageId} as sending`)
 
   let result
   try {
     result = await sendEvolutionText(instanceKey, status.phone, status.replyText)
   } catch (error) {
     if (!isTimeoutError(error)) {
-      const failedSynced = await updateDelivery(status.outboundMessageId, 'failed', {
+      await updateDelivery(status.outboundMessageId, 'failed', {
         errorMessage: error instanceof Error ? error.message : String(error),
       })
-      if (!failedSynced) console.error('[whatsapp-automation] Failed to persist rejected reply delivery.')
     } else {
-      console.error('[whatsapp-automation] Evolution reply timed out; leaving outbound pending for reconciliation.')
+      console.error(`[whatsapp-automation] Evolution reply timed out; outbound=${status.outboundMessageId} remains sending for manual reconciliation.`)
     }
     throw error
   }
@@ -870,6 +942,41 @@ async function processInbound(instanceKey, inbound, payload) {
     payload: result,
   })
   if (!deliverySynced) console.error('[whatsapp-automation] Reply sent, but delivery sync failed.')
+  return { providerMessageId, deliverySynced }
+}
+
+async function processInbound(instanceKey, inbound, payload) {
+  let status
+  try {
+    status = await appRequest('/api/whatsapp/customer-status', {
+      instanceKey,
+      ...inbound,
+      payload: prepareInboundPayloadForApp(payload, inbound.attachmentKind),
+    })
+  } catch (error) {
+    console.error(`[webhook] app request failed instance=${instanceKey} provider_message_id=${inbound.providerMessageId}; checking whether the request created an outbound before retrying.`)
+    status = await recoverPendingReply(instanceKey, inbound.providerMessageId)
+    if (!status) throw error
+  }
+  logAiDiagnostics(status)
+
+  if (!status.shouldReply && status.duplicate) {
+    const existing = await appRequest('/api/whatsapp/pending-reply', {
+      instanceKey,
+      providerMessageId: inbound.providerMessageId,
+    }, 10000)
+    if (existing.shouldReply) status = existing
+    if (existing.terminalFailure) {
+      throw new Error(`Existing outbound ${existing.outboundMessageId} is ${existing.outboundStatus}: ${existing.errorMessage || 'delivery not recoverable automatically'}`)
+    }
+  }
+
+  if (!status.shouldReply) {
+    console.log(`[webhook] ignored instance=${instanceKey} phone=${inbound.phone} duplicate=${Boolean(status.duplicate)}`)
+    return { ignored: true, duplicate: Boolean(status.duplicate) }
+  }
+
+  const { providerMessageId, deliverySynced } = await deliverPendingReply(instanceKey, status)
 
   console.log(`[webhook] sent instance=${instanceKey} phone=${status.phone} outbound=${status.outboundMessageId} text="${previewText(status.replyText)}" deliverySynced=${deliverySynced}`)
   return { sent: true, providerMessageId, deliverySynced }
@@ -897,12 +1004,32 @@ async function flushBufferedInbound(key, reason = 'timeout') {
   const aggregatedText = messages.map((message) => message.messageText).join('\n')
   console.log(`[webhook] aggregated instance=${entry.instanceKey} phone=${entry.phone} messages=${messages.length} reason=${reason} text="${previewText(aggregatedText)}"`)
 
-  return processInbound(entry.instanceKey, {
-    phone: entry.phone,
-    providerMessageId: lastMessage.providerMessageId,
-    messageText: aggregatedText,
-    providerCreatedAt: lastMessage.providerCreatedAt,
-  }, buildAggregatedInboundPayload(messages))
+  try {
+    const result = await processInboundWithRetry(entry.instanceKey, {
+      phone: entry.phone,
+      providerMessageId: lastMessage.providerMessageId,
+      messageText: aggregatedText,
+      providerCreatedAt: lastMessage.providerCreatedAt,
+    }, buildAggregatedInboundPayload(messages), entry.source || 'webhook')
+
+    for (const message of messages) {
+      await auditWebhookEvent(entry.instanceKey, {
+        ...message,
+        phone: entry.phone,
+      }, entry.source || 'webhook', 'forwarded')
+      rememberProviderMessage(message.providerMessageId)
+    }
+    return result
+  } catch (error) {
+    for (const message of messages) {
+      await auditWebhookEvent(entry.instanceKey, {
+        ...message,
+        phone: entry.phone,
+      }, entry.source || 'webhook', 'failed', String(error?.message || error))
+      forgetProviderMessage(message.providerMessageId)
+    }
+    throw error
+  }
 }
 
 function scheduleBufferedInbound(key, entry) {
@@ -925,6 +1052,7 @@ function enqueueBufferedInbound(instanceKey, inbound) {
   const entry = existing || {
     instanceKey,
     phone: inbound.phone,
+    source: inbound.source || 'webhook',
     messages: [],
     providerMessageIds: new Set(),
     timer: null,
@@ -978,11 +1106,20 @@ async function handleMessage(instanceKey, payload) {
   const inbound = extractInbound(payload)
   if (!inbound) return { ignored: true }
 
+  if (isStaleWebhookReplay(inbound)) {
+    console.warn(`[webhook] stale replay deferred to reconciliation instance=${instanceKey} phone=${inbound.phone} provider_message_id=${inbound.providerMessageId} provider_created_at=${inbound.providerCreatedAt}`)
+    return { ignored: true, staleReplay: true }
+  }
+
+  await auditWebhookEvent(instanceKey, inbound, 'webhook')
+  rememberProviderMessage(inbound.providerMessageId)
+
   console.log(`[webhook] inbound instance=${instanceKey} phone=${inbound.phone} text="${previewText(inbound.messageText)}"`)
 
   const key = inboundBufferKey(instanceKey, inbound.phone)
   if (inbound.statusReferenceId) {
     console.log(`[webhook] status interaction ignored instance=${instanceKey} phone=${inbound.phone} provider_message_id=${inbound.providerMessageId} status_reference_id=${inbound.statusReferenceId}`)
+    await auditWebhookEvent(instanceKey, inbound, 'webhook', 'forwarded')
     return { ignored: true, statusInteraction: true }
   }
 
@@ -990,18 +1127,159 @@ async function handleMessage(instanceKey, payload) {
     if (inboundBuffers.has(key)) {
       await flushBufferedInbound(key, 'attachment_bypass')
     }
-    return processInbound(instanceKey, inbound, payload)
+    return processInboundWithRetry(instanceKey, inbound, payload)
   }
 
   const normalizedText = normalizeAggregationText(inbound.messageText)
   if (!normalizedText) {
-    return processInbound(instanceKey, inbound, payload)
+    return processInboundWithRetry(instanceKey, inbound, payload)
   }
 
   return enqueueBufferedInbound(instanceKey, {
     ...inbound,
     messageText: normalizedText,
   })
+}
+
+function evolutionMessageRecords(payload) {
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.records)) return payload.records
+  if (Array.isArray(payload?.messages)) return payload.messages
+  if (Array.isArray(payload?.messages?.records)) return payload.messages.records
+  if (Array.isArray(payload?.messages?.records?.records)) return payload.messages.records.records
+  return []
+}
+
+function evolutionRecordTimestampMs(record) {
+  const raw = record?.messageTimestamp
+  const seconds = Number(typeof raw === 'object' ? raw?.low : raw)
+  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 0
+}
+
+function evolutionRecordAsWebhookPayload(instanceKey, record) {
+  return {
+    event: 'messages.upsert',
+    instance: instanceKey,
+    data: {
+      ...record,
+      key: record?.key || {},
+      message: record?.message || {},
+      messageTimestamp: record?.messageTimestamp,
+    },
+  }
+}
+
+async function findRecentEvolutionMessages(instanceKey, cutoff) {
+  const records = []
+  let total = 0
+  let pages = 1
+
+  for (let page = 0; page < Math.min(pages, RECONCILIATION_MAX_PAGES); page += 1) {
+    const response = await evolutionRequest(`/chat/findMessages/${encodeURIComponent(instanceKey)}`, {
+      method: 'POST',
+      body: JSON.stringify({
+        where: {},
+        take: RECONCILIATION_PAGE_SIZE,
+        skip: page * RECONCILIATION_PAGE_SIZE,
+      }),
+    })
+    const pageRecords = evolutionMessageRecords(response)
+    records.push(...pageRecords)
+    total = Number(response?.messages?.total || records.length)
+    pages = Math.max(1, Number(response?.messages?.pages || Math.ceil(total / RECONCILIATION_PAGE_SIZE)))
+
+    const timestamps = pageRecords.map(evolutionRecordTimestampMs).filter((value) => value > 0)
+    if (pageRecords.length < RECONCILIATION_PAGE_SIZE || (timestamps.length && Math.min(...timestamps) < cutoff)) break
+  }
+
+  return { records, total, pages }
+}
+
+async function knownInboundProviderIds(instanceKey, providerMessageIds) {
+  if (providerMessageIds.length === 0) return { knownIds: new Set(), pendingReplies: [] }
+  const knownIds = new Set()
+  const pendingReplies = []
+
+  for (let offset = 0; offset < providerMessageIds.length; offset += 500) {
+    const result = await appRequest('/api/whatsapp/reconciliation-known', {
+      instanceKey,
+      providerMessageIds: providerMessageIds.slice(offset, offset + 500),
+    }, 15000)
+    for (const id of Array.isArray(result.knownProviderMessageIds) ? result.knownProviderMessageIds : []) {
+      knownIds.add(id)
+    }
+    pendingReplies.push(...(Array.isArray(result.pendingReplies) ? result.pendingReplies : []))
+  }
+
+  return { knownIds, pendingReplies }
+}
+
+async function runStoreOneMessageReconciliation() {
+  if (!STORE_ONE_RECONCILIATION_ENABLED || storeOneReconciliationRunning) return
+  storeOneReconciliationRunning = true
+
+  try {
+    const cutoff = Math.max(serviceStartedAt - STORE_ONE_RECONCILIATION_LOOKBACK_MS, Date.now() - STORE_ONE_RECONCILIATION_LOOKBACK_MS)
+    const response = await findRecentEvolutionMessages(STORE_ONE_WATCHDOG_INSTANCE_KEY, cutoff)
+    const allRecords = response.records
+    const recentRecords = allRecords
+      .filter((record) => record?.key?.fromMe === false)
+      .filter((record) => evolutionRecordTimestampMs(record) >= cutoff)
+      .filter((record) => record?.key?.id && !recentlyObservedProviderIds.has(String(record.key.id)))
+      .sort((left, right) => evolutionRecordTimestampMs(left) - evolutionRecordTimestampMs(right))
+    const { knownIds, pendingReplies } = await knownInboundProviderIds(
+      STORE_ONE_WATCHDOG_INSTANCE_KEY,
+      recentRecords.map((record) => String(record.key.id))
+    )
+    const candidates = recentRecords.filter((record) => !knownIds.has(String(record.key.id)))
+
+    console.log(`[reconciliation] scan instance=${STORE_ONE_WATCHDOG_INSTANCE_KEY} records=${allRecords.length} recent=${recentRecords.length} missing=${candidates.length} pending_replies=${pendingReplies.length} total=${response.total} pages=${response.pages}`)
+
+    for (const pending of pendingReplies) {
+      const delivered = await deliverPendingReply(STORE_ONE_WATCHDOG_INSTANCE_KEY, pending)
+      await auditWebhookEvent(STORE_ONE_WATCHDOG_INSTANCE_KEY, {
+        providerMessageId: pending.providerMessageId,
+        phone: pending.phone,
+      }, 'reconciliation', 'forwarded')
+      rememberProviderMessage(pending.providerMessageId)
+      console.warn(`[reconciliation] delivered pending reply instance=${STORE_ONE_WATCHDOG_INSTANCE_KEY} outbound=${pending.outboundMessageId} provider_message_id=${delivered.providerMessageId}`)
+    }
+
+    for (const record of recentRecords) {
+      if (knownIds.has(String(record.key.id))) rememberProviderMessage(record.key.id)
+    }
+
+    for (const record of candidates) {
+      const payload = evolutionRecordAsWebhookPayload(STORE_ONE_WATCHDOG_INSTANCE_KEY, record)
+      const inbound = extractInbound(payload)
+      if (!inbound) {
+        rememberProviderMessage(record.key.id)
+        continue
+      }
+
+      if (inbound.statusReferenceId) {
+        await auditWebhookEvent(STORE_ONE_WATCHDOG_INSTANCE_KEY, inbound, 'reconciliation', 'forwarded')
+        rememberProviderMessage(record.key.id)
+        continue
+      }
+
+      console.warn(`[reconciliation] recovered instance=${STORE_ONE_WATCHDOG_INSTANCE_KEY} phone=${inbound.phone} provider_message_id=${inbound.providerMessageId} text="${previewText(inbound.messageText)}"`)
+      const normalizedText = normalizeAggregationText(inbound.messageText)
+      if (!inbound.attachmentKind && normalizedText) {
+        enqueueBufferedInbound(STORE_ONE_WATCHDOG_INSTANCE_KEY, {
+          ...inbound,
+          messageText: normalizedText,
+          source: 'reconciliation',
+        })
+      } else {
+        await processInboundWithRetry(STORE_ONE_WATCHDOG_INSTANCE_KEY, inbound, payload, 'reconciliation')
+      }
+    }
+  } catch (error) {
+    console.error(`[reconciliation] store=1 instance=${STORE_ONE_WATCHDOG_INSTANCE_KEY} failed:`, error)
+  } finally {
+    storeOneReconciliationRunning = false
+  }
 }
 
 async function handleConnection(instanceKey, payload) {
@@ -1149,4 +1427,14 @@ if (STORE_ONE_WATCHDOG_ENABLED) {
     void runStoreOneConnectionWatchdog()
   }, STORE_ONE_WATCHDOG_INTERVAL_MS)
   console.log(`[watchdog] store=1 enabled instance=${STORE_ONE_WATCHDOG_INSTANCE_KEY} interval_ms=${STORE_ONE_WATCHDOG_INTERVAL_MS}`)
+}
+
+if (STORE_ONE_RECONCILIATION_ENABLED) {
+  setTimeout(() => {
+    void runStoreOneMessageReconciliation()
+  }, 10000)
+  setInterval(() => {
+    void runStoreOneMessageReconciliation()
+  }, STORE_ONE_RECONCILIATION_INTERVAL_MS)
+  console.log(`[reconciliation] store=1 enabled instance=${STORE_ONE_WATCHDOG_INSTANCE_KEY} interval_ms=${STORE_ONE_RECONCILIATION_INTERVAL_MS} lookback_ms=${STORE_ONE_RECONCILIATION_LOOKBACK_MS}`)
 }

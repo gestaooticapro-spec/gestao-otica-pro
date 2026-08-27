@@ -172,7 +172,8 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
   useEffect(() => {
     if (channel?.connection_status !== 'connecting') return
 
-    const timer = window.setInterval(() => {
+    const refreshConnection = () => {
+      if (document.visibilityState !== 'visible') return
       startTransition(async () => {
         const result = await refreshWhatsAppConnection(storeId)
         if (result.success) {
@@ -183,9 +184,16 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
           }
         }
       })
-    }, 5000)
+    }
 
-    return () => window.clearInterval(timer)
+    refreshConnection()
+    const timer = window.setInterval(refreshConnection, 15_000)
+    document.addEventListener('visibilitychange', refreshConnection)
+
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', refreshConnection)
+    }
   }, [channel?.connection_status, storeId])
 
   const status = channel?.connection_status ?? 'unknown'

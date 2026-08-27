@@ -11,7 +11,7 @@ export const runtime = 'nodejs'
 
 const RequestSchema = z.object({
   outboundMessageId: z.coerce.number().int().positive(),
-  status: z.enum(['sent', 'failed']),
+  status: z.enum(['sending', 'sent', 'failed']),
   providerMessageId: z.string().trim().max(255).optional(),
   errorMessage: z.string().trim().max(2000).optional(),
   payload: z.unknown().optional(),
@@ -59,7 +59,9 @@ export async function POST(request: Request) {
             outboundType: canonical.outboundType,
           }
         : undefined,
-      delivery: (parsed.data.payload ?? null) as Json,
+      ...(parsed.data.status === 'sending'
+        ? { delivery_attempt_started_at: new Date().toISOString() }
+        : { delivery: (parsed.data.payload ?? null) as Json }),
     }
 
     const { error } = await (supabase.from('whatsapp_outbound_messages') as any)

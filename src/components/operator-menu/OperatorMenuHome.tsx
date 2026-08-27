@@ -1,10 +1,25 @@
 'use client';
 
-import { ShoppingCart, Archive, LogOut, ArrowRight, Store, ArrowLeft } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ShoppingCart, Archive, LogOut, ArrowRight, Store, ArrowLeft, CircleAlert } from 'lucide-react';
 import Image from 'next/image';
+import Link from 'next/link';
 
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import FullscreenToggleButton from '@/components/FullscreenToggleButton';
+import VersionHistoryModal from '@/components/VersionHistoryModal';
+import { CURRENT_VERSION } from '@/lib/release-history';
+
+function saoPauloDay() {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Sao_Paulo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).formatToParts(new Date());
+    const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value || '';
+    return `${value('year')}-${value('month')}-${value('day')}`;
+}
 
 interface OperatorMenuHomeProps {
     storeId: number;
@@ -17,6 +32,7 @@ interface OperatorMenuHomeProps {
 }
 
 export default function OperatorMenuHome({
+    storeId,
     storeName,
     logoUrl,
     onNavigate,
@@ -25,6 +41,18 @@ export default function OperatorMenuHome({
     backLabel = 'Voltar'
 }: OperatorMenuHomeProps) {
     const { preference } = useBackgroundPreference();
+    const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false);
+    const [shouldPulseAttention, setShouldPulseAttention] = useState(false);
+    const attentionVisitKey = `daily-health-last-opened:${storeId}`;
+
+    useEffect(() => {
+        setShouldPulseAttention(window.localStorage.getItem(attentionVisitKey) !== saoPauloDay());
+    }, [attentionVisitKey]);
+
+    const markAttentionAsSeen = () => {
+        window.localStorage.setItem(attentionVisitKey, saoPauloDay());
+        setShouldPulseAttention(false);
+    };
 
     return (
         <div className="min-h-screen relative flex flex-col items-center justify-center p-6 overflow-y-auto md:overflow-hidden bg-slate-950 font-sans transition-colors duration-500">
@@ -124,10 +152,29 @@ export default function OperatorMenuHome({
                     </button>
                 </div>
 
-                <div className="text-center opacity-40 hover:opacity-100 transition-opacity duration-300 mt-8 mb-8 md:mb-0">
-                    <p className="text-[10px] text-slate-300 font-medium uppercase tracking-[0.3em]">
-                        Powered by <span className="font-bold text-white">MBOptical</span>
+                <div className="mt-8 mb-8 text-center md:mb-0">
+                    <p className="text-[10px] font-medium uppercase tracking-[0.3em]">
+                        <span className="inline-block text-slate-300/40 transition duration-200 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.6)]">
+                            Powered by <span className="font-bold">MBOptical</span>
+                        </span>
+                        <span className="mx-2 text-slate-500/40">-</span>
+                        <button
+                            type="button"
+                            onClick={() => setIsVersionHistoryOpen(true)}
+                            className="normal-case tracking-normal text-slate-300/40 underline-offset-4 transition duration-200 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.6)] focus-visible:text-white focus-visible:drop-shadow-[0_0_8px_rgba(255,255,255,0.6)] focus-visible:underline"
+                            aria-label={`Abrir historico da versao ${CURRENT_VERSION}`}
+                        >
+                            Versão {CURRENT_VERSION}
+                        </button>
                     </p>
+                    <Link
+                        href={`/dashboard/loja/${storeId}/saude-da-loja`}
+                        onClick={markAttentionAsSeen}
+                        className={`mt-2 inline-flex items-center gap-1.5 text-[10px] font-medium transition duration-200 hover:text-emerald-100 hover:drop-shadow-[0_0_8px_rgba(110,231,183,0.8)] focus-visible:text-emerald-100 focus-visible:drop-shadow-[0_0_8px_rgba(110,231,183,0.8)] ${shouldPulseAttention ? 'text-emerald-200 motion-safe:animate-pulse' : 'text-slate-500'}`}
+                    >
+                        <CircleAlert className="h-3.5 w-3.5" />
+                        Pontos de Atenção
+                    </Link>
                 </div>
             </div>
 
@@ -148,6 +195,7 @@ export default function OperatorMenuHome({
                     <span className="text-xs font-bold uppercase tracking-wider">{backLabel}</span>
                 </button>
             )}
+            <VersionHistoryModal isOpen={isVersionHistoryOpen} onClose={() => setIsVersionHistoryOpen(false)} />
         </div>
     );
 }

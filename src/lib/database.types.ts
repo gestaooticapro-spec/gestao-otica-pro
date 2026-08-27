@@ -705,7 +705,7 @@ export interface Database {
           remote_phone: string
           message_text: string
           message_type: string
-          status: 'pending' | 'sent' | 'failed' | 'cancelled'
+          status: 'pending' | 'sending' | 'sent' | 'failed' | 'cancelled'
           payload: Json | null
           error_message: string | null
           sent_at: string | null
@@ -721,7 +721,7 @@ export interface Database {
           remote_phone: string
           message_text: string
           message_type?: string
-          status?: 'pending' | 'sent' | 'failed' | 'cancelled'
+          status?: 'pending' | 'sending' | 'sent' | 'failed' | 'cancelled'
           payload?: Json | null
           error_message?: string | null
           sent_at?: string | null
@@ -729,7 +729,7 @@ export interface Database {
         }
         Update: {
           provider_message_id?: string | null
-          status?: 'pending' | 'sent' | 'failed' | 'cancelled'
+          status?: 'pending' | 'sending' | 'sent' | 'failed' | 'cancelled'
           payload?: Json | null
           error_message?: string | null
           sent_at?: string | null

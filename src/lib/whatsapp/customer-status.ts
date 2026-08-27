@@ -743,7 +743,7 @@ function isPaymentReminderAcknowledgement(message: string | null | undefined) {
 }
 
 function paymentReminderAcknowledgementText() {
-  return 'Que bom que recebeu. Se precisar de alguma coisa, é só chamar.'
+  return 'De nada! Estamos à disposição para ajudar.'
 }
 
 function looksLikePixRequest(message: string | null | undefined) {
@@ -2243,7 +2243,7 @@ export async function resolveCustomerStatus(
     return { shouldReply: false }
   }
 
-  const { data: inbound, error: inboundError } = await (supabase.from('whatsapp_inbound_messages') as any)
+  const { data: insertedInbound, error: inboundError } = await (supabase.from('whatsapp_inbound_messages') as any)
     .insert({
       tenant_id: channel.tenant_id,
       store_id: channel.store_id,
@@ -2258,10 +2258,22 @@ export async function resolveCustomerStatus(
     .select('id')
     .single()
 
+  let inbound = insertedInbound
   if (inboundError?.code === '23505') {
-    return { shouldReply: false, duplicate: true }
+    const { data: existingInbound, error: existingInboundError } = await (supabase.from('whatsapp_inbound_messages') as any)
+      .select('id, status, created_at')
+      .eq('channel_id', channel.id)
+      .eq('provider_message_id', input.providerMessageId)
+      .maybeSingle()
+    if (existingInboundError) throw existingInboundError
+
+    const oldEnoughToResume = existingInbound?.status === 'received'
+      && new Date(existingInbound.created_at).getTime() < Date.now() - 90_000
+    if (!oldEnoughToResume) return { shouldReply: false, duplicate: true }
+    inbound = existingInbound
   }
-  if (inboundError) throw inboundError
+  if (inboundError && inboundError.code !== '23505') throw inboundError
+  if (!inbound) throw new Error('Inbound do WhatsApp nao foi criado nem recuperado.')
 
   const preferenceCommand = installmentReminderPreferenceCommand(effectiveMessageText)
   const preferenceState = preferenceCommand?.requiresReminderContext

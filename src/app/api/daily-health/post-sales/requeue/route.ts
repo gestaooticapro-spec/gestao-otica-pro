@@ -24,7 +24,7 @@ export async function POST(request: Request) {
 
   try {
     const result = await requeuePostSalesForDailyHealth(body.data.storeId)
-    await generateDailyStoreHealthReport(body.data.storeId)
+    await generateDailyStoreHealthReport(body.data.storeId, undefined, { force: true })
     return NextResponse.json({ result }, { headers: { 'Cache-Control': 'private, no-store' } })
   } catch (error) {
     console.error('[Daily health] failed to requeue post-sales', error)

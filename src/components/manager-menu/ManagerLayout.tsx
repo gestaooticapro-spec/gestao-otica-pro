@@ -24,6 +24,7 @@ import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/Backg
 import { OperatorLayout } from '@/components/operator-menu';
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
 import FullscreenToggleButton from '@/components/FullscreenToggleButton';
+import VersionHistoryStats from '@/components/VersionHistoryStats';
 
 type ManualManagerState = 'home' | 'gerencia' | 'operator';
 type ManagerState = ManualManagerState | 'page';
@@ -314,6 +315,7 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl }:
                                 );
                             })}
                         </div>
+                        {storeId === 1 && <div className="mt-4"><VersionHistoryStats /></div>}
                     </div>
                 )}
             </div>

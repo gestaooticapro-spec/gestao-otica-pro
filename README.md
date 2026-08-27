@@ -136,6 +136,20 @@ Antes de considerar um deploy completo de WhatsApp, normalmente precisamos valid
 - Para mudancas de configuracao por loja, a fonte canonica costuma ficar em `stores.settings`.
 - Em mudancas operacionais, priorize comportamento confiavel e auditavel antes de sofisticacao.
 
+## Versionamento de deploy
+
+`1.02.00` e o deploy mais antigo atualmente registrado neste repositorio. Versoes anteriores so devem ser acrescentadas se houver uma fonte confiavel para recupera-las.
+
+O rodape da Central de Operacoes exibe a versao atual e permite abrir o historico de deploys. O registro fica em `src/lib/release-history.ts`.
+
+- `PENDING_RELEASE_VERSION` e aberta na primeira alteracao apos um deploy, usando o proximo patch (por exemplo, `1.02.04`), e permanece assim ate o deploy.
+- `PENDING_RELEASE_CHANGES` e o diario das alteracoes feitas desde o ultimo deploy. A primeira alteracao abre a versao pendente; as seguintes apenas acrescentam descricoes a essa mesma versao.
+- Essa lista deve refletir somente o codigo que sera entregue: se uma implementacao for desfeita, abandonada ou substituida antes do deploy, remova ou atualize o item correspondente.
+- `RELEASE_HISTORY` guarda apenas deploys concluidos e preserva todas as versoes antigas.
+- Depois que o deploy for concluido, inserir a versao pendente no inicio de `RELEASE_HISTORY`, mover para ela as mudancas pendentes e limpar `PENDING_RELEASE_VERSION` e `PENDING_RELEASE_CHANGES`.
+- Alterar a linha/minor, como `1.02.xx` -> `1.03.00`, somente mediante solicitacao expressa do usuario.
+- O modal mostra inicialmente os tres deploys mais recentes e carrega versoes mais antigas conforme a rolagem; o arquivo nao deve descartar historico antigo.
+
 ## Arquivos de contexto util
 
 - [WHATSAPP_VPS_EVOLUTION_PLAN.md](/G:/projetos/gestao-otica-pro/WHATSAPP_VPS_EVOLUTION_PLAN.md:1)
