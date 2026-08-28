@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { isSicrediPilotStoreCnpj } from '@/lib/pix/sicredi-availability'
+import { hasPixMachineGrant } from '@/lib/pix/pix-maquininha-access'
 import type { StoreSettings } from '@/lib/store-modules'
 
 // A maquininha deve continuar exibindo o QR Code recente mesmo que o atendimento
@@ -16,16 +17,14 @@ export async function GET(_request: Request, context: { params: Promise<{ storeI
 
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ message: 'Nao autenticado.' }, { status: 401 })
-
-  const profile = await getProfileByAdmin(user.id) as any
-  if (!profile?.tenant_id || (profile.role !== 'admin' && profile.store_id !== storeId)) {
-    return NextResponse.json({ message: 'Acesso negado.' }, { status: 403 })
-  }
+  const profile = user ? await getProfileByAdmin(user.id) as any : null
+  const hasMachineGrant = await hasPixMachineGrant(storeId)
+  const hasDashboardAccess = Boolean(profile?.tenant_id && (profile.role === 'admin' || profile.store_id === storeId))
+  if (!hasDashboardAccess && !hasMachineGrant) return NextResponse.json({ message: 'Acesso negado.' }, { status: 403 })
 
   const admin: any = createAdminClient()
   const { data: store } = await admin.from('stores').select('id, tenant_id, cnpj, settings').eq('id', storeId).maybeSingle()
-  if (!store || store.tenant_id !== profile.tenant_id) return NextResponse.json({ message: 'Acesso negado.' }, { status: 403 })
+  if (!store || (hasDashboardAccess && store.tenant_id !== profile.tenant_id)) return NextResponse.json({ message: 'Acesso negado.' }, { status: 403 })
   const settings = (store.settings || {}) as StoreSettings
   if (!isSicrediPilotStoreCnpj(store.cnpj) || settings.pix_provider !== 'sicredi') {
     return NextResponse.json({ message: 'Modo maquininha Pix indisponivel para esta loja.' }, { status: 403 })
