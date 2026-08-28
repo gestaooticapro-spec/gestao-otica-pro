@@ -3860,6 +3860,59 @@ export async function criarVendaExpressPixPendente(input: {
   return { success: true, vendaId: Number(venda.id) }
 }
 
+// A venda expressa e criada provisoriamente antes da emissao do Pix. Depois do
+// cancelamento confirmado pelo Sicredi, ela deixa de representar uma venda ativa
+// e o operador pode voltar ao carrinho para escolher outra forma de pagamento.
+export async function descartarVendaExpressPixCancelado(input: {
+  storeId: number
+  vendaId: number
+  chargeId: number
+}) {
+  const supabaseAdmin = createAdminClient()
+  const { data: { user } } = await createClient().auth.getUser()
+  if (!user) return { success: false, message: 'Sem permissao.' }
+
+  const profile = await getProfileByAdmin(user.id) as any
+  const storeId = Number(input.storeId)
+  const vendaId = Number(input.vendaId)
+  const chargeId = Number(input.chargeId)
+  if (!profile?.tenant_id || !Number.isSafeInteger(storeId) || !Number.isSafeInteger(vendaId) || !Number.isSafeInteger(chargeId)) {
+    return { success: false, message: 'Dados da venda expressa invalidos.' }
+  }
+  if (profile.role !== 'admin' && Number(profile.store_id) !== storeId) {
+    return { success: false, message: 'Sem permissao para esta loja.' }
+  }
+
+  const { data: charge } = await (supabaseAdmin.from('pix_sale_charges') as any)
+    .select('id, venda_id, status')
+    .eq('id', chargeId)
+    .eq('store_id', storeId)
+    .maybeSingle()
+  if (!charge || Number(charge.venda_id) !== vendaId || charge.status !== 'CANCELLED') {
+    return { success: false, message: 'A cobranca Pix precisa estar cancelada antes de voltar ao carrinho.' }
+  }
+
+  const { count: paymentsCount, error: paymentsError } = await (supabaseAdmin.from('pagamentos') as any)
+    .select('id', { count: 'exact', head: true })
+    .eq('venda_id', vendaId)
+  if (paymentsError || Number(paymentsCount || 0) > 0) {
+    return { success: false, message: 'Esta venda ja possui pagamento e nao pode voltar ao carrinho.' }
+  }
+
+  const { data: releasedSale, error: saleError } = await (supabaseAdmin.from('vendas') as any)
+    .update({ status: 'Cancelada', data_fechamento: new Date().toISOString(), valor_restante: 0 })
+    .eq('id', vendaId)
+    .eq('store_id', storeId)
+    .eq('tenant_id', profile.tenant_id)
+    .eq('status', 'Em Aberto')
+    .select('id')
+    .maybeSingle()
+  if (saleError || !releasedSale) return { success: false, message: 'O Pix foi cancelado, mas nao foi possivel liberar o carrinho.' }
+
+  revalidatePath(`/dashboard/loja/${storeId}/pdv-express`)
+  return { success: true, message: 'Pix cancelado. O carrinho foi liberado.' }
+}
+
 export async function finalizarVendaExpress(formData: FormData) {
   const supabaseAdmin = createAdminClient()
 

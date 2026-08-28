@@ -22,18 +22,22 @@ export default function PixSaleChargeModal({
   vendaId,
   amount,
   requestCreationOnOpen = false,
+  requireCancellationToClose = false,
   onClose,
   onPaymentAdded,
   onChargeChanged,
+  onPendingChargeCancelled,
 }: {
   isOpen: boolean
   storeId: number
   vendaId: number
   amount: number
   requestCreationOnOpen?: boolean
+  requireCancellationToClose?: boolean
   onClose: () => void
   onPaymentAdded: (charge?: PixSaleCharge) => Promise<void>
   onChargeChanged?: (charge: PixSaleCharge | null) => void
+  onPendingChargeCancelled?: (charge: PixSaleCharge) => Promise<boolean>
 }) {
   const [mounted, setMounted] = useState(false)
   const [charge, setCharge] = useState<PixSaleCharge | null>(null)
@@ -41,6 +45,8 @@ export default function PixSaleChargeModal({
   const [isAuthOpen, setIsAuthOpen] = useState(false)
   const [isWorking, startTransition] = useTransition()
   const [pendingOperation, setPendingOperation] = useState<'create' | 'cancel' | null>(null)
+  const [isCloseConfirmationOpen, setIsCloseConfirmationOpen] = useState(false)
+  const [isFinishingCancellation, setIsFinishingCancellation] = useState(false)
   const automaticallyFinishedChargeId = useRef<number | null>(null)
   const automaticCreationRequested = useRef(false)
 
@@ -49,6 +55,7 @@ export default function PixSaleChargeModal({
     if (!isOpen) {
       setIsAuthOpen(false)
       setPendingOperation(null)
+      setIsCloseConfirmationOpen(false)
       automaticCreationRequested.current = false
       return
     }
@@ -146,8 +153,39 @@ export default function PixSaleChargeModal({
       }
       setCharge(result.data)
       onChargeChanged?.(result.data)
+      if (operation === 'cancel' && requireCancellationToClose && onPendingChargeCancelled) {
+        setIsFinishingCancellation(true)
+        const finished = await onPendingChargeCancelled(result.data)
+        setIsFinishingCancellation(false)
+        if (!finished) {
+          toast.error('O Pix foi cancelado, mas nao foi possivel liberar o carrinho.')
+          return
+        }
+        toast.success('Cobranca Pix cancelada. Voce pode editar a venda.')
+        onClose()
+        return
+      }
       toast.success(operation === 'create' ? 'QR Code da venda gerado.' : 'Cobrança Pix cancelada.')
     })
+  }
+
+  const requestClose = () => {
+    if (!requireCancellationToClose) return onClose()
+    if (charge?.status === 'CREATING') {
+      toast.info('Aguarde a conclusao da geracao do Pix antes de sair.')
+      return
+    }
+    if (charge?.status === 'PENDING') {
+      setIsCloseConfirmationOpen(true)
+      return
+    }
+    onClose()
+  }
+
+  const cancelAndReturnToSale = () => {
+    setIsCloseConfirmationOpen(false)
+    setPendingOperation('cancel')
+    setIsAuthOpen(true)
   }
 
   const refresh = () => {
@@ -182,7 +220,7 @@ export default function PixSaleChargeModal({
         <div className="max-h-[calc(100vh-6rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-cyan-500/20 bg-slate-950 shadow-2xl">
           <header className="flex items-center justify-between border-b border-cyan-500/20 bg-cyan-950/40 px-5 py-4">
             <div className="flex items-center gap-3"><div className="rounded-lg bg-cyan-500/15 p-2 text-cyan-300"><QrCode className="h-5 w-5" /></div><div><h3 className="font-bold text-cyan-100">Pix da venda #{vendaId}</h3><p className="text-[10px] font-bold uppercase tracking-widest text-cyan-400/60">Sicredi · cobrança dinâmica</p></div></div>
-            <button onClick={onClose} className="rounded-full p-2 text-slate-400 hover:bg-white/5 hover:text-white"><X className="h-5 w-5" /></button>
+            <button onClick={requestClose} disabled={isFinishingCancellation} className="rounded-full p-2 text-slate-400 hover:bg-white/5 hover:text-white disabled:opacity-50"><X className="h-5 w-5" /></button>
           </header>
           <div className="space-y-5 p-5">
             <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 text-center"><p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Valor da cobrança</p><p className="mt-1 text-4xl font-black text-white">R$ {money(charge?.amount ?? amount)}</p>{status && <p className="mt-3 text-xs font-bold text-amber-300">{status}</p>}{expiresAt && charge?.status === 'PENDING' && <p className="mt-1 text-[10px] text-slate-500">Válido até {expiresAt}</p>}</div>
@@ -190,13 +228,22 @@ export default function PixSaleChargeModal({
             {charge ? <>
               <div><label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Pix copia e cola</label><div className="mt-1 rounded-lg border border-white/10 bg-black/20 p-3 font-mono text-[10px] break-all text-slate-300">{charge.pixCopyPaste || 'Código ainda não disponível.'}</div></div>
               <div className="grid grid-cols-2 gap-3"><button onClick={() => void copy()} disabled={!charge.pixCopyPaste} className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-3 py-3 text-xs font-bold text-cyan-200 disabled:opacity-50"><Clipboard className="h-4 w-4" /> Copiar código</button><button onClick={refresh} disabled={isWorking} className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-xs font-bold text-slate-300 disabled:opacity-50"><RefreshCw className="h-4 w-4" /> {charge.status === 'ERROR' ? 'Conferir situação' : 'Conferir pagamento'}</button></div>
-              {charge.status === 'PENDING' && <button onClick={() => { setPendingOperation('cancel'); setIsAuthOpen(true) }} disabled={isWorking} className="w-full rounded-xl border border-rose-500/20 bg-rose-500/10 py-3 text-xs font-bold text-rose-200">Cancelar cobrança</button>}
+              {charge.status === 'PENDING' && <button onClick={cancelAndReturnToSale} disabled={isWorking || isFinishingCancellation} className="w-full rounded-xl border border-rose-500/20 bg-rose-500/10 py-3 text-xs font-bold text-rose-200 disabled:opacity-50">{requireCancellationToClose ? 'Cancelar Pix e voltar a venda' : 'Cancelar cobrança'}</button>}
               {(charge.status === 'EXPIRED' || charge.status === 'CANCELLED') && <button onClick={() => setCharge(null)} disabled={isWorking} className="w-full rounded-xl border border-cyan-500/20 bg-cyan-500/10 py-3 text-xs font-bold text-cyan-100">Gerar novo QR Code</button>}
               {charge.status === 'ERROR' && <p className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-100">Confira a situação desta cobrança antes de emitir outro QR Code.</p>}
             </> : isLoadingCharge ? <div className="flex items-center justify-center gap-2 py-8 text-sm text-slate-400"><Loader2 className="h-5 w-5 animate-spin" /> Conferindo cobrança existente...</div> : <><p className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-xs text-slate-400">O QR Code ainda não baixa a venda. O pagamento será registrado somente após a confirmação do Sicredi.</p><button onClick={() => { setPendingOperation('create'); setIsAuthOpen(true) }} disabled={isWorking || amount <= 0} className="flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-500 py-4 text-sm font-black uppercase tracking-wide text-cyan-950 disabled:opacity-50">{isWorking ? <Loader2 className="h-5 w-5 animate-spin" /> : <CheckCircle2 className="h-5 w-5" />} Gerar QR Code</button></>}
           </div>
         </div>
       </div>
+      {isCloseConfirmationOpen && (
+        <div className="fixed inset-0 z-[160] grid place-items-center bg-black/75 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl border border-rose-400/20 bg-slate-950 p-6 text-center shadow-2xl">
+            <h4 className="text-lg font-black text-white">Cancelar Pix para voltar?</h4>
+            <p className="mt-3 text-sm text-slate-400">Para alterar itens ou escolher outra forma de pagamento, cancele esta cobrança Pix. Depois disso, este QR Code não poderá mais ser pago.</p>
+            <div className="mt-6 grid grid-cols-2 gap-3"><button type="button" onClick={() => setIsCloseConfirmationOpen(false)} className="rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-xs font-bold text-slate-200">Continuar aguardando</button><button type="button" onClick={cancelAndReturnToSale} className="rounded-xl bg-rose-500 px-3 py-3 text-xs font-black text-white">Cancelar Pix</button></div>
+          </div>
+        </div>
+      )}
       <EmployeeAuthModal storeId={storeId} isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} onSuccess={handleAuth} title={pendingOperation === 'cancel' ? 'Autorizar cancelamento do Pix' : 'Autorizar geração do Pix'} description="Insira seu PIN para continuar." purpose={pendingOperation === 'cancel' ? 'pix_charge_cancel' : 'pix_charge_create'} authorizationContext={pendingOperation === 'cancel' && charge ? String(charge.id) : `sale:${vendaId}:${amount.toFixed(2)}`} />
     </>,
     document.body,

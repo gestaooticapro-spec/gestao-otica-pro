@@ -1,13 +1,14 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
-import { X, CheckCircle, Printer, Plus, CreditCard, FileText, Loader2, Search } from 'lucide-react'
+import { X, CheckCircle, Printer, Plus, CreditCard, FileText, Loader2, Search, QrCode } from 'lucide-react'
 import FinanciamentoBox from '@/components/vendas/FinanciamentoBox'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import FiscalEmissionModal from '@/components/modals/FiscalEmissionModal'
 import {
     finalizarVendaExpress,
     criarVendaExpressPixPendente,
+    descartarVendaExpressPixCancelado,
     criarVendaParcialCarnê,
     searchCustomersByName,
     markPaymentsAsPrinted,
@@ -310,6 +311,7 @@ export default function PaymentModal({
                                                         </select>
                                                     </div>
                                                 </div>
+                                                {formaPagamento !== 'Pix Sicredi' && <>
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                                                     <div>
                                                         <label className={labelStyle}>Parcelas</label>
@@ -329,6 +331,9 @@ export default function PaymentModal({
                                                     <label className={labelStyle}>Observação / CPF</label>
                                                     <input type="text" value={cpfNota} onChange={(e) => setCpfNota(e.target.value)} placeholder="Ex: CPF na nota..." className={inputStyle} />
                                                 </div>
+                                                </>}
+
+                                                {formaPagamento === 'Pix Sicredi' && <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-4 text-sm text-cyan-100">O QR Code será gerado após a autorização por PIN. Enquanto ele estiver pendente, cancele a cobrança para alterar esta venda.</div>}
 
                                                 <button
                                                     onClick={handlePrePayment}
@@ -337,8 +342,8 @@ export default function PaymentModal({
                                                 >
                                                     {isProcessing ? <Loader2 className="animate-spin h-5 w-5" /> : (
                                                         <>
-                                                            <span>Confirmar Pagamento</span>
-                                                            <CheckCircle className="h-5 w-5" />
+                                                            <span>{formaPagamento === 'Pix Sicredi' ? 'Gerar Pix da venda' : 'Confirmar Pagamento'}</span>
+                                                            {formaPagamento === 'Pix Sicredi' ? <QrCode className="h-5 w-5" /> : <CheckCircle className="h-5 w-5" />}
                                                         </>
                                                     )}
                                                 </button>
@@ -416,7 +421,16 @@ export default function PaymentModal({
                     storeId={storeId}
                     vendaId={vendaIdGerada}
                     amount={parseFloat(valorPago.replace(/[^\d,]/g, '').replace(',', '.')) || 0}
-                    onClose={() => setIsPixSaleModalOpen(false)}
+                    requireCancellationToClose
+                    onClose={() => { setIsPixSaleModalOpen(false); if (!isCompleted) setVendaIdGerada(null) }}
+                    onPendingChargeCancelled={async (charge) => {
+                        const result = await descartarVendaExpressPixCancelado({ storeId, vendaId: vendaIdGerada, chargeId: charge.id })
+                        if (!result.success) {
+                            alert(result.message)
+                            return false
+                        }
+                        return true
+                    }}
                     onPaymentAdded={async (confirmedCharge) => {
                         setIsPixSaleModalOpen(false)
                         setPagamentoIdGerado(confirmedCharge?.settlementPagamentoId || null)
