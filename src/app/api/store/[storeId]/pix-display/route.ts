@@ -4,7 +4,10 @@ import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { isSicrediPilotStoreCnpj } from '@/lib/pix/sicredi-availability'
 import type { StoreSettings } from '@/lib/store-modules'
 
-const DISPLAY_WINDOW_MS = 5 * 60 * 1000
+// A maquininha deve continuar exibindo o QR Code recente mesmo que o atendimento
+// leve alguns minutos para chegar ao tablet. A validade efetiva continua sendo
+// determinada por expires_at, informado pelo Sicredi.
+const DISPLAY_WINDOW_MS = 30 * 60 * 1000
 
 export async function GET(_request: Request, context: { params: Promise<{ storeId: string }> }) {
   const { storeId: rawStoreId } = await context.params
@@ -32,6 +35,13 @@ export async function GET(_request: Request, context: { params: Promise<{ storeI
     admin.from('pix_sale_charges').select('id, venda_id, amount, pix_copy_paste, status, expires_at, created_at, updated_at').eq('store_id', storeId).in('status', ['CREATING', 'PENDING']).gte('created_at', displayCutoff).order('created_at', { ascending: true }).limit(20),
     admin.from('pix_installment_charges').select('id, venda_id, installment_id, amount, pix_copy_paste, status, expires_at, created_at, updated_at').eq('store_id', storeId).in('status', ['CREATING', 'PENDING']).gte('created_at', displayCutoff).order('created_at', { ascending: true }).limit(20),
   ])
+
+  if (saleResult.error || installmentResult.error) {
+    return NextResponse.json(
+      { message: 'Nao foi possivel consultar as cobrancas Pix da maquininha.' },
+      { status: 500 },
+    )
+  }
 
   const candidates = [
     ...(saleResult.data || []).map((row: Record<string, unknown>) => ({ kind: 'sale', ...row })),

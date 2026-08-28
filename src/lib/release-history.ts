@@ -12,6 +12,12 @@ export type Release = {
 export const PENDING_RELEASE_VERSION: string | null = null
 export const PENDING_RELEASE_CHANGES: readonly string[] = []
 
+const RELEASE_10207_CHANGES: readonly string[] = [
+  'Pagamentos recebidos nas parcelas do carne deixaram de ser somados novamente como pago ou sinal da venda; o saldo da venda considera somente pagamentos diretos e o compromisso formalizado no carne.',
+  'A venda experimental passou a identificar cobrancas Pix ainda pendentes, retomar o QR Code correspondente e criar uma nova cobranca somente quando a anterior ja estiver concluida.',
+  'O Modo Maquininha Pix passou a manter QR Codes recentes por 30 minutos durante os testes e a informar falhas de consulta, continuando a tentar carregar a fila automaticamente.',
+]
+
 const RELEASE_10206_CHANGES: readonly string[] = [
   'A integração Pix Sicredi passou a usar exclusivamente as credenciais e a API oficial de produção, mantendo a liberação restrita à Ótica Ocular configurada como loja-piloto.',
   'Certificados do Pix Sicredi podem ser configurados como segredos Base64 no ambiente hospedado, preservando os arquivos locais apenas para desenvolvimento.',
@@ -75,10 +81,15 @@ const RELEASE_10205_CHANGES: readonly string[] = [
 
 // Esta lista contem somente deploys concluidos e deve preservar todo o historico.
 // A versao 1.02.00 e o registro mais antigo atualmente disponivel neste repositorio.
-// Ao iniciar o proximo lote, use 1.02.07 em PENDING_RELEASE_VERSION. Depois do deploy,
+// Ao iniciar o proximo lote, use 1.02.08 em PENDING_RELEASE_VERSION. Depois do deploy,
 // mova as mudancas pendentes para a nova versao e limpe as duas constantes pendentes.
 // Alteracoes de linha/minor (ex.: 1.02.xx -> 1.03.00) exigem solicitacao expressa.
 export const RELEASE_HISTORY: Release[] = [
+  {
+    version: '1.02.07',
+    date: '28/08/2026',
+    changes: [...RELEASE_10207_CHANGES],
+  },
   {
     version: '1.02.06',
     date: '28/08/2026',
