@@ -134,37 +134,44 @@ export default function PixInstallmentChargeModal({
 
     let cancelled = false
     let inFlight = false
-    const pollLocalCharge = async () => {
+    const pollSicrediCharge = async () => {
       if (inFlight) return
       inFlight = true
-      const result = await getPixInstallmentCharge(storeId, charge.id)
-      inFlight = false
-      if (cancelled || !result.success || !result.data) return
+      try {
+        const result = charge.status === 'CREATING'
+          ? await getPixInstallmentCharge(storeId, charge.id)
+          : await refreshPixInstallmentCharge({ storeId, chargeId: charge.id })
+        if (cancelled || !result.success || !result.data) return
 
-      const nextCharge = result.data
-      if (nextCharge.status === 'PAID' && nextCharge.settlementStatus === 'COMPLETED') {
-        if (automaticallyFinishedChargeId.current === nextCharge.id) return
-        automaticallyFinishedChargeId.current = nextCharge.id
-        try {
-          await finishSettledCharge(nextCharge, 'Pagamento confirmado automaticamente')
-        } catch {
-          automaticallyFinishedChargeId.current = null
-          toast.error('O pagamento foi baixado, mas nao foi possivel concluir a atualizacao da tela. Abra a parcela novamente.')
+        const nextCharge = result.data
+        if (nextCharge.status === 'PAID' && nextCharge.settlementStatus === 'COMPLETED') {
+          if (automaticallyFinishedChargeId.current === nextCharge.id) return
+          automaticallyFinishedChargeId.current = nextCharge.id
+          try {
+            await finishSettledCharge(nextCharge, 'Pagamento confirmado automaticamente')
+          } catch {
+            automaticallyFinishedChargeId.current = null
+            toast.error('O pagamento foi baixado, mas nao foi possivel concluir a atualizacao da tela. Abra a parcela novamente.')
+          }
+          return
         }
-        return
-      }
 
-      if (
-        nextCharge.status !== charge.status
-        || nextCharge.settlementStatus !== charge.settlementStatus
-        || nextCharge.paidAt !== charge.paidAt
-        || nextCharge.pixCopyPaste !== charge.pixCopyPaste
-      ) {
-        updateCharge(nextCharge)
+        if (
+          nextCharge.status !== charge.status
+          || nextCharge.settlementStatus !== charge.settlementStatus
+          || nextCharge.paidAt !== charge.paidAt
+          || nextCharge.pixCopyPaste !== charge.pixCopyPaste
+        ) {
+          updateCharge(nextCharge)
+        }
+      } catch {
+        // Falhas transitorias ficam silenciosas; o botao manual permanece disponivel.
+      } finally {
+        inFlight = false
       }
     }
 
-    const timer = window.setInterval(() => void pollLocalCharge(), 3000)
+    const timer = window.setInterval(() => void pollSicrediCharge(), 5000)
     return () => {
       cancelled = true
       window.clearInterval(timer)

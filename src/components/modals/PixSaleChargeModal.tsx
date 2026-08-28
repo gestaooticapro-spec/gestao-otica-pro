@@ -74,38 +74,45 @@ export default function PixSaleChargeModal({
 
     let cancelled = false
     let inFlight = false
-    const pollLocalCharge = async () => {
+    const pollSicrediCharge = async () => {
       if (inFlight) return
       inFlight = true
-      const current = await getPixSaleCharge(storeId, vendaId)
-      inFlight = false
-      if (cancelled || !current || current.id !== charge.id) return
+      try {
+        const current = charge.status === 'CREATING'
+          ? await getPixSaleCharge(storeId, vendaId)
+          : await refreshPixSaleCharge({ storeId, chargeId: charge.id }).then((result) => result.success ? result.data : null)
+        if (cancelled || !current || current.id !== charge.id) return
 
-      if (current.status === 'PAID' && current.settlementStatus === 'COMPLETED') {
-        if (automaticallyFinishedChargeId.current === current.id) return
-        automaticallyFinishedChargeId.current = current.id
-        setCharge(current)
-        try {
-          await onPaymentAdded(current)
-          toast.success('Pagamento confirmado automaticamente e registrado na venda.')
-        } catch {
-          automaticallyFinishedChargeId.current = null
-          toast.error('O pagamento foi registrado, mas nao foi possivel concluir a atualizacao da tela.')
+        if (current.status === 'PAID' && current.settlementStatus === 'COMPLETED') {
+          if (automaticallyFinishedChargeId.current === current.id) return
+          automaticallyFinishedChargeId.current = current.id
+          setCharge(current)
+          try {
+            await onPaymentAdded(current)
+            toast.success('Pagamento confirmado automaticamente e registrado na venda.')
+          } catch {
+            automaticallyFinishedChargeId.current = null
+            toast.error('O pagamento foi registrado, mas nao foi possivel concluir a atualizacao da tela.')
+          }
+          return
         }
-        return
-      }
 
-      if (
-        current.status !== charge.status
-        || current.settlementStatus !== charge.settlementStatus
-        || current.paidAt !== charge.paidAt
-        || current.pixCopyPaste !== charge.pixCopyPaste
-      ) {
-        setCharge(current)
+        if (
+          current.status !== charge.status
+          || current.settlementStatus !== charge.settlementStatus
+          || current.paidAt !== charge.paidAt
+          || current.pixCopyPaste !== charge.pixCopyPaste
+        ) {
+          setCharge(current)
+        }
+      } catch {
+        // Falhas transitorias ficam silenciosas; o botao manual permanece disponivel.
+      } finally {
+        inFlight = false
       }
     }
 
-    const timer = window.setInterval(() => void pollLocalCharge(), 3000)
+    const timer = window.setInterval(() => void pollSicrediCharge(), 5000)
     return () => {
       cancelled = true
       window.clearInterval(timer)

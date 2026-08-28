@@ -9,8 +9,10 @@ export type Release = {
 // completam essa mesma versao ate o proximo deploy.
 // Se uma implementacao for desfeita ou substituida antes do deploy, remova ou corrija
 // o respectivo item para que a lista descreva somente o que realmente sera entregue.
-export const PENDING_RELEASE_VERSION: string | null = '1.02.06'
-export const PENDING_RELEASE_CHANGES: readonly string[] = [
+export const PENDING_RELEASE_VERSION: string | null = null
+export const PENDING_RELEASE_CHANGES: readonly string[] = []
+
+const RELEASE_10206_CHANGES: readonly string[] = [
   'A integração Pix Sicredi passou a usar exclusivamente as credenciais e a API oficial de produção, mantendo a liberação restrita à Ótica Ocular configurada como loja-piloto.',
   'Certificados do Pix Sicredi podem ser configurados como segredos Base64 no ambiente hospedado, preservando os arquivos locais apenas para desenvolvimento.',
   'Baixas confirmadas de parcelas por Pix Sicredi passam a abrir o recibo automaticamente; a tela de contas a receber diferencia pagamento parcial da quitacao total.',
@@ -23,7 +25,7 @@ export const PENDING_RELEASE_CHANGES: readonly string[] = [
   'Cobranças Pix pagas com baixa pendente agora bloqueiam um novo QR Code e podem concluir o registro diretamente pelo estado confirmado, sem depender de uma nova consulta ao Sicredi; a expiração também preserva pagamentos confirmados simultaneamente.',
   'Os botões Pix do carnê e da venda experimental passaram a refletir a ação necessária, incluindo conferir pagamento, conferir situação e gerar novo QR Code; o PIN da cobrança direta da venda voltou a aceitar o contexto correto.',
   'A impressão de recibos passou a exigir uma sessão autorizada para a empresa e a loja dos pagamentos selecionados, sem reutilizar um ID de pagamento inexistente como se fosse o código de uma venda.',
-  'Enquanto o modal Pix estiver aberto, a tela passa a acompanhar a baixa feita pelo webhook e conclui automaticamente o mesmo fluxo de conferir pagamento, mantendo o botão manual como alternativa.',
+  'Enquanto os modais Pix de parcelas, venda experimental e venda expressa estiverem abertos, a tela consulta silenciosamente o Sicredi e também acompanha a baixa do webhook, concluindo automaticamente o pagamento e o fluxo de recibo; o botão manual permanece como alternativa.',
   'A geração de Pix na venda experimental volta a abrir o modal e o PIN acima da janela de pagamento, em vez de deixá-los ocultos atrás dela.',
   'Na venda experimental, escolher Pix Sicredi não abre mais uma cobrança por conta própria: o botão Gerar Pix da venda pede o PIN antes de criar o QR Code.',
 ]
@@ -73,10 +75,15 @@ const RELEASE_10205_CHANGES: readonly string[] = [
 
 // Esta lista contem somente deploys concluidos e deve preservar todo o historico.
 // A versao 1.02.00 e o registro mais antigo atualmente disponivel neste repositorio.
-// Ao iniciar o proximo lote, use 1.02.06 em PENDING_RELEASE_VERSION. Depois do deploy,
+// Ao iniciar o proximo lote, use 1.02.07 em PENDING_RELEASE_VERSION. Depois do deploy,
 // mova as mudancas pendentes para a nova versao e limpe as duas constantes pendentes.
 // Alteracoes de linha/minor (ex.: 1.02.xx -> 1.03.00) exigem solicitacao expressa.
 export const RELEASE_HISTORY: Release[] = [
+  {
+    version: '1.02.06',
+    date: '28/08/2026',
+    changes: [...RELEASE_10206_CHANGES],
+  },
   {
     version: '1.02.05',
     date: '26/08/2026',
