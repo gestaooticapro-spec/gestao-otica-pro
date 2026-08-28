@@ -11,10 +11,12 @@ import { Loader2, TrendingDown } from 'lucide-react'
 
 type Venda = Database['public']['Tables']['vendas']['Row']
 type VendaItem = Database['public']['Tables']['venda_itens']['Row']
+type Pagamento = Database['public']['Tables']['pagamentos']['Row']
 
 type ResumoFinanceiroProps = {
   venda: Venda
   vendaItens: VendaItem[]
+  pagamentos: Pagamento[]
   onUpdate: () => Promise<void>
   disabled: boolean
 }
@@ -48,6 +50,7 @@ function DescontoSubmitButton() {
 export default function ResumoFinanceiro({
   venda,
   vendaItens,
+  pagamentos,
   onUpdate,
   disabled,
 }: ResumoFinanceiroProps) {
@@ -95,7 +98,10 @@ export default function ResumoFinanceiro({
     setDescontoString(value.replace('.', ',').replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1.'))
   }
 
-  const totalPago = venda.valor_final - (venda.valor_restante ?? 0)
+  const totalPago = pagamentos.reduce((total, pagamento) => {
+    if (pagamento.parcela_id != null) return total
+    return total + Number(pagamento.valor_pago || 0)
+  }, 0)
 
   return (
     <div className="flex items-center gap-4 text-xs">

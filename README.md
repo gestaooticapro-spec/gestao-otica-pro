@@ -136,6 +136,16 @@ Antes de considerar um deploy completo de WhatsApp, normalmente precisamos valid
 - Para mudancas de configuracao por loja, a fonte canonica costuma ficar em `stores.settings`.
 - Em mudancas operacionais, priorize comportamento confiavel e auditavel antes de sofisticacao.
 
+## Regra financeira: venda, pagamentos e carne
+
+O saldo da venda representa somente o valor que ainda nao foi coberto por pagamento direto ou pelo compromisso formalizado no carne. Depois que um carne e assinado, o compromisso de recebimento deixa de ser a venda e passa a ser exclusivamente o carne. Portanto, uma venda integralmente financiada deve ficar com `valor_restante = 0` e pode ser fechada, mesmo que existam parcelas futuras em aberto.
+
+- Venda de R$ 30,00; carne assinado de R$ 30,00: falta R$ 0,00 na venda. Os R$ 30,00 passam a ser recebidos apenas pelas parcelas do carne.
+- Venda de R$ 30,00; pagamentos diretos de R$ 10,00 e R$ 5,00; carne assinado de R$ 15,00: falta R$ 0,00 na venda. Os R$ 15,00 restantes pertencem exclusivamente ao carne.
+- Venda de R$ 30,00; pagamento direto de R$ 30,00; sem carne: falta R$ 0,00 na venda.
+
+Pagamentos de parcelas nao podem ser somados novamente como pagamentos diretos da venda. Tambem nao se deve criar um Pix direto de venda depois de um carne integral já assinado: isso aumentaria o total comprometido pelo cliente. Se for necessário alterar esse acordo, o fluxo deve ajustar ou substituir o carne de forma auditavel, antes de registrar qualquer novo pagamento.
+
 ## Versionamento de deploy
 
 `1.02.00` e o deploy mais antigo atualmente registrado neste repositorio. Versoes anteriores so devem ser acrescentadas se houver uma fonte confiavel para recupera-las.

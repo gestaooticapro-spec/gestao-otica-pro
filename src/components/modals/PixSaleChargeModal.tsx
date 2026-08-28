@@ -24,6 +24,7 @@ export default function PixSaleChargeModal({
   requestCreationOnOpen = false,
   onClose,
   onPaymentAdded,
+  onChargeChanged,
 }: {
   isOpen: boolean
   storeId: number
@@ -32,6 +33,7 @@ export default function PixSaleChargeModal({
   requestCreationOnOpen?: boolean
   onClose: () => void
   onPaymentAdded: (charge?: PixSaleCharge) => Promise<void>
+  onChargeChanged?: (charge: PixSaleCharge | null) => void
 }) {
   const [mounted, setMounted] = useState(false)
   const [charge, setCharge] = useState<PixSaleCharge | null>(null)
@@ -55,8 +57,12 @@ export default function PixSaleChargeModal({
     setIsLoadingCharge(true)
     void getPixSaleCharge(storeId, vendaId).then((current) => {
       if (cancelled) return
-      setCharge(current)
-      if (!current && requestCreationOnOpen && !automaticCreationRequested.current) {
+      const canReplaceCurrent = !current
+        || current.status === 'CANCELLED'
+        || current.status === 'EXPIRED'
+        || (current.status === 'PAID' && current.settlementStatus === 'COMPLETED')
+      setCharge(requestCreationOnOpen && canReplaceCurrent ? null : current)
+      if (requestCreationOnOpen && canReplaceCurrent && !automaticCreationRequested.current) {
         automaticCreationRequested.current = true
         setPendingOperation('create')
         setIsAuthOpen(true)
@@ -139,6 +145,7 @@ export default function PixSaleChargeModal({
         return
       }
       setCharge(result.data)
+      onChargeChanged?.(result.data)
       toast.success(operation === 'create' ? 'QR Code da venda gerado.' : 'Cobrança Pix cancelada.')
     })
   }
@@ -152,6 +159,7 @@ export default function PixSaleChargeModal({
         return
       }
       setCharge(result.data)
+      onChargeChanged?.(result.data)
       if (result.data.settlementStatus === 'COMPLETED') await onPaymentAdded(result.data)
       if (result.data.status === 'ERROR') {
         toast.error('A cobrança não foi localizada na primeira conferência. Aguarde alguns segundos e confira novamente antes de gerar outro QR Code.')

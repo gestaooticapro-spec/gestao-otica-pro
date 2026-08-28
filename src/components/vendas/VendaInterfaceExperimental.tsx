@@ -767,6 +767,9 @@ export default function VendaInterfaceExperimental({
     const searchParams = useSearchParams()
     const modules = useStoreModules()
     const { preference } = useBackgroundPreference();
+    const isCarneQuitado = financiamento
+        ? financiamento.financiamento_parcelas.every((parcela) => parcela.status === 'Pago')
+        : isQuitado
     const [isPrintModalOpen, setIsPrintModalOpen] = useState(false)
     const [pixSaleCharge, setPixSaleCharge] = useState<PixSaleCharge | null>(null)
     const [isPixSaleChargeModalOpen, setIsPixSaleChargeModalOpen] = useState(false)
@@ -1141,7 +1144,7 @@ export default function VendaInterfaceExperimental({
                         title="Pagamentos"
                         count={pagamentos.filter((pagamento) => pagamento.parcela_id == null).length}
                         icon={DollarSign}
-                        onAdd={isVendaFechadaOuCancelada ? undefined : () => setActiveModal('pagamento')}
+                        onAdd={isVendaFechadaOuCancelada || isQuitado ? undefined : () => setActiveModal('pagamento')}
                         actionLabel="Novo Pagamento"
                         theme="green"
                     >
@@ -1195,7 +1198,7 @@ export default function VendaInterfaceExperimental({
                                     valorRestante={venda.valor_restante ?? 0}
                                     onFinanceAdded={onDataReload}
                                     disabled={venda.status === 'Cancelada'}
-                                    isQuitado={isQuitado}
+                                    isQuitado={isCarneQuitado}
                                     whatsappReceiptEnabled={isWhatsAppAutomaticEnabled}
                                 />
                             ) : (
@@ -1238,6 +1241,7 @@ export default function VendaInterfaceExperimental({
                     <ResumoFinanceiro
                         venda={venda}
                         vendaItens={vendaItens}
+                        pagamentos={pagamentos}
                         onUpdate={onDataReload}
                         disabled={isVendaFechadaOuCancelada}
                     />
@@ -1289,6 +1293,7 @@ export default function VendaInterfaceExperimental({
                     storeId={venda.store_id}
                     valorRestante={venda.valor_restante ?? 0}
                     onPaymentAdded={async () => { await onDataReload(); closeModal(); }}
+                    onPixSaleChargeChanged={setPixSaleCharge}
                     disabled={isVendaFechadaOuCancelada}
                     isQuitado={isQuitado}
                     isModal={true}
@@ -1301,6 +1306,7 @@ export default function VendaInterfaceExperimental({
                 vendaId={venda.id}
                 amount={pixSaleCharge?.amount ?? venda.valor_restante ?? 0}
                 onClose={() => setIsPixSaleChargeModalOpen(false)}
+                onChargeChanged={setPixSaleCharge}
                 onPaymentAdded={async () => {
                     setIsPixSaleChargeModalOpen(false)
                     setPixSaleCharge(null)

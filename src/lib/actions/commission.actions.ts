@@ -59,7 +59,7 @@ export async function calcularERegistrarComissao(vendaId: number) {
             .select(`
                 *,
                 venda_itens ( valor_total_item, quantidade, detalhes_avulsos, product_id, produtos:products(preco_custo) ),
-                pagamentos ( valor_pago, forma_pagamento ),
+                pagamentos ( valor_pago, forma_pagamento, parcela_id ),
                 employees ( 
                     id, 
                     comm_rate_guaranteed, 
@@ -120,6 +120,7 @@ export async function calcularERegistrarComissao(vendaId: number) {
         // Garantida = Dinheiro, Pix, Cartão, Débito (formas de baixo risco)
         // Risco = Carnê, Crédito Loja (o vendedor recebe mesmo se o cliente não pagar)
         const totalPagoGarantido = venda.pagamentos?.reduce((acc: number, pg: any) => {
+            if (pg.parcela_id != null) return acc
             const forma = (pg.forma_pagamento || '').toLowerCase()
             if (forma.includes('pix') || forma.includes('dinheiro') || forma.includes('cart') || forma.includes('débito') || forma.includes('debito')) {
                 return acc + (pg.valor_pago || 0)

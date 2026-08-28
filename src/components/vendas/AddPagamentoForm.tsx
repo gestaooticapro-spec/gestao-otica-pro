@@ -26,6 +26,7 @@ type AddPagamentoFormProps = {
   storeId: number
   valorRestante: number
   onPaymentAdded: () => Promise<void>
+  onPixSaleChargeChanged?: (charge: PixSaleCharge | null) => void
   disabled: boolean
   isQuitado?: boolean
   isModal?: boolean
@@ -68,6 +69,7 @@ export default function AddPagamentoForm({
   storeId,
   valorRestante,
   onPaymentAdded,
+  onPixSaleChargeChanged,
   disabled,
   isQuitado = false,
   isModal = false,
@@ -338,6 +340,10 @@ export default function AddPagamentoForm({
         requestCreationOnOpen={shouldCreatePixSale}
         onClose={() => { setIsPixSaleModalOpen(false); setShouldCreatePixSale(false) }}
         onPaymentAdded={onPaymentAdded}
+        onChargeChanged={(current) => {
+          setExistingPixSaleCharge(current)
+          onPixSaleChargeChanged?.(current)
+        }}
       />
     </div>
   )

@@ -2765,7 +2765,7 @@ export async function saveFinanciamentoLoja(...args: any[]) {
   const { data: pagamentosExistentes } = await (supabaseAdmin.from('pagamentos') as any)
     .select('valor_pago')
     .eq('venda_id', venda_id)
-    .neq('forma_pagamento', 'Carnê');
+    .is('parcela_id', null);
 
   const totalJaPagoNoCaixa = pagamentosExistentes?.reduce((acc: number, p: any) => acc + Number(p.valor_pago), 0) || 0;
   const valorTotalVenda = Number(vendaReal.valor_final || vendaReal.valor_total);
@@ -3736,7 +3736,8 @@ export async function deleteFinanciamentoLoja(vendaId: number, storeId: number) 
 
     const { data: pagamentos } = await (supabaseAdmin.from('pagamentos') as any)
       .select('valor_pago')
-      .eq('venda_id', vendaId).neq('forma_pagamento', 'Carnê');
+      .eq('venda_id', vendaId)
+      .is('parcela_id', null);
 
     const totalPagoDinheiro = pagamentos?.reduce((acc: number, p: any) => acc + Number(p.valor_pago), 0) || 0;
     const valorVenda = Number(vendaReal?.valor_final || vendaReal?.valor_total || 0);

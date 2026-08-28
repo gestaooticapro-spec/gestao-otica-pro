@@ -83,8 +83,7 @@ export default async function VendaPageExperimental(props: Props) {
             : null
 
     // FIX: Quitado = valor restante zerado E (não tem carnê OU todas parcelas do carnê pagas)
-    const temParcelasPendentes = financiamento?.financiamento_parcelas.some(p => p.status !== 'Pago') ?? false;
-    const isQuitado = (venda.valor_restante ?? 0) <= 0.01 && !temParcelasPendentes;
+    const isQuitado = (venda.valor_restante ?? 0) <= 0.01;
 
     return (
         <VendaInterfaceExperimental

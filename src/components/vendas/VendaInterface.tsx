@@ -65,6 +65,9 @@ export default function VendaInterface({
 
     const vendedorNome = employee?.full_name || 'N/A'
     const employeeIdFinanceiro = employee?.id || 0
+    const isCarneQuitado = financiamento
+        ? financiamento.financiamento_parcelas.every((parcela) => parcela.status === 'Pago')
+        : isQuitado
 
     useEffect(() => {
         if (!modules.installments && activeTab === 'carne') {
@@ -186,7 +189,7 @@ export default function VendaInterface({
 
                         {modules.installments && activeTab === 'carne' && (
                             <div className="space-y-3">
-                                <FinanciamentoBox financiamento={financiamento} receiptOperations={receiptOperations} pagamentos={pagamentos} vendaId={venda.id} customerId={venda.customer_id} customer={customer} storeId={venda.store_id} employeeId={employeeIdFinanceiro} valorRestante={venda.valor_restante ?? 0} onFinanceAdded={onDataReload} disabled={isVendaFechadaOuCancelada} isQuitado={isQuitado} whatsappReceiptEnabled={false} />
+                                <FinanciamentoBox financiamento={financiamento} receiptOperations={receiptOperations} pagamentos={pagamentos} vendaId={venda.id} customerId={venda.customer_id} customer={customer} storeId={venda.store_id} employeeId={employeeIdFinanceiro} valorRestante={venda.valor_restante ?? 0} onFinanceAdded={onDataReload} disabled={venda.status === 'Cancelada'} isQuitado={isCarneQuitado} whatsappReceiptEnabled={false} />
                             </div>
                         )}
                     </div>
@@ -237,6 +240,7 @@ export default function VendaInterface({
                     <ResumoFinanceiro
                         venda={venda}
                         vendaItens={vendaItens}
+                        pagamentos={pagamentos}
                         onUpdate={onDataReload}
                         disabled={isVendaFechadaOuCancelada}
                     />
