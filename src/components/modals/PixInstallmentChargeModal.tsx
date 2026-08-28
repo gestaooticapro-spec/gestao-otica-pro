@@ -256,6 +256,9 @@ export default function PixInstallmentChargeModal({
         return
       }
       resetChargeForm()
+      toast.success(charge.status === 'ERROR'
+        ? 'A cobrança anterior não foi localizada. Você já pode gerar um novo QR Code.'
+        : 'A cobrança anterior foi encerrada. Você já pode gerar um novo QR Code.')
     })
   }
 
@@ -310,9 +313,9 @@ export default function PixInstallmentChargeModal({
 
                 {charge.status === 'CREATING' ? <div className="space-y-2"><p className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-3 text-xs text-cyan-100">A cobrança está sendo gerada. Se não concluir após dois minutos, use a recuperação abaixo.</p><button onClick={() => requestAuthorization('recover')} disabled={isWorking} className="flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-500/20 bg-cyan-500/10 py-3 text-xs font-bold text-cyan-100 hover:bg-cyan-500/20 disabled:opacity-50"><RefreshCw className="h-4 w-4" /> Recuperar geração</button></div> : <button onClick={refreshStatus} disabled={isWorking} className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 py-3 text-xs font-bold text-slate-300 hover:bg-white/10 disabled:opacity-50">{isWorking ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Atualizar status e baixa</button>}
 
-                {charge.status === 'ERROR' ? <p className="rounded-xl border border-rose-500/20 bg-rose-500/10 p-3 text-xs text-rose-100">A emissão não foi concluída. Antes de gerar outra cobrança, verifique se o Sicredi localizou este QR Code.</p> : null}
+                {charge.status === 'ERROR' ? <p className="rounded-xl border border-rose-500/20 bg-rose-500/10 p-3 text-xs text-rose-100">Não foi possível concluir a emissão. Vamos conferir se o QR Code chegou a ser criado antes de liberar uma nova cobrança.</p> : null}
                 {charge.status === 'PENDING' ? <button onClick={() => requestAuthorization('cancel')} disabled={isWorking} className="w-full rounded-xl border border-rose-500/20 bg-rose-500/10 py-3 text-xs font-bold text-rose-200 hover:bg-rose-500/20 disabled:opacity-50">Cancelar / alterar valor</button> : null}
-                {charge.status === 'EXPIRED' || charge.status === 'CANCELLED' || charge.status === 'ERROR' ? <button onClick={reconcileBeforeNewCharge} disabled={isWorking} className="w-full rounded-xl border border-cyan-500/20 bg-cyan-500/10 py-3 text-xs font-bold text-cyan-100 hover:bg-cyan-500/20 disabled:opacity-50">{charge.status === 'EXPIRED' ? 'Gerar novo QR Code' : charge.status === 'ERROR' ? 'Verificar erro e gerar novo QR Code' : 'Confirmar e gerar novo QR Code'}</button> : null}
+                {charge.status === 'EXPIRED' || charge.status === 'CANCELLED' || charge.status === 'ERROR' ? <button onClick={reconcileBeforeNewCharge} disabled={isWorking} className="w-full rounded-xl border border-cyan-500/20 bg-cyan-500/10 py-3 text-xs font-bold text-cyan-100 hover:bg-cyan-500/20 disabled:opacity-50">{charge.status === 'EXPIRED' ? 'Gerar novo QR Code' : charge.status === 'ERROR' ? 'Conferir situação do QR Code' : 'Confirmar e gerar novo QR Code'}</button> : null}
                 {charge.status === 'PAID' && charge.settlementStatus !== 'COMPLETED' ? <p className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-200">O pagamento foi confirmado no Sicredi, mas a baixa ainda não foi concluída. Use “Atualizar status e baixa” para reprocessar com segurança.</p> : null}
               </>
             ) : (
