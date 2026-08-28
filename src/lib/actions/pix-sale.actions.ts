@@ -12,6 +12,7 @@ import {
   cancelSicrediImmediateCharge,
   createSicrediImmediateCharge,
   getSicrediImmediateCharge,
+  SicrediPixHttpError,
 } from '@/lib/pix/sicredi-client.server'
 import { issueEmployeeAuthorization, verifyEmployeeAuthorization } from '@/lib/server/employee-authorization'
 import type { StoreSettings } from '@/lib/store-modules'
@@ -33,6 +34,7 @@ export type PixSaleCharge = {
 
 type Result<T> = { success: true; data: T } | { success: false; message: string }
 const CREATION_RECOVERY_DELAY_MS = 2 * 60 * 1000
+const NOT_FOUND_CONFIRMATION_DELAY_MS = 30 * 1000
 
 const CreateSchema = z.object({
   storeId: z.number().int().positive(),
@@ -129,15 +131,45 @@ export async function createPixSaleCharge(input: z.input<typeof CreateSchema>): 
     if (vendaError || !venda) throw new Error('Venda nao encontrada.')
     if (Number(venda.valor_restante || 0) > 0 && data.amount > Number(venda.valor_restante) + 0.01) throw new Error('O valor do Pix nao pode ser maior que o saldo da venda.')
 
-    const { data: active } = await table(admin).select('*').eq('store_id', data.storeId).eq('venda_id', data.vendaId).in('status', ['CREATING', 'PENDING']).order('created_at', { ascending: false }).limit(1).maybeSingle()
-    if (active?.status === 'PENDING' && active.expires_at && new Date(active.expires_at).getTime() <= Date.now()) {
-      await table(admin).update({ status: 'EXPIRED', updated_at: new Date().toISOString() }).eq('id', active.id).eq('status', 'PENDING')
-    } else if (active?.status === 'PENDING') {
-      return { success: true, data: serialize(active) }
-    } else if (active?.status === 'CREATING') {
-      const stale = new Date(active.created_at).getTime() + CREATION_RECOVERY_DELAY_MS <= Date.now()
-      if (!stale) return { success: true, data: serialize(active) }
-      await table(admin).update({ status: 'ERROR', provider_response: { recovery: 'creating_timeout' }, updated_at: new Date().toISOString() }).eq('id', active.id).eq('status', 'CREATING')
+    const { data: latest, error: latestError } = await table(admin)
+      .select('*')
+      .eq('store_id', data.storeId)
+      .eq('venda_id', data.vendaId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (latestError) throw new Error('Nao foi possivel verificar cobrancas Pix anteriores desta venda.')
+
+    if (latest?.status === 'PAID' && latest.settlement_status !== 'COMPLETED') {
+      const settled = await settleSaleCharge(admin, latest)
+      return { success: true, data: serialize(settled) }
+    }
+    if (latest?.status === 'ERROR') {
+      throw new Error('Existe uma cobranca Pix anterior com erro. Confira a situacao antes de gerar outro QR Code.')
+    }
+    if (latest?.status === 'PENDING' && latest.expires_at && new Date(latest.expires_at).getTime() <= Date.now()) {
+      const { data: expired } = await table(admin)
+        .update({ status: 'EXPIRED', updated_at: new Date().toISOString() })
+        .eq('id', latest.id)
+        .eq('status', 'PENDING')
+        .select('*')
+        .maybeSingle()
+      if (!expired) {
+        const { data: current } = await table(admin).select('*').eq('id', latest.id).maybeSingle()
+        if (current?.status === 'PAID') {
+          const settled = current.settlement_status === 'COMPLETED' ? current : await settleSaleCharge(admin, current)
+          return { success: true, data: serialize(settled) }
+        }
+        if (current?.status === 'PENDING' || current?.status === 'CREATING') {
+          return { success: true, data: serialize(current) }
+        }
+      }
+    } else if (latest?.status === 'PENDING') {
+      return { success: true, data: serialize(latest) }
+    } else if (latest?.status === 'CREATING') {
+      const stale = new Date(latest.created_at).getTime() + CREATION_RECOVERY_DELAY_MS <= Date.now()
+      if (!stale) return { success: true, data: serialize(latest) }
+      await table(admin).update({ status: 'ERROR', provider_response: { recovery: 'creating_timeout' }, updated_at: new Date().toISOString() }).eq('id', latest.id).eq('status', 'CREATING')
     }
 
     const configuredExpiration = Number(process.env.SICREDI_PIX_PROD_CHARGE_EXPIRATION_SECONDS || 86_400)
@@ -237,9 +269,78 @@ export async function refreshPixSaleCharge(input: z.input<typeof ChargeSchema>):
     const { admin } = await access(data.storeId)
     const { data: row } = await table(admin).select('*').eq('id', data.chargeId).eq('store_id', data.storeId).maybeSingle()
     if (!row) throw new Error('Cobranca Pix nao encontrada.')
+    if (row.status === 'PAID') {
+      const settled = row.settlement_status === 'COMPLETED' ? row : await settleSaleCharge(admin, row)
+      return { success: true, data: serialize(settled) }
+    }
+    if (row.status === 'ERROR') {
+      try {
+        const remote = await getSicrediImmediateCharge(row.txid)
+        const status = remote.status === 'CONCLUIDA'
+          ? 'PAID'
+          : remote.status === 'REMOVIDA_PELO_USUARIO_RECEBEDOR'
+            ? 'CANCELLED'
+            : 'PENDING'
+        const { data: reconciled } = await table(admin)
+          .update({
+            status,
+            paid_at: status === 'PAID' ? row.paid_at || new Date().toISOString() : row.paid_at,
+            cancelled_at: status === 'CANCELLED' ? row.cancelled_at || new Date().toISOString() : row.cancelled_at,
+            provider_response: remote.raw,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', row.id)
+          .eq('status', 'ERROR')
+          .select('*')
+          .maybeSingle()
+        if (!reconciled) throw new Error('Nao foi possivel atualizar a cobranca Pix com erro.')
+        const settled = status === 'PAID' ? await settleSaleCharge(admin, reconciled) : reconciled
+        return { success: true, data: serialize(settled) }
+      } catch (error) {
+        if (!(error instanceof SicrediPixHttpError) || error.statusCode !== 404) throw error
+        const now = new Date()
+        const previousNotFoundAt = Date.parse(String(row.provider_response?.recovery_not_found_at || ''))
+        if (!Number.isFinite(previousNotFoundAt) || now.getTime() - previousNotFoundAt < NOT_FOUND_CONFIRMATION_DELAY_MS) {
+          const { data: awaitingConfirmation } = await table(admin)
+            .update({
+              provider_response: {
+                ...(row.provider_response || {}),
+                recovery_not_found_at: now.toISOString(),
+                recovery: 'Primeira consulta nao localizou a cobranca; aguardando nova confirmacao.',
+              },
+              updated_at: now.toISOString(),
+            })
+            .eq('id', row.id)
+            .eq('status', 'ERROR')
+            .select('*')
+            .single()
+          if (!awaitingConfirmation) throw new Error('Nao foi possivel registrar a conferencia da cobranca com erro.')
+          return { success: true, data: serialize(awaitingConfirmation) }
+        }
+        const { data: cancelled } = await table(admin)
+          .update({
+            status: 'CANCELLED',
+            cancelled_at: now.toISOString(),
+            provider_response: { ...(row.provider_response || {}), recovery: 'Cobranca nao localizada em duas consultas.' },
+            updated_at: now.toISOString(),
+          })
+          .eq('id', row.id)
+          .eq('status', 'ERROR')
+          .select('*')
+          .single()
+        if (!cancelled) throw new Error('Nao foi possivel liberar a cobranca com erro.')
+        return { success: true, data: serialize(cancelled) }
+      }
+    }
     if (row.status === 'PENDING' && row.expires_at && new Date(row.expires_at).getTime() <= Date.now()) {
-      const { data: expired } = await table(admin).update({ status: 'EXPIRED', updated_at: new Date().toISOString() }).eq('id', row.id).eq('status', 'PENDING').select('*').single()
-      return { success: true, data: serialize(expired || { ...row, status: 'EXPIRED' }) }
+      const { data: expired } = await table(admin).update({ status: 'EXPIRED', updated_at: new Date().toISOString() }).eq('id', row.id).eq('status', 'PENDING').select('*').maybeSingle()
+      if (expired) return { success: true, data: serialize(expired) }
+      const { data: current } = await table(admin).select('*').eq('id', row.id).maybeSingle()
+      if (!current) throw new Error('Cobranca Pix nao encontrada.')
+      const settled = current.status === 'PAID' && current.settlement_status !== 'COMPLETED'
+        ? await settleSaleCharge(admin, current)
+        : current
+      return { success: true, data: serialize(settled) }
     }
     if (row.status === 'CREATING' && new Date(row.created_at).getTime() + CREATION_RECOVERY_DELAY_MS <= Date.now()) {
       const { data: recovered } = await table(admin).update({ status: 'ERROR', provider_response: { recovery: 'creating_timeout' }, updated_at: new Date().toISOString() }).eq('id', row.id).eq('status', 'CREATING').select('*').single()
@@ -248,9 +349,17 @@ export async function refreshPixSaleCharge(input: z.input<typeof ChargeSchema>):
     if (row.status === 'PENDING') {
       const remote = await getSicrediImmediateCharge(row.txid)
       const status = remote.status === 'CONCLUIDA' ? 'PAID' : remote.status === 'REMOVIDA_PELO_USUARIO_RECEBEDOR' ? 'CANCELLED' : 'PENDING'
-      const { data: updated } = await table(admin).update({ status, paid_at: status === 'PAID' ? new Date().toISOString() : row.paid_at, provider_response: remote.raw, updated_at: new Date().toISOString() }).eq('id', row.id).select('*').single()
-      const settled = status === 'PAID' && updated ? await settleSaleCharge(admin, updated) : updated
-      return { success: true, data: serialize(settled || row) }
+      const { data: updated } = await table(admin).update({ status, paid_at: status === 'PAID' ? new Date().toISOString() : row.paid_at, provider_response: remote.raw, updated_at: new Date().toISOString() }).eq('id', row.id).eq('status', 'PENDING').select('*').maybeSingle()
+      if (!updated) {
+        const { data: current } = await table(admin).select('*').eq('id', row.id).maybeSingle()
+        if (!current) throw new Error('Cobranca Pix nao encontrada.')
+        const settled = current.status === 'PAID' && current.settlement_status !== 'COMPLETED'
+          ? await settleSaleCharge(admin, current)
+          : current
+        return { success: true, data: serialize(settled) }
+      }
+      const settled = status === 'PAID' ? await settleSaleCharge(admin, updated) : updated
+      return { success: true, data: serialize(settled) }
     }
     return { success: true, data: serialize(row) }
   } catch (error) {

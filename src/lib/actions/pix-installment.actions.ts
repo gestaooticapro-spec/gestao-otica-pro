@@ -43,6 +43,7 @@ export type PixInstallmentCharge = {
 type ActionResult<T = undefined> = { success: true; data: T } | { success: false; message: string }
 type AccessProfile = { role: string; store_id: number | null; tenant_id: string | null }
 const CREATION_RECOVERY_DELAY_MS = 2 * 60 * 1000
+const NOT_FOUND_CONFIRMATION_DELAY_MS = 30 * 1000
 
 const CreateChargeSchema = z.object({
   storeId: z.number().int().positive(),
@@ -222,9 +223,18 @@ async function expireLocalChargeIfNeeded(admin: any, row: any) {
     const { data, error } = await pixChargesTable(admin)
       .update({ status: 'EXPIRED', updated_at: new Date().toISOString() })
       .eq('id', row.id)
+      .eq('status', 'PENDING')
       .select('*')
-      .single()
+      .maybeSingle()
     if (!error && data) return data
+
+    // O webhook pode ter confirmado o pagamento entre a leitura e o UPDATE.
+    // Nesse caso, devolvemos o estado atual em vez de sobrescrever PAID.
+    const { data: current, error: currentError } = await pixChargesTable(admin)
+      .select('*')
+      .eq('id', row.id)
+      .maybeSingle()
+    if (!currentError && current) return current
   }
   return row
 }
@@ -514,24 +524,35 @@ export async function createPixInstallmentCharge(input: z.input<typeof CreateCha
     }
     const resolvedStrategy = principalAmount < outstanding - 0.01 ? data.strategy : 'quitacao_total'
 
-    const { data: pendingRows, error: pendingError } = await pixChargesTable(admin)
+    const { data: latestRows, error: latestError } = await pixChargesTable(admin)
       .select('*')
       .eq('installment_id', data.installmentId)
-      .in('status', ['CREATING', 'PENDING', 'EXPIRED'])
       .order('created_at', { ascending: false })
       .limit(1)
-    if (pendingError) throw new Error('Nao foi possivel verificar cobranças Pix pendentes.')
-    const pending = pendingRows?.[0] || null
-    if (pending?.status === 'CREATING') {
-      const recovered = await recoverCreatingCharge(admin, pending)
+    if (latestError) throw new Error('Nao foi possivel verificar cobrancas Pix anteriores.')
+    const latest = latestRows?.[0] || null
+    if (latest?.status === 'CREATING') {
+      const recovered = await recoverCreatingCharge(admin, latest)
       revalidateInstallmentPaths(data.storeId)
       return { success: true, data: serializeCharge(recovered) }
     }
-    if (pending) {
+    if (latest?.status === 'PAID' && latest.settlement_status !== 'COMPLETED') {
+      const settled = await settleConfirmedPixCharge(admin, latest)
+      const serialized = serializeCharge(settled)
+      if (serialized.settlementStatus === 'COMPLETED') {
+        serialized.settlementPaymentIds = await getSettlementPaymentIds(admin, settled)
+      }
+      revalidateInstallmentPaths(data.storeId)
+      return { success: true, data: serialized }
+    }
+    if (latest?.status === 'ERROR' || latest?.status === 'DIVERGENT') {
+      throw new Error('Existe uma cobranca Pix anterior que precisa ser conferida antes de gerar outro QR Code. Use "Conferir situacao".')
+    }
+    if (latest?.status === 'PENDING' || latest?.status === 'EXPIRED') {
       // Uma cobranca que ja venceu localmente nao pode voltar a ficar ativa.
       // Nao dependemos de uma nova consulta ao Sicredi para liberar a proxima
       // emissao: em HML o QR vencido pode deixar de ser consultavel.
-      const locallyExpired = await expireLocalChargeIfNeeded(admin, pending)
+      const locallyExpired = await expireLocalChargeIfNeeded(admin, latest)
       const current = locallyExpired.status === 'EXPIRED'
         ? locallyExpired
         : locallyExpired.status === 'PENDING'
@@ -639,7 +660,30 @@ export async function refreshPixInstallmentCharge(input: z.input<typeof ChargeAc
       .maybeSingle()
     if (error || !row) throw new Error('Cobrança Pix não encontrada.')
 
+    if (row.status === 'PAID') {
+      const settled = row.settlement_status === 'COMPLETED'
+        ? row
+        : await settleConfirmedPixCharge(admin, row)
+      revalidateInstallmentPaths(data.storeId)
+      const serialized = serializeCharge(settled)
+      if (serialized.settlementStatus === 'COMPLETED') {
+        serialized.settlementPaymentIds = await getSettlementPaymentIds(admin, settled)
+      }
+      return { success: true, data: serialized }
+    }
+
     const locallyExpired = await expireLocalChargeIfNeeded(admin, row)
+    if (locallyExpired.status === 'PAID') {
+      const settled = locallyExpired.settlement_status === 'COMPLETED'
+        ? locallyExpired
+        : await settleConfirmedPixCharge(admin, locallyExpired)
+      revalidateInstallmentPaths(data.storeId)
+      const serialized = serializeCharge(settled)
+      if (serialized.settlementStatus === 'COMPLETED') {
+        serialized.settlementPaymentIds = await getSettlementPaymentIds(admin, settled)
+      }
+      return { success: true, data: serialized }
+    }
     if (locallyExpired.status === 'EXPIRED') {
       revalidateInstallmentPaths(data.storeId)
       return { success: true, data: serializeCharge(locallyExpired) }
@@ -650,8 +694,29 @@ export async function refreshPixInstallmentCharge(input: z.input<typeof ChargeAc
       updated = await reconcileChargeWithSicredi(admin, locallyExpired)
     } catch (error) {
       // Uma reserva que falhou pode nunca ter chegado ao Sicredi. So liberamos
-      // nova emissao quando o banco confirma que aquele txid nao existe.
+      // nova emissao depois de duas confirmacoes separadas de que o txid nao existe.
       if (locallyExpired.status !== 'ERROR' || !(error instanceof SicrediPixHttpError) || error.statusCode !== 404) throw error
+
+      const now = new Date()
+      const previousNotFoundAt = Date.parse(String(locallyExpired.provider_response?.recovery_not_found_at || ''))
+      if (!Number.isFinite(previousNotFoundAt) || now.getTime() - previousNotFoundAt < NOT_FOUND_CONFIRMATION_DELAY_MS) {
+        const { data: awaitingConfirmation, error: confirmationError } = await pixChargesTable(admin)
+          .update({
+            provider_response: {
+              ...(locallyExpired.provider_response || {}),
+              recovery_not_found_at: now.toISOString(),
+              recovery: 'Primeira consulta nao localizou a cobranca; aguardando nova confirmacao.',
+            },
+            updated_at: now.toISOString(),
+          })
+          .eq('id', locallyExpired.id)
+          .eq('status', 'ERROR')
+          .select('*')
+          .single()
+        if (confirmationError || !awaitingConfirmation) throw new Error('Nao foi possivel registrar a conferencia da cobranca com erro.')
+        revalidateInstallmentPaths(data.storeId)
+        return { success: true, data: serializeCharge(awaitingConfirmation) }
+      }
 
       const { data: cancelled, error: cancelError } = await pixChargesTable(admin)
         .update({
@@ -703,8 +768,8 @@ export async function recoverPixInstallmentCharge(input: z.input<typeof Authoriz
       .eq('id', data.chargeId)
       .eq('store_id', data.storeId)
       .maybeSingle()
-    if (error || !row) throw new Error('CobranÃ§a Pix nÃ£o encontrada.')
-    if (row.status !== 'CREATING') throw new Error('Esta cobranÃ§a nÃ£o estÃ¡ aguardando recuperaÃ§Ã£o.')
+    if (error || !row) throw new Error('Cobrança Pix não encontrada.')
+    if (row.status !== 'CREATING') throw new Error('Esta cobrança não está aguardando recuperação.')
 
     const recovered = await recoverCreatingCharge(admin, row)
     revalidateInstallmentPaths(data.storeId)

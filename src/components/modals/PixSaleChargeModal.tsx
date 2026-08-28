@@ -33,14 +33,27 @@ export default function PixSaleChargeModal({
 }) {
   const [mounted, setMounted] = useState(false)
   const [charge, setCharge] = useState<PixSaleCharge | null>(null)
+  const [isLoadingCharge, setIsLoadingCharge] = useState(false)
   const [isAuthOpen, setIsAuthOpen] = useState(false)
   const [isWorking, startTransition] = useTransition()
   const [pendingOperation, setPendingOperation] = useState<'create' | 'cancel' | null>(null)
 
   useEffect(() => setMounted(true), [])
   useEffect(() => {
-    if (!isOpen) return
-    void getPixSaleCharge(storeId, vendaId).then(setCharge)
+    if (!isOpen) {
+      setIsAuthOpen(false)
+      setPendingOperation(null)
+      return
+    }
+    let cancelled = false
+    setCharge(null)
+    setIsLoadingCharge(true)
+    void getPixSaleCharge(storeId, vendaId).then((current) => {
+      if (!cancelled) setCharge(current)
+    }).finally(() => {
+      if (!cancelled) setIsLoadingCharge(false)
+    })
+    return () => { cancelled = true }
   }, [isOpen, storeId, vendaId])
 
   const expiresAt = charge?.expiresAt ? new Date(charge.expiresAt).toLocaleString('pt-BR') : null
@@ -77,6 +90,10 @@ export default function PixSaleChargeModal({
       }
       setCharge(result.data)
       if (result.data.settlementStatus === 'COMPLETED') await onPaymentAdded(result.data)
+      if (result.data.status === 'ERROR') {
+        toast.error('A cobrança não foi localizada na primeira conferência. Aguarde alguns segundos e confira novamente antes de gerar outro QR Code.')
+        return
+      }
       toast.success(result.data.settlementStatus === 'COMPLETED' ? 'Pagamento confirmado e registrado na venda.' : 'Status atualizado.')
     })
   }
@@ -101,9 +118,11 @@ export default function PixSaleChargeModal({
             {charge?.pixCopyPaste ? <div className="flex justify-center rounded-xl bg-white p-4"><QRCodeSVG value={charge.pixCopyPaste} size={220} level="M" includeMargin /></div> : null}
             {charge ? <>
               <div><label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Pix copia e cola</label><div className="mt-1 rounded-lg border border-white/10 bg-black/20 p-3 font-mono text-[10px] break-all text-slate-300">{charge.pixCopyPaste || 'Código ainda não disponível.'}</div></div>
-              <div className="grid grid-cols-2 gap-3"><button onClick={() => void copy()} disabled={!charge.pixCopyPaste} className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-3 py-3 text-xs font-bold text-cyan-200 disabled:opacity-50"><Clipboard className="h-4 w-4" /> Copiar código</button><button onClick={refresh} disabled={isWorking} className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-xs font-bold text-slate-300 disabled:opacity-50"><RefreshCw className="h-4 w-4" /> Atualizar status</button></div>
+              <div className="grid grid-cols-2 gap-3"><button onClick={() => void copy()} disabled={!charge.pixCopyPaste} className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-3 py-3 text-xs font-bold text-cyan-200 disabled:opacity-50"><Clipboard className="h-4 w-4" /> Copiar código</button><button onClick={refresh} disabled={isWorking} className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-xs font-bold text-slate-300 disabled:opacity-50"><RefreshCw className="h-4 w-4" /> {charge.status === 'ERROR' ? 'Conferir situação' : 'Conferir pagamento'}</button></div>
               {charge.status === 'PENDING' && <button onClick={() => { setPendingOperation('cancel'); setIsAuthOpen(true) }} disabled={isWorking} className="w-full rounded-xl border border-rose-500/20 bg-rose-500/10 py-3 text-xs font-bold text-rose-200">Cancelar cobrança</button>}
-            </> : <><p className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-xs text-slate-400">O QR Code ainda não baixa a venda. O pagamento será registrado somente após a confirmação do Sicredi.</p><button onClick={() => { setPendingOperation('create'); setIsAuthOpen(true) }} disabled={isWorking || amount <= 0} className="flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-500 py-4 text-sm font-black uppercase tracking-wide text-cyan-950 disabled:opacity-50">{isWorking ? <Loader2 className="h-5 w-5 animate-spin" /> : <CheckCircle2 className="h-5 w-5" />} Gerar QR Code</button></>}
+              {(charge.status === 'EXPIRED' || charge.status === 'CANCELLED') && <button onClick={() => setCharge(null)} disabled={isWorking} className="w-full rounded-xl border border-cyan-500/20 bg-cyan-500/10 py-3 text-xs font-bold text-cyan-100">Gerar novo QR Code</button>}
+              {charge.status === 'ERROR' && <p className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-100">Confira a situação desta cobrança antes de emitir outro QR Code.</p>}
+            </> : isLoadingCharge ? <div className="flex items-center justify-center gap-2 py-8 text-sm text-slate-400"><Loader2 className="h-5 w-5 animate-spin" /> Conferindo cobrança existente...</div> : <><p className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-xs text-slate-400">O QR Code ainda não baixa a venda. O pagamento será registrado somente após a confirmação do Sicredi.</p><button onClick={() => { setPendingOperation('create'); setIsAuthOpen(true) }} disabled={isWorking || amount <= 0} className="flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-500 py-4 text-sm font-black uppercase tracking-wide text-cyan-950 disabled:opacity-50">{isWorking ? <Loader2 className="h-5 w-5 animate-spin" /> : <CheckCircle2 className="h-5 w-5" />} Gerar QR Code</button></>}
           </div>
         </div>
       </div>

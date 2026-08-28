@@ -255,6 +255,10 @@ export default function PixInstallmentChargeModal({
           : 'Esta cobrança foi paga, mas a baixa ainda precisa ser concluída.')
         return
       }
+      if (result.data.status === 'ERROR' || result.data.status === 'DIVERGENT') {
+        toast.error('A cobrança não foi localizada na primeira conferência. Aguarde alguns segundos e confira novamente antes de gerar outro QR Code.')
+        return
+      }
       resetChargeForm()
       toast.success(charge.status === 'ERROR'
         ? 'A cobrança anterior não foi localizada. Você já pode gerar um novo QR Code.'
@@ -295,7 +299,7 @@ export default function PixInstallmentChargeModal({
                 <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 text-center">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Valor da cobrança</p>
                   <p className="mt-1 text-4xl font-black text-white">R$ {money(charge.amount)}</p>
-                  <p className={`mt-3 text-xs font-bold ${charge.status === 'PENDING' ? 'text-amber-300' : charge.status === 'PAID' ? 'text-emerald-300' : 'text-slate-400'}`}>{statusLabel(charge)}</p>
+                  <p className={`mt-3 text-xs font-bold ${charge.status === 'PENDING' || (charge.status === 'PAID' && charge.settlementStatus !== 'COMPLETED') ? 'text-amber-300' : charge.status === 'PAID' ? 'text-emerald-300' : 'text-slate-400'}`}>{statusLabel(charge)}</p>
                   {expiresAt && charge.status === 'PENDING' ? <p className="mt-1 text-[10px] text-slate-500">Válido até {expiresAt}</p> : null}
                 </div>
 

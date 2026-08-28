@@ -27,6 +27,7 @@ import CollapsibleBox from './CollapsibleBox'
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext'
 import { toast } from 'sonner'
 import { getDefaultPartialReceiptStrategy, getInstallmentChargeTotal, getInstallmentOutstanding, getInstallmentReceiptPreview } from '@/lib/installment-balance'
+import { getPixInstallmentActionLabel, shouldOpenExistingPixInstallmentCharge } from '@/lib/pix/installment-charge-presentation'
 
 type Financiamento = Database['public']['Tables']['financiamento_loja']['Row']
 type FinanciamentoParcela = Database['public']['Tables']['financiamento_parcelas']['Row'] & {
@@ -568,7 +569,8 @@ export default function FinanciamentoBox({
                             const valorAReceber = recibosDaParcela[0]?.saldoAntes ?? valorRestante
                             const isAtrasado = !isPago && new Date(p.data_vencimento) < new Date(new Date().setHours(0, 0, 0, 0));
                             const pixCharge = pixCharges[Number(p.id)]
-                            const hasActivePix = pixCharge?.status === 'CREATING' || pixCharge?.status === 'PENDING'
+                            const pixActionLabel = getPixInstallmentActionLabel(pixCharge, valorRestante)
+                            const shouldOpenPixCharge = shouldOpenExistingPixInstallmentCharge(pixCharge, valorRestante)
                             return (
                                 <div key={p.id} className={`grid min-w-[820px] grid-cols-[42px_minmax(160px,1fr)_145px_190px_230px] items-center gap-2 p-3 hover:bg-white/5 transition-colors ${isPago ? 'bg-green-500/5' : ''}`}>
                                     <div className="contents">
@@ -645,7 +647,7 @@ export default function FinanciamentoBox({
                                                 type="button"
                                                 onClick={(e) => {
                                                     e.stopPropagation()
-                                                    if (hasActivePix) {
+                                                    if (shouldOpenPixCharge) {
                                                         setPixInstallment(p)
                                                     } else if (pixProvider === 'sicredi') {
                                                         setPaymentChoiceParcela(p)
@@ -657,7 +659,7 @@ export default function FinanciamentoBox({
                                                 disabled={disabled || isQuitado}
                                                 className="px-3 py-1.5 bg-amber-500/20 text-amber-400 text-[10px] font-bold rounded-lg hover:bg-amber-500/30 border border-amber-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-amber-900/20"
                                             >
-                                                {hasActivePix ? 'VER PIX' : 'OPÇÕES'}
+                                                {pixActionLabel.toUpperCase()}
                                             </button>
                                         )}
                                     </div>

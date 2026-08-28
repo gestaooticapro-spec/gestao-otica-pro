@@ -16,6 +16,7 @@ import {
     getPixProviderForStore,
     type PixInstallmentCharge,
 } from '@/lib/actions/pix-installment.actions'
+import { getPixInstallmentActionLabel } from '@/lib/pix/installment-charge-presentation'
 
 
 const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -50,17 +51,6 @@ function getPixStatusPresentation(charge: PixInstallmentCharge) {
     }
 }
 
-function getPixActionLabel(p: any, charge?: PixInstallmentCharge) {
-    if (!charge) return 'Gerar QR Code'
-    if (charge.status === 'PENDING') return 'Ver Pix'
-    if (charge.status === 'PAID' && charge.settlementStatus !== 'COMPLETED') return 'Conferir pagamento'
-    if (charge.status === 'PAID') return getSaldoParcela(p) > 0.01 ? 'Gerar QR Code' : 'Pagamento concluído'
-    if (charge.status === 'CREATING') return 'Verificar geração'
-    if (charge.status === 'ERROR') return 'Conferir situação'
-    if (charge.status === 'EXPIRED' || charge.status === 'CANCELLED') return 'Gerar novo QR Code'
-    return 'Gerar QR Code'
-}
-
 function ParcelaCard({
     p,
     onReceive,
@@ -74,7 +64,7 @@ function ParcelaCard({
 }) {
     const isVencida = new Date(p.data_vencimento) < new Date(getToday())
     const pixStatus = pixCharge ? getPixStatusPresentation(pixCharge) : null
-    const pixActionLabel = getPixActionLabel(p, pixCharge)
+    const pixActionLabel = getPixInstallmentActionLabel(pixCharge, getSaldoParcela(p))
     const pixActionDisabled = Boolean(pixCharge?.status === 'PAID' && pixCharge.settlementStatus === 'COMPLETED' && getSaldoParcela(p) <= 0.01)
 
     return (
