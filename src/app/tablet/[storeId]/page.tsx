@@ -29,7 +29,8 @@ export default async function TabletMenuPage(props: { params: Promise<{ storeId:
 
       <div className="grid grid-cols-1 gap-6 w-full max-w-lg">
         {isSicrediEnabled && <Link
-          href={`/dashboard/loja/${storeId}/pix-maquininha`}
+          href={`/tablet/${storeId}/pix-maquininha`}
+          prefetch={false}
           className="group rounded-3xl p-6 relative overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-cyan-500/10 bg-gradient-to-br from-cyan-600/80 to-sky-900/80 border border-cyan-400/30 backdrop-blur-md min-h-44 flex flex-col justify-between"
         >
           <div className="absolute -top-4 -right-4 p-4 opacity-10 group-hover:opacity-20 transition-opacity transform scale-[2.5] rotate-12"><Smartphone className="w-24 h-24 text-white" /></div>
