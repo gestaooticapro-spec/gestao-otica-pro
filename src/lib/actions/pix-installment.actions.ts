@@ -36,6 +36,7 @@ export type PixInstallmentCharge = {
   paidAt: string | null
   settlementStatus: 'PENDING' | 'COMPLETED' | 'ERROR'
   settledAt: string | null
+  settlementPaymentIds?: number[]
 }
 
 type ActionResult<T = undefined> = { success: true; data: T } | { success: false; message: string }
@@ -81,7 +82,28 @@ function serializeCharge(row: any): PixInstallmentCharge {
     paidAt: typeof row.paid_at === 'string' ? row.paid_at : null,
     settlementStatus: (row.settlement_status || 'PENDING') as PixInstallmentCharge['settlementStatus'],
     settledAt: typeof row.settled_at === 'string' ? row.settled_at : null,
+    settlementPaymentIds: Array.isArray(row.settlement_payment_ids)
+      ? row.settlement_payment_ids.map(Number).filter(Number.isSafeInteger)
+      : undefined,
   }
+}
+
+async function getSettlementPaymentIds(admin: any, row: any) {
+  const operationId = Number(row.settlement_operation_id)
+  if (!Number.isSafeInteger(operationId) || operationId <= 0) return []
+
+  const { data, error } = await admin
+    .from('pagamentos')
+    .select('id')
+    .eq('receipt_operation_id', operationId)
+    .order('id', { ascending: true })
+  if (error) {
+    // A baixa ja foi confirmada pela transacao idempotente. A indisponibilidade
+    // desta consulta nao pode fazer a interface tratar a cobranca como pendente.
+    console.error('Baixa Pix concluida, mas o recibo nao foi localizado.', error)
+    return []
+  }
+  return (data || []).map((payment: { id: unknown }) => Number(payment.id)).filter(Number.isSafeInteger)
 }
 
 function pixChargesTable(admin: any) {
@@ -156,7 +178,16 @@ async function getInstallmentContext(admin: any, storeId: number, installmentId:
     .maybeSingle()
   if (financingError || !financing) throw new Error('Financiamento da parcela nao encontrado.')
 
-  return { installment, financing }
+  const { data: financingInstallments, error: financingInstallmentsError } = await admin
+    .from('financiamento_parcelas')
+    .select('id, numero_parcela, valor_parcela, valor_pago, valor_transferido_entrada, valor_transferido_saida, valor_renegociado_saida, status')
+    .eq('financiamento_id', installment.financiamento_id)
+    .eq('store_id', storeId)
+    .order('numero_parcela', { ascending: true })
+    .order('id', { ascending: true })
+  if (financingInstallmentsError) throw new Error('Nao foi possivel conferir o saldo das parcelas deste carne.')
+
+  return { installment, financing, financingInstallments: financingInstallments || [] }
 }
 
 function revalidateInstallmentPaths(storeId: number) {
@@ -227,6 +258,10 @@ async function settleConfirmedPixCharge(admin: any, row: any) {
 
   if (settlementError || !result) {
     const safeError = String(settlementError?.message || 'Nao foi possivel registrar a baixa automatica.').slice(0, 500)
+    // Webhook e consulta manual podem alcançar a mesma chave de idempotência.
+    // Enquanto a primeira transação ainda não gravou o resultado, a segunda
+    // recebe este retorno transitório e não deve marcar a baixa como erro.
+    if (/ainda esta sendo processado/i.test(safeError)) return row
     await pixChargesTable(admin)
       .update({
         settlement_status: 'ERROR',
@@ -246,9 +281,18 @@ async function settleConfirmedPixCharge(admin: any, row: any) {
       updated_at: new Date().toISOString(),
     })
     .eq('id', row.id)
+    .in('settlement_status', ['PENDING', 'ERROR'])
     .select('*')
-    .single()
-  if (settledError || !settled) throw new Error('Baixa concluida, mas nao foi possivel finalizar o controle da cobranca Pix.')
+    .maybeSingle()
+  if (settledError) throw new Error('Baixa concluida, mas nao foi possivel finalizar o controle da cobranca Pix.')
+  if (!settled) {
+    const { data: latest, error: latestError } = await pixChargesTable(admin)
+      .select('*')
+      .eq('id', row.id)
+      .maybeSingle()
+    if (latestError || !latest) throw new Error('Baixa concluida, mas nao foi possivel finalizar o controle da cobranca Pix.')
+    return latest
+  }
   return settled
 }
 
@@ -412,7 +456,7 @@ export async function createPixInstallmentCharge(input: z.input<typeof CreateCha
       throw new Error('A integração Pix Sicredi não está habilitada para esta loja.')
     }
 
-    const { installment, financing } = await getInstallmentContext(admin, data.storeId, data.installmentId)
+    const { installment, financing, financingInstallments } = await getInstallmentContext(admin, data.storeId, data.installmentId)
     const authorizationTenantId = profile.tenant_id
     if (!authorizationTenantId) throw new Error('Perfil sem empresa vinculada.')
     const authorization = verifyEmployeeAuthorization(data.authorizationToken, {
@@ -432,6 +476,22 @@ export async function createPixInstallmentCharge(input: z.input<typeof CreateCha
     if (principalAmount < outstanding - 0.01 && data.strategy === 'quitacao_total') {
       throw new Error('Escolha como tratar o saldo restante da parcela.')
     }
+    const subsequentInstallments = financingInstallments.filter((candidate: any) => (
+      Number(candidate.numero_parcela) > Number(installment.numero_parcela)
+      && String(candidate.status || '').toLocaleLowerCase('pt-BR') === 'pendente'
+      && getInstallmentOutstanding(candidate) > 0
+    ))
+    if (principalAmount < outstanding - 0.01 && data.strategy === 'somar_proxima' && subsequentInstallments.length === 0) {
+      throw new Error('Nao existe uma proxima parcela pendente para receber o saldo restante.')
+    }
+    const allocatableBalance = outstanding + subsequentInstallments.reduce(
+      (total: number, candidate: any) => total + getInstallmentOutstanding(candidate),
+      0,
+    )
+    if (principalAmount > allocatableBalance + 0.01) {
+      throw new Error('O valor do Pix ultrapassa o saldo total desta parcela e das parcelas seguintes.')
+    }
+    const resolvedStrategy = principalAmount < outstanding - 0.01 ? data.strategy : 'quitacao_total'
 
     const { data: pendingRows, error: pendingError } = await pixChargesTable(admin)
       .select('*')
@@ -457,7 +517,13 @@ export async function createPixInstallmentCharge(input: z.input<typeof CreateCha
           ? await reconcileChargeWithSicredi(admin, locallyExpired)
           : locallyExpired
       if (current.status === 'PENDING') return { success: true, data: serializeCharge(current) }
-      if (current.status === 'PAID') throw new Error('Esta cobranca Pix ja foi paga. Faca a baixa manual antes de gerar outro QR Code.')
+      if (current.status === 'PAID') {
+        const serialized = serializeCharge(current)
+        if (serialized.settlementStatus === 'COMPLETED') {
+          serialized.settlementPaymentIds = await getSettlementPaymentIds(admin, current)
+        }
+        return { success: true, data: serialized }
+      }
     }
 
     const pixKey = getSicrediPixKey()
@@ -480,7 +546,7 @@ export async function createPixInstallmentCharge(input: z.input<typeof CreateCha
         settlement_idempotency_key: randomUUID(),
         amount: data.amount.toFixed(2),
         interest_amount: data.interestAmount.toFixed(2),
-        strategy: data.strategy,
+        strategy: resolvedStrategy,
         expires_at: reservationExpiresAt,
         created_by_employee_id: authorization.employeeId,
         created_by_user_id: userId,
@@ -581,7 +647,11 @@ export async function refreshPixInstallmentCharge(input: z.input<typeof ChargeAc
     }
 
     revalidateInstallmentPaths(data.storeId)
-    return { success: true, data: serializeCharge(updated) }
+    const serialized = serializeCharge(updated)
+    if (serialized.status === 'PAID' && serialized.settlementStatus === 'COMPLETED') {
+      serialized.settlementPaymentIds = await getSettlementPaymentIds(admin, updated)
+    }
+    return { success: true, data: serialized }
   } catch (error) {
     return { success: false, message: error instanceof Error ? error.message : 'Nao foi possivel consultar a cobrança Pix.' }
   }
@@ -644,13 +714,23 @@ export async function cancelPixInstallmentCharge(input: z.input<typeof Authorize
 
     const remoteBeforeCancellation = await getSicrediImmediateCharge(row.txid)
     if (remoteBeforeCancellation.status === 'CONCLUIDA') {
-      const { data: paid } = await pixChargesTable(admin)
+      const { data: paid, error: paidError } = await pixChargesTable(admin)
         .update({ status: 'PAID', paid_at: new Date().toISOString(), provider_response: remoteBeforeCancellation.raw, updated_at: new Date().toISOString() })
         .eq('id', row.id)
         .select('*')
         .single()
-      if (!paid) throw new Error('A cobrança já foi paga. Atualize a tela antes de gerar outra.')
-      return { success: false, message: 'A cobrança já foi paga e não pode ser cancelada.' }
+      if (paidError || !paid) throw new Error('Nao foi possivel registrar que a cobranca Pix ja foi paga.')
+
+      // O Sicredi pode confirmar o pagamento entre a abertura do modal e o
+      // clique de cancelar. Nesse caso, cancelar deixaria uma cobranca paga
+      // sem baixa: conciliamos o recebimento antes de devolver o estado atual.
+      const settled = await settleConfirmedPixCharge(admin, paid)
+      revalidateInstallmentPaths(data.storeId)
+      const serialized = serializeCharge(settled)
+      if (serialized.status === 'PAID' && serialized.settlementStatus === 'COMPLETED') {
+        serialized.settlementPaymentIds = await getSettlementPaymentIds(admin, settled)
+      }
+      return { success: true, data: serialized }
     }
 
     const cancelled = await cancelSicrediImmediateCharge(row.txid)

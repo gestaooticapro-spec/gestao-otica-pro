@@ -9,7 +9,7 @@ import { searchPendenciasCliente, receberParcela } from '@/lib/actions/vendas.ac
 import { sendInstallmentReceiptWhatsApp } from '@/lib/actions/manual-whatsapp.actions'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import { printParcela } from '@/components/financeiro/PrintParcelaButton'
-import { getInstallmentOutstanding } from '@/lib/installment-balance'
+import { getDefaultPartialReceiptStrategy, getInstallmentOutstanding, getInstallmentReceiptPreview } from '@/lib/installment-balance'
 import PixInstallmentChargeModal from '@/components/modals/PixInstallmentChargeModal'
 import {
     getPixChargesForInstallments,
@@ -143,7 +143,7 @@ export default function ParcelaSearchModal({
                 setValorTotalPagoStr(saldoStr)
                 setRecebimentos([{ forma_pagamento: 'PIX Remoto', valor: saldoStr }])
                 setValorJurosStr('0,00')
-                setEstrategia(initialParcela.has_next_installment ? 'somar_proxima' : 'baixa_parcial')
+                setEstrategia(getDefaultPartialReceiptStrategy(Boolean(initialParcela.has_next_installment)))
                 setStep('pay')
             } else {
                 setStep('search')
@@ -204,6 +204,29 @@ export default function ParcelaSearchModal({
         setStep('details')
     }
 
+    const refreshSelectedClientData = async () => {
+        const customerId = Number(selectedClientData?.cliente?.id)
+        const searchTerm = String(selectedClientData?.cliente?.cpf || selectedClientData?.cliente?.full_name || '').trim()
+        if (!Number.isSafeInteger(customerId) || !searchTerm) return
+
+        const clients = await searchPendenciasCliente(storeId, searchTerm) as any[]
+        const refreshedClient = clients.find((candidate) => Number(candidate?.cliente?.id) === customerId)
+        if (refreshedClient) {
+            setSelectedClientData(refreshedClient)
+            return
+        }
+
+        // Quando a ultima parcela foi quitada, o cliente deixa de pertencer a
+        // esta busca. Nao mantemos na tela o snapshot anterior como se ainda
+        // houvesse uma parcela aberta.
+        setSelectedClientData(null)
+        setSelectedParcela(null)
+        setPixCharges({})
+        setResults(clients)
+        setHasSearched(true)
+        setStep('search')
+    }
+
     const handleSelectParcela = (parcela: any) => {
         console.log("[DEBUG] Parcela selecionada:", parcela)
         setSelectedParcela(parcela)
@@ -213,7 +236,7 @@ export default function ParcelaSearchModal({
         setValorTotalPagoStr(valLimpo)
         setRecebimentos([{ forma_pagamento: 'PIX Remoto', valor: valLimpo }])
         setValorJurosStr('0,00')
-        setEstrategia(parcela.has_next_installment ? 'somar_proxima' : 'baixa_parcial')
+        setEstrategia(getDefaultPartialReceiptStrategy(Boolean(parcela.has_next_installment)))
         setStep('pay')
     }
 
@@ -288,10 +311,8 @@ export default function ParcelaSearchModal({
         formData.append('recebimentos', JSON.stringify(recebimentosValidos))
         formData.append('data_pagamento', getToday())
 
-        const principalAbatido = valorTotalPago - valorJuros
-        const diferenca = valorOriginal - principalAbatido
-        const isParcial = diferenca > 0.01
-        const strategy = isParcial ? estrategia : 'quitacao_total'
+        const preview = getInstallmentReceiptPreview({ outstanding: valorOriginal, receivedAmount: valorTotalPago, interestAmount: valorJuros })
+        const strategy = preview.isPartial ? estrategia : 'quitacao_total'
         const requestSignature = JSON.stringify({
             parcelaId: selectedParcela.id,
             vendaId: selectedParcela.venda_id,
@@ -580,8 +601,7 @@ export default function ParcelaSearchModal({
                                     const vTotal = parseMoney(valorTotalPagoStr)
                                     const vJuros = parseMoney(valorJurosStr)
 
-                                    const principalAbatido = vTotal - vJuros
-                                    const diferenca = vOrig - principalAbatido
+                                    const { difference: diferenca } = getInstallmentReceiptPreview({ outstanding: vOrig, receivedAmount: vTotal, interestAmount: vJuros })
 
                                     if (diferenca > 0.01) {
                                         return (
@@ -691,7 +711,7 @@ export default function ParcelaSearchModal({
                     isOpen={Boolean(pixInstallment)}
                     storeId={storeId}
                     installment={pixInstallment}
-                    hasNextInstallment={Boolean(selectedClientData?.parcelas?.some((candidate: any) => Number(candidate.financiamento_id) === Number(pixInstallment.financiamento_id) && Number(candidate.numero_parcela) > Number(pixInstallment.numero_parcela) && String(candidate.status).toLowerCase() !== 'pago'))}
+                    hasNextInstallment={Boolean(pixInstallment.has_next_installment)}
                     initialCharge={pixCharges[Number(pixInstallment.id)]}
                     onClose={() => setPixInstallment(null)}
                     onChargeChanged={(charge) => setPixCharges((current) => {
@@ -700,6 +720,12 @@ export default function ParcelaSearchModal({
                         else delete next[Number(pixInstallment.id)]
                         return next
                     })}
+                    onSettled={async () => {
+                        await refreshSelectedClientData()
+                        await onPaymentRecorded?.()
+                        router.refresh()
+                        window.dispatchEvent(new Event('installment-payment-recorded'))
+                    }}
                 />
             )}
         </>,

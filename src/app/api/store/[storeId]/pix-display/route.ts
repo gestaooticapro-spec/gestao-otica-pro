@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
+import { isSicrediPilotStoreCnpj } from '@/lib/pix/sicredi-availability'
+import type { StoreSettings } from '@/lib/store-modules'
 
 const DISPLAY_WINDOW_MS = 5 * 60 * 1000
 
@@ -19,8 +21,12 @@ export async function GET(_request: Request, context: { params: Promise<{ storeI
   }
 
   const admin: any = createAdminClient()
-  const { data: store } = await admin.from('stores').select('id, tenant_id').eq('id', storeId).maybeSingle()
+  const { data: store } = await admin.from('stores').select('id, tenant_id, cnpj, settings').eq('id', storeId).maybeSingle()
   if (!store || store.tenant_id !== profile.tenant_id) return NextResponse.json({ message: 'Acesso negado.' }, { status: 403 })
+  const settings = (store.settings || {}) as StoreSettings
+  if (!isSicrediPilotStoreCnpj(store.cnpj) || settings.pix_provider !== 'sicredi') {
+    return NextResponse.json({ message: 'Modo maquininha Pix indisponivel para esta loja.' }, { status: 403 })
+  }
   const displayCutoff = new Date(Date.now() - DISPLAY_WINDOW_MS).toISOString()
   const [saleResult, installmentResult] = await Promise.all([
     admin.from('pix_sale_charges').select('id, venda_id, amount, pix_copy_paste, status, expires_at, created_at, updated_at').eq('store_id', storeId).in('status', ['CREATING', 'PENDING']).gte('created_at', displayCutoff).order('created_at', { ascending: true }).limit(20),

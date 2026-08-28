@@ -1,8 +1,0 @@
-{
-  "tower-report-cleanup": {
-    "path": "/api/internal/tower-report-cleanup",
-    "schedule": "15 5 * * *",
-    "status": "temporarily-disabled",
-    "reason": "Development of Torre"
-  }
-}

@@ -4511,6 +4511,7 @@ export async function searchPendenciasCliente(storeId: number, termo: string) {
             valor_pago,
             valor_transferido_entrada,
             valor_transferido_saida,
+            valor_renegociado_saida,
             data_vencimento,
             financiamento_id,
             customer_id,
@@ -4564,7 +4565,8 @@ export async function searchPendenciasCliente(storeId: number, termo: string) {
         has_next_installment: parcelas.some((candidate: any) => (
             Number(candidate.financiamento_id) === Number(parcela.financiamento_id)
             && Number(candidate.numero_parcela) > Number(parcela.numero_parcela)
-            && String(candidate.status || '').toLowerCase() !== 'pago'
+            && String(candidate.status || '').toLowerCase() === 'pendente'
+            && getInstallmentOutstanding(candidate) > 0.01
         )),
     }))
 
@@ -4592,8 +4594,10 @@ export async function searchPendenciasCliente(storeId: number, termo: string) {
             valor_pago: p.valor_pago,
             valor_transferido_entrada: p.valor_transferido_entrada,
             valor_transferido_saida: p.valor_transferido_saida,
+            valor_renegociado_saida: p.valor_renegociado_saida,
             has_next_installment: p.has_next_installment,
             data_vencimento: p.data_vencimento,
+            financiamento_id: p.financiamento_id,
             venda_id: p.financiamento_loja?.venda_id,
             data_venda: venda?.created_at,
             beneficiario: beneficiario

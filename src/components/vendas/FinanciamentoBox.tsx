@@ -26,7 +26,7 @@ import UpdateCpfModal from '@/components/modals/UpdateCpfModal'
 import CollapsibleBox from './CollapsibleBox'
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext'
 import { toast } from 'sonner'
-import { getInstallmentChargeTotal, getInstallmentOutstanding } from '@/lib/installment-balance'
+import { getDefaultPartialReceiptStrategy, getInstallmentChargeTotal, getInstallmentOutstanding, getInstallmentReceiptPreview } from '@/lib/installment-balance'
 
 type Financiamento = Database['public']['Tables']['financiamento_loja']['Row']
 type FinanciamentoParcela = Database['public']['Tables']['financiamento_parcelas']['Row'] & {
@@ -166,14 +166,13 @@ function RecebimentoModal({
     const [valorPagoStr, setValorPagoStr] = useState(formatCurrency(saldoParcela))
     const [forma, setForma] = useState('Dinheiro')
     const [dataPagto, setDataPagto] = useState(getToday())
-    const [estrategia, setEstrategia] = useState<'baixa_parcial' | 'somar_proxima'>(hasNextInstallment ? 'somar_proxima' : 'baixa_parcial')
+    const [estrategia, setEstrategia] = useState<'baixa_parcial' | 'somar_proxima'>(() => getDefaultPartialReceiptStrategy(hasNextInstallment))
     const [isAuthOpen, setIsAuthOpen] = useState(false)
     const [dadosParaEnviar, setDadosParaEnviar] = useState<any>(null)
 
     const valorOriginal = saldoParcela
     const valorPago = parseLocaleFloat(valorPagoStr)
-    const diferenca = valorOriginal - valorPago
-    const isParcial = diferenca > 0.01
+    const { difference: diferenca, isPartial: isParcial } = getInstallmentReceiptPreview({ outstanding: valorOriginal, receivedAmount: valorPago })
 
     const handlePreConfirm = (e: React.FormEvent) => {
         e.preventDefault()
@@ -300,7 +299,9 @@ export default function FinanciamentoBox({
     const temParcelaPaga = financiamento?.financiamento_parcelas.some(p => p.status === 'Pago')
     const hasNextPendingInstallment = (parcela: FinanciamentoParcela) =>
         (financiamento?.financiamento_parcelas || []).some((candidate) =>
-            candidate.numero_parcela > parcela.numero_parcela && String(candidate.status).toLowerCase() === 'pendente'
+            candidate.numero_parcela > parcela.numero_parcela
+            && String(candidate.status).toLowerCase() === 'pendente'
+            && getInstallmentOutstanding(candidate) > 0.01
         )
     const recebimentosDoCarne = receiptOperations.filter((operation) => operation.state === 'completed' && !operation.reversed_at)
     const parcelasPorId = new Map((financiamento?.financiamento_parcelas || []).map((parcela) => [parcela.id, parcela]))
@@ -996,6 +997,7 @@ export default function FinanciamentoBox({
                         else delete next[Number(pixInstallment.id)]
                         return next
                     })}
+                    onSettled={onFinanceAdded}
                 />
             )}
 
@@ -1016,7 +1018,7 @@ export default function FinanciamentoBox({
                     setParcelaAtalho(null)
                 }}
                 storeId={storeId}
-                initialParcela={parcelaAtalho ? { ...parcelaAtalho, venda_id: vendaId, has_next_installment: (financiamento?.financiamento_parcelas || []).some((candidate) => candidate.numero_parcela > parcelaAtalho.numero_parcela && String(candidate.status).toLowerCase() === 'pendente') } : undefined}
+                initialParcela={parcelaAtalho ? { ...parcelaAtalho, venda_id: vendaId, has_next_installment: hasNextPendingInstallment(parcelaAtalho) } : undefined}
                 onPaymentRecorded={onFinanceAdded}
             />
 

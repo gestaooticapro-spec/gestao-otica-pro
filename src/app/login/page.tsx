@@ -72,6 +72,10 @@ export default function LoginPage() {
         return
       }
 
+      // A escolha por desktop é temporária. Um novo login deve permitir que
+      // celulares retornem automaticamente ao menu tablet.
+      sessionStorage.removeItem('forceDesktop')
+
       const routeResponse = await fetch('/api/auth/login-route', {
         method: 'GET',
         cache: 'no-store',

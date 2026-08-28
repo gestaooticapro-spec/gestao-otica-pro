@@ -13,7 +13,7 @@ import ProgramUsageModal from '@/components/daily-health/ProgramUsageModal'
 import type { DailyHealthAmountComparison, DailyHealthAlert, DailyHealthArea, DailyHealthReport, PeriodicHealthSnapshot } from '@/lib/daily-store-health'
 
 // O cron noturno continua sendo a única geração automática enquanto investigamos o consumo na Vercel.
-const MANUAL_DAILY_HEALTH_REFRESH_ENABLED = false
+const MANUAL_DAILY_HEALTH_REFRESH_ENABLED = true
 
 type Props = { storeId: number; report: DailyHealthReport | null; weeklySnapshot: PeriodicHealthSnapshot | null; monthlySnapshot: PeriodicHealthSnapshot | null; needsPin: boolean; canConfigure: boolean }
 

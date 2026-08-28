@@ -88,18 +88,12 @@ async function adicionarTotaisPagamentos(supabaseAdmin: any, parcelas: any[]) {
     return parcelas.map((parcela) => {
         const resumo = porParcela.get(Number(parcela.id))
         const operations = operationsByOrigin.get(Number(parcela.id)) || []
-        const firstOperation = operations[0]
-        const firstSnapshot = Array.isArray(firstOperation?.installments_before)
-            ? firstOperation.installments_before.find((item: any) => Number(item.id) === Number(parcela.id))
-            : null
-        const pagamentosAntes = firstOperation
-            ? (resumo?.pagamentos || []).filter((pagamento) => String(pagamento.data_pagamento || '').slice(0, 10) < String(firstOperation.received_on)).reduce((total, pagamento) => total + Number(pagamento.valor_pago || 0), 0)
-            : 0
-        const valorAReceber = firstSnapshot
-            ? getInstallmentOutstanding(firstSnapshot)
-            : firstOperation
-                ? Math.max(0, Number(parcela.valor_parcela || 0) + Number(parcela.valor_transferido_entrada || 0) - pagamentosAntes - Number(parcela.valor_transferido_saida || 0))
-                : getInstallmentOutstanding({ ...parcela, valor_pago: resumo?.total ?? parcela.valor_pago })
+        // O relatorio deve apresentar o saldo atual, e nao o snapshot salvo
+        // antes da primeira baixa. Isso inclui recebimentos parciais por Pix,
+        // pagamentos manuais e valores transferidos entre parcelas.
+        // `pagamentos.valor_pago` inclui juros; o saldo da parcela deve usar
+        // somente o principal persistido em `financiamento_parcelas.valor_pago`.
+        const valorAReceber = getInstallmentOutstanding(parcela)
         return {
             ...parcela,
             valor_pago_relatorio: resumo?.total || 0,
@@ -354,6 +348,7 @@ export async function getParcelasFiltradas(storeId: number, filtros: ParcelaFilt
                 valor_pago,
                 valor_transferido_entrada,
                 valor_transferido_saida,
+                valor_renegociado_saida,
                 status,
                 data_pagamento,
                 customer_id,
@@ -452,6 +447,7 @@ export async function getParcelasFiltradas(storeId: number, filtros: ParcelaFilt
                 valor_pago,
                 valor_transferido_entrada,
                 valor_transferido_saida,
+                valor_renegociado_saida,
                 status,
                 data_pagamento,
                 customer_id,
@@ -526,6 +522,7 @@ export async function getCustomerParcelasFiltradas(storeId: number, customerId: 
                 valor_pago,
                 valor_transferido_entrada,
                 valor_transferido_saida,
+                valor_renegociado_saida,
                 status,
                 data_pagamento,
                 customer_id,
@@ -611,6 +608,7 @@ export async function getCustomerParcelasFiltradas(storeId: number, customerId: 
                 valor_pago,
                 valor_transferido_entrada,
                 valor_transferido_saida,
+                valor_renegociado_saida,
                 status,
                 data_pagamento,
                 customer_id,

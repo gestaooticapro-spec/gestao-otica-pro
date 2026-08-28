@@ -13,6 +13,13 @@ export const PENDING_RELEASE_VERSION: string | null = '1.02.06'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
   'A integraÃ§Ã£o Pix Sicredi passou a usar exclusivamente as credenciais e a API oficial de produÃ§Ã£o, mantendo a liberaÃ§Ã£o restrita Ã  Ã“tica Ocular configurada como loja-piloto.',
   'Certificados do Pix Sicredi podem ser configurados como segredos Base64 no ambiente hospedado, preservando os arquivos locais apenas para desenvolvimento.',
+  'Baixas confirmadas de parcelas por Pix Sicredi passam a abrir o recibo automaticamente; a tela de contas a receber diferencia pagamento parcial da quitacao total.',
+  'Contas a receber passou a calcular o saldo da parcela sem somar juros; cancelamentos que encontram QR ja pago concluem a baixa automatica e conciliacoes simultaneas nao gravam erro transitorio.',
+  'O recebimento de parcelas por Pix Sicredi passou a usar as mesmas regras da baixa manual para juros, pagamento parcial, transferencia do saldo e amortizacao das parcelas seguintes.',
+  'O acesso em celular volta ao menu tablet a cada novo login, mesmo que a sessao anterior tenha usado a versao desktop.',
+  'Parcelas parcialmente recebidas por Pix passam a abrir nova cobranca pelo saldo atual; contas a receber e o atendimento atualizam o valor restante real da parcela, inclusive apos renegociacoes.',
+  'A transferencia do saldo de uma baixa Pix parcial voltou a reconhecer as proximas parcelas pendentes do mesmo carne.',
+  'A baixa de parcelas agora usa no banco o mesmo saldo efetivo da interface, incluindo valores ja retirados por renegociacao; o atendimento aguarda a atualizacao antes de reabrir a parcela e o modo maquininha fica restrito a loja Sicredi habilitada.',
 ]
 const RELEASE_10205_CHANGES: readonly string[] = [
   'IMPLEMENTAÇÃO DO MÓDULO PONTOS DE ATENÇÃO - A IA VASCULHA OS REGISTROS E AJUDA NA GESTÃO DA EMPRESA.',

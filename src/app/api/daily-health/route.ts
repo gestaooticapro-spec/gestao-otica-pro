@@ -7,7 +7,7 @@ import { generateDailyStoreHealthReport, generatePeriodicStoreHealthSnapshot, ge
 
 const storeSchema = z.coerce.number().int().positive()
 // Mantém os relatórios agendados pelo cron, mas bloqueia recalculos manuais temporariamente.
-const MANUAL_DAILY_HEALTH_REFRESH_ENABLED = false
+const MANUAL_DAILY_HEALTH_REFRESH_ENABLED = true
 
 async function allowed(storeId: number) {
   const client = createClient()

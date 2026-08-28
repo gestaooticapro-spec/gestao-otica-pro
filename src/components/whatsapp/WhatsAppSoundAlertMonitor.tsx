@@ -7,7 +7,7 @@ type BrowserAudioContext = AudioContext & { state: AudioContextState }
 
 export const WHATSAPP_SOUND_ALERT_CHANGED = 'whatsapp-local-sound-alert-change'
 // Desativação emergencial temporária; voltar para false após a janela de risco.
-const TEMPORARILY_DISABLE_WHATSAPP_SOUND_ALERT = true
+const TEMPORARILY_DISABLE_WHATSAPP_SOUND_ALERT = false
 const VISIBLE_POLL_INTERVAL_MS = 30_000
 const HIDDEN_POLL_INTERVAL_MS = 120_000
 

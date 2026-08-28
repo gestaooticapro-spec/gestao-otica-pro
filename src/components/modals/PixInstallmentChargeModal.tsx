@@ -13,7 +13,7 @@ import {
   sendPixInstallmentChargeWhatsApp,
   type PixInstallmentCharge,
 } from '@/lib/actions/pix-installment.actions'
-import { getInstallmentOutstanding } from '@/lib/installment-balance'
+import { getDefaultPartialReceiptStrategy, getInstallmentOutstanding, getInstallmentReceiptPreview } from '@/lib/installment-balance'
 import { toast } from 'sonner'
 
 type Installment = {
@@ -49,6 +49,7 @@ export default function PixInstallmentChargeModal({
   initialCharge,
   onClose,
   onChargeChanged,
+  onSettled,
 }: {
   isOpen: boolean
   storeId: number
@@ -57,13 +58,23 @@ export default function PixInstallmentChargeModal({
   initialCharge?: PixInstallmentCharge
   onClose: () => void
   onChargeChanged: (charge: PixInstallmentCharge | null) => void
+  onSettled?: () => void | Promise<void>
 }) {
   const outstanding = getInstallmentOutstanding(installment)
+  // Uma cobranca Pix ja baixada faz parte do historico, mas nao pode bloquear
+  // uma nova emissao quando restar saldo nesta mesma parcela.
+  const shouldGenerateRemainingBalance = Boolean(
+    initialCharge
+    && initialCharge.status === 'PAID'
+    && initialCharge.settlementStatus === 'COMPLETED'
+    && outstanding > 0.01,
+  )
+  const initialChargeForModal = shouldGenerateRemainingBalance ? null : initialCharge || null
   const [mounted, setMounted] = useState(false)
-  const [charge, setCharge] = useState<PixInstallmentCharge | null>(initialCharge || null)
+  const [charge, setCharge] = useState<PixInstallmentCharge | null>(initialChargeForModal)
   const [amountText, setAmountText] = useState(money(outstanding))
   const [interestText, setInterestText] = useState('0,00')
-  const [strategy, setStrategy] = useState<'quitacao_total' | 'baixa_parcial' | 'somar_proxima'>('quitacao_total')
+  const [strategy, setStrategy] = useState<'baixa_parcial' | 'somar_proxima'>(() => getDefaultPartialReceiptStrategy(hasNextInstallment))
   const [pendingOperation, setPendingOperation] = useState<PendingOperation>(null)
   const [isAuthOpen, setIsAuthOpen] = useState(false)
   const [isWorking, startTransition] = useTransition()
@@ -72,20 +83,18 @@ export default function PixInstallmentChargeModal({
   useEffect(() => setMounted(true), [])
   useEffect(() => {
     if (!isOpen) return
-    setCharge(initialCharge || null)
+    setCharge(initialChargeForModal)
     setAmountText(money(outstanding))
     setInterestText('0,00')
-    setStrategy('quitacao_total')
+    setStrategy(getDefaultPartialReceiptStrategy(hasNextInstallment))
     setPendingOperation(null)
-  }, [isOpen, initialCharge?.id, outstanding])
+  }, [isOpen, initialChargeForModal, outstanding, hasNextInstallment])
 
   const amount = parseMoney(amountText)
   const interest = parseMoney(interestText)
-  const principal = amount - interest
-  const difference = outstanding - principal
-  const isPartial = difference > 0.01
-  const isOverpayment = difference < -0.01
-  const canGenerate = amount > 0 && principal > 0 && (!isPartial || strategy !== 'quitacao_total')
+  const preview = getInstallmentReceiptPreview({ outstanding, receivedAmount: amount, interestAmount: interest })
+  const { principalAmount: principal, difference, isPartial, isOverpayment } = preview
+  const canGenerate = amount > 0 && principal > 0 && (!isOverpayment || hasNextInstallment)
 
   const expiresAt = useMemo(() => charge?.expiresAt ? new Date(charge.expiresAt).toLocaleString('pt-BR') : null, [charge?.expiresAt])
 
@@ -98,7 +107,22 @@ export default function PixInstallmentChargeModal({
     updateCharge(null)
     setAmountText(money(outstanding))
     setInterestText('0,00')
-    setStrategy('quitacao_total')
+    setStrategy(getDefaultPartialReceiptStrategy(hasNextInstallment))
+  }
+
+  const openReceipt = (paymentIds: number[]) => {
+    if (paymentIds.length === 0) return false
+    return Boolean(window.open(`/print/recibo/${paymentIds.join('-')}?t=${Date.now()}`, '_blank'))
+  }
+
+  const finishSettledCharge = async (nextCharge: PixInstallmentCharge, messagePrefix = 'Pagamento confirmado') => {
+    updateCharge(nextCharge)
+    const receiptOpened = openReceipt(nextCharge.settlementPaymentIds || [])
+    await onSettled?.()
+    onClose()
+    toast.success(receiptOpened
+      ? `${messagePrefix}, baixa concluida e recibo aberto.`
+      : `${messagePrefix} e baixa concluida. Use Recibos para imprimir.`)
   }
 
   const requestAuthorization = (operation: Exclude<PendingOperation, null>) => {
@@ -135,7 +159,15 @@ export default function PixInstallmentChargeModal({
           toast.error(result.message)
           return
         }
+        if (result.data.status === 'PAID' && result.data.settlementStatus === 'COMPLETED') {
+          await finishSettledCharge(result.data, 'Pagamento ja confirmado')
+          return
+        }
         updateCharge(result.data)
+        if (result.data.status === 'PAID') {
+          toast.success('Pagamento confirmado. A baixa automatica esta sendo concluida; atualize o status em instantes.')
+          return
+        }
         toast.success('Cobrança Pix criada. A parcela continua em aberto até a confirmação.')
         return
       }
@@ -156,6 +188,15 @@ export default function PixInstallmentChargeModal({
       const result = await cancelPixInstallmentCharge({ storeId, chargeId: charge.id, authorizationToken })
       if (!result.success) {
         toast.error(result.message)
+        return
+      }
+      if (result.data.status === 'PAID' && result.data.settlementStatus === 'COMPLETED') {
+        await finishSettledCharge(result.data)
+        return
+      }
+      if (result.data.status === 'PAID') {
+        updateCharge(result.data)
+        toast.success('Pagamento confirmado. A baixa automatica esta sendo concluida; atualize o status em instantes.')
         return
       }
       resetChargeForm()
@@ -179,6 +220,10 @@ export default function PixInstallmentChargeModal({
       const result = await refreshPixInstallmentCharge({ storeId, chargeId: charge.id })
       if (!result.success) {
         toast.error(result.message)
+        return
+      }
+      if (result.data.status === 'PAID' && result.data.settlementStatus === 'COMPLETED') {
+        await finishSettledCharge(result.data)
         return
       }
       updateCharge(result.data)
@@ -273,13 +318,15 @@ export default function PixInstallmentChargeModal({
             ) : (
               <>
                 <div className="text-center"><p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Saldo atual da parcela</p><p className="mt-1 text-4xl font-black text-white">R$ {money(outstanding)}</p></div>
+                {shouldGenerateRemainingBalance ? <p className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-xs text-emerald-100">O Pix anterior foi baixado. Gere agora uma nova cobranca apenas para o saldo restante.</p> : null}
                 <div className="grid grid-cols-2 gap-3">
                   <label className="block text-xs font-bold text-slate-300">Valor a cobrar<input value={amountText} onChange={(event) => setAmountText(event.target.value)} className="mt-1 h-11 w-full rounded-lg border border-white/10 bg-white/5 px-3 text-right text-lg font-bold text-emerald-300 outline-none focus:border-emerald-500/50" /></label>
                   <label className="block text-xs font-bold text-slate-300">Juros / multa<input value={interestText} onChange={(event) => setInterestText(event.target.value)} className="mt-1 h-11 w-full rounded-lg border border-white/10 bg-white/5 px-3 text-right text-lg font-bold text-amber-300 outline-none focus:border-amber-500/50" /></label>
                 </div>
 
                 {isPartial ? <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-4"><div className="flex items-center gap-2 text-sm font-bold text-amber-200"><AlertTriangle className="h-4 w-4" /> Restarão R$ {money(difference)} da dívida</div><label className="mt-3 flex gap-2 text-xs text-slate-300"><input type="radio" checked={strategy === 'baixa_parcial'} onChange={() => setStrategy('baixa_parcial')} /> Manter o restante nesta parcela</label><label className={`mt-2 flex gap-2 text-xs ${hasNextInstallment ? 'text-slate-300' : 'text-slate-600'}`}><input type="radio" disabled={!hasNextInstallment} checked={strategy === 'somar_proxima'} onChange={() => setStrategy('somar_proxima')} /> Transferir o restante para a próxima parcela</label></div> : null}
-                {isOverpayment ? <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 p-4 text-xs text-blue-200">Há R$ {money(Math.abs(difference))} excedentes. Nesta versão, a baixa é manual: confira e registre o tratamento do excedente antes de quitar a parcela.</div> : null}
+                {isOverpayment ? <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 p-4 text-xs text-blue-200"><strong>Amortização extra: R$ {money(Math.abs(difference))}.</strong><span className="mt-1 block">O excedente será descontado automaticamente das próximas parcelas pendentes.</span></div> : null}
+                {isOverpayment && !hasNextInstallment ? <p className="rounded-xl border border-rose-500/20 bg-rose-500/10 p-3 text-xs text-rose-200">Não existe uma parcela posterior para receber o valor excedente. Reduza o valor do Pix.</p> : null}
                 <p className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-xs text-slate-400">Gerar o QR Code não baixa a parcela. A cobrança ficará pendente até a confirmação do Sicredi.</p>
                 <button onClick={() => requestAuthorization('create')} disabled={isWorking || !canGenerate} className="flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-500 py-4 text-sm font-black uppercase tracking-wide text-cyan-950 hover:bg-cyan-400 disabled:opacity-50">{isWorking ? <Loader2 className="h-5 w-5 animate-spin" /> : <CheckCircle2 className="h-5 w-5" />} Gerar QR Code</button>
               </>

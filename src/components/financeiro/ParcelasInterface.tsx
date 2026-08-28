@@ -19,6 +19,7 @@ type ParcelaData = {
     valor_pago?: number | null
     valor_transferido_entrada?: number | null
     valor_transferido_saida?: number | null
+    valor_renegociado_saida?: number | null
     valor_pago_relatorio?: number
     valor_a_receber_relatorio?: number
     valor_recebido_relatorio?: number | null
@@ -130,7 +131,7 @@ export default function ParcelasInterface({ storeId, reportMode = false }: { sto
         if (!charge) return null
 
         const presentation = charge.status === 'PAID' && charge.settlement_status === 'COMPLETED'
-            ? { label: 'Quitado por Pix Sicredi', className: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300' }
+            ? null
             : charge.status === 'PAID'
                 ? { label: 'Pix pago · baixa pendente', className: 'border-amber-500/20 bg-amber-500/10 text-amber-300' }
                 : charge.status === 'PENDING'
@@ -145,7 +146,7 @@ export default function ParcelasInterface({ storeId, reportMode = false }: { sto
                                     ? { label: 'Pix com erro', className: 'border-rose-500/20 bg-rose-500/10 text-rose-300' }
                                     : { label: 'Pix divergente', className: 'border-amber-500/20 bg-amber-500/10 text-amber-300' }
 
-        return <span className={`mt-1 inline-flex max-w-[150px] rounded-md border px-1.5 py-0.5 text-[9px] font-bold normal-case tracking-normal ${presentation.className}`}>{presentation.label}</span>
+        return presentation ? <span className={`mt-1 inline-flex max-w-[150px] rounded-md border px-1.5 py-0.5 text-[9px] font-bold normal-case tracking-normal ${presentation.className}`}>{presentation.label}</span> : null
     }
 
     const handleSendReceipt = async (parcelaId: number) => {
@@ -458,8 +459,8 @@ export default function ParcelasInterface({ storeId, reportMode = false }: { sto
                                                                                 <td className="px-2 py-2 text-[11px] font-bold text-amber-300 text-right whitespace-nowrap">
                                                                                     {formatCurrency(Number(p.valor_a_receber_relatorio ?? getInstallmentOutstanding(p)))}
                                                                                 </td>
-                                                                                <td className="px-2 py-2 text-[11px] font-bold text-emerald-400 text-right whitespace-nowrap">
-                                                                                    {p.valor_recebido_relatorio != null ? formatCurrency(Number(p.valor_recebido_relatorio)) : '-'}
+                                                                                <td className="px-2 py-2 text-right whitespace-nowrap">
+                                                                                    {p.valor_recebido_relatorio != null ? <div className="flex flex-col items-end"><span className="text-[11px] font-bold text-emerald-400">{formatCurrency(Number(p.valor_recebido_relatorio))}</span>{p.pix_charge?.status === 'PAID' && p.pix_charge.settlement_status === 'COMPLETED' ? <span className="mt-0.5 text-[9px] font-bold text-cyan-300">Pix Sicredi</span> : null}</div> : '-'}
                                                                                 </td>
                                                                                 <td className="px-4 py-2 text-right">
                                                                                     {isPago ? (
@@ -564,8 +565,8 @@ export default function ParcelasInterface({ storeId, reportMode = false }: { sto
                                                 <td className="px-2 py-3 text-xs font-bold text-amber-300 text-right whitespace-nowrap">
                                                     {formatCurrency(Number(p.valor_a_receber_relatorio ?? getInstallmentOutstanding(p)))}
                                                 </td>
-                                                <td className="px-2 py-3 text-xs font-bold text-emerald-400 text-right whitespace-nowrap">
-                                                    {p.valor_recebido_relatorio != null ? formatCurrency(Number(p.valor_recebido_relatorio)) : '-'}
+                                                <td className="px-2 py-3 text-right whitespace-nowrap">
+                                                    {p.valor_recebido_relatorio != null ? <div className="flex flex-col items-end"><span className="text-xs font-bold text-emerald-400">{formatCurrency(Number(p.valor_recebido_relatorio))}</span>{p.pix_charge?.status === 'PAID' && p.pix_charge.settlement_status === 'COMPLETED' ? <span className="mt-0.5 text-[9px] font-bold text-cyan-300">Pix Sicredi</span> : null}</div> : '-'}
                                                 </td>
                                                 <td className="px-4 py-3">
                                                     {isPago ? (
