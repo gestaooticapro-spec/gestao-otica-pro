@@ -141,6 +141,8 @@ test('PDV Express protege baixa, estoque, replay e fila da maquininha', () => {
   assert.match(saleModal, /Gerar novo QR Code/)
   assert.match(saleModal, /getPixSaleCharge/)
   assert.match(saleModal, /Pagamento confirmado automaticamente e registrado na venda/)
+  assert.match(saleModal, /z-\[120\]/)
+  assert.match(readSource('src\/components\/modals\/EmployeeAuthModal.tsx'), /z-\[150\]/)
   assert.match(salesActions, /pix_express_creation_requests/)
   assert.match(salesActions, /createHash\('sha256'\)/)
   assert.match(salesActions, /export async function registrarSaidaVenda/)

@@ -139,7 +139,7 @@ export default function EmployeeAuthModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[110] grid place-items-center bg-slate-950/80 backdrop-blur-md p-4 overflow-y-auto custom-scrollbar animate-in fade-in duration-200"
+      className="fixed inset-0 z-[150] grid place-items-center bg-slate-950/80 backdrop-blur-md p-4 overflow-y-auto custom-scrollbar animate-in fade-in duration-200"
       onClick={onClose}
     >
       <div

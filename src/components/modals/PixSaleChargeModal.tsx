@@ -153,7 +153,7 @@ export default function PixSaleChargeModal({
   if (!mounted || !isOpen) return null
   return createPortal(
     <>
-      <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/80 p-4 pt-12 backdrop-blur-sm">
+      <div className="fixed inset-0 z-[120] flex items-start justify-center bg-black/80 p-4 pt-12 backdrop-blur-sm">
         <div className="max-h-[calc(100vh-6rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-cyan-500/20 bg-slate-950 shadow-2xl">
           <header className="flex items-center justify-between border-b border-cyan-500/20 bg-cyan-950/40 px-5 py-4">
             <div className="flex items-center gap-3"><div className="rounded-lg bg-cyan-500/15 p-2 text-cyan-300"><QrCode className="h-5 w-5" /></div><div><h3 className="font-bold text-cyan-100">Pix da venda #{vendaId}</h3><p className="text-[10px] font-bold uppercase tracking-widest text-cyan-400/60">Sicredi · cobrança dinâmica</p></div></div>

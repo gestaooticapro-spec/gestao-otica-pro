@@ -24,6 +24,7 @@ export const PENDING_RELEASE_CHANGES: readonly string[] = [
   'Os botões Pix do carnê e da venda experimental passaram a refletir a ação necessária, incluindo conferir pagamento, conferir situação e gerar novo QR Code; o PIN da cobrança direta da venda voltou a aceitar o contexto correto.',
   'A impressão de recibos passou a exigir uma sessão autorizada para a empresa e a loja dos pagamentos selecionados, sem reutilizar um ID de pagamento inexistente como se fosse o código de uma venda.',
   'Enquanto o modal Pix estiver aberto, a tela passa a acompanhar a baixa feita pelo webhook e conclui automaticamente o mesmo fluxo de conferir pagamento, mantendo o botão manual como alternativa.',
+  'A geração de Pix na venda experimental volta a abrir o modal e o PIN acima da janela de pagamento, em vez de deixá-los ocultos atrás dela.',
 ]
 const RELEASE_10205_CHANGES: readonly string[] = [
   'IMPLEMENTAÇÃO DO MÓDULO PONTOS DE ATENÇÃO - A IA VASCULHA OS REGISTROS E AJUDA NA GESTÃO DA EMPRESA.',
