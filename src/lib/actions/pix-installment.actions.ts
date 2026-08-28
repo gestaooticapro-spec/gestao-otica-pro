@@ -473,6 +473,33 @@ export async function getPixChargesForInstallments(
   }
 }
 
+export async function getPixInstallmentCharge(
+  storeId: number,
+  chargeId: number,
+): Promise<ActionResult<PixInstallmentCharge | null>> {
+  try {
+    const { admin } = await requireStoreAccess(storeId)
+    const { data: row, error } = await pixChargesTable(admin)
+      .select('*')
+      .eq('id', chargeId)
+      .eq('store_id', storeId)
+      .maybeSingle()
+    if (error) throw error
+    if (!row) return { success: true, data: null }
+
+    const serialized = serializeCharge(row)
+    if (serialized.status === 'PAID' && serialized.settlementStatus === 'COMPLETED') {
+      serialized.settlementPaymentIds = await getSettlementPaymentIds(admin, row)
+    }
+    return { success: true, data: serialized }
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'Nao foi possivel consultar a cobranca Pix.',
+    }
+  }
+}
+
 export async function createPixInstallmentCharge(input: z.input<typeof CreateChargeSchema>): Promise<ActionResult<PixInstallmentCharge>> {
   try {
     const data = CreateChargeSchema.parse(input)

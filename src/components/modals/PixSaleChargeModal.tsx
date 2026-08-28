@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import { createPortal } from 'react-dom'
 import { QRCodeSVG } from 'qrcode.react'
 import { CheckCircle2, Clipboard, Loader2, QrCode, RefreshCw, X } from 'lucide-react'
@@ -37,6 +37,7 @@ export default function PixSaleChargeModal({
   const [isAuthOpen, setIsAuthOpen] = useState(false)
   const [isWorking, startTransition] = useTransition()
   const [pendingOperation, setPendingOperation] = useState<'create' | 'cancel' | null>(null)
+  const automaticallyFinishedChargeId = useRef<number | null>(null)
 
   useEffect(() => setMounted(true), [])
   useEffect(() => {
@@ -55,6 +56,51 @@ export default function PixSaleChargeModal({
     })
     return () => { cancelled = true }
   }, [isOpen, storeId, vendaId])
+
+  useEffect(() => {
+    if (!isOpen || !charge) return
+    if (charge.status === 'PAID' && charge.settlementStatus === 'COMPLETED') return
+    if (!['CREATING', 'PENDING', 'PAID'].includes(charge.status)) return
+
+    let cancelled = false
+    let inFlight = false
+    const pollLocalCharge = async () => {
+      if (inFlight) return
+      inFlight = true
+      const current = await getPixSaleCharge(storeId, vendaId)
+      inFlight = false
+      if (cancelled || !current || current.id !== charge.id) return
+
+      if (current.status === 'PAID' && current.settlementStatus === 'COMPLETED') {
+        if (automaticallyFinishedChargeId.current === current.id) return
+        automaticallyFinishedChargeId.current = current.id
+        setCharge(current)
+        try {
+          await onPaymentAdded(current)
+          toast.success('Pagamento confirmado automaticamente e registrado na venda.')
+        } catch {
+          automaticallyFinishedChargeId.current = null
+          toast.error('O pagamento foi registrado, mas nao foi possivel concluir a atualizacao da tela.')
+        }
+        return
+      }
+
+      if (
+        current.status !== charge.status
+        || current.settlementStatus !== charge.settlementStatus
+        || current.paidAt !== charge.paidAt
+        || current.pixCopyPaste !== charge.pixCopyPaste
+      ) {
+        setCharge(current)
+      }
+    }
+
+    const timer = window.setInterval(() => void pollLocalCharge(), 3000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [charge, isOpen, onPaymentAdded, storeId, vendaId])
 
   const expiresAt = charge?.expiresAt ? new Date(charge.expiresAt).toLocaleString('pt-BR') : null
   const status = charge?.status === 'PAID' && charge.settlementStatus === 'COMPLETED'

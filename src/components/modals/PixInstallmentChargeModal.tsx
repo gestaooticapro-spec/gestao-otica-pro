@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useTransition } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { createPortal } from 'react-dom'
 import { QRCodeSVG } from 'qrcode.react'
 import { AlertTriangle, CheckCircle2, Clipboard, Loader2, MessageCircle, QrCode, RefreshCw, X } from 'lucide-react'
@@ -8,6 +8,7 @@ import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import {
   cancelPixInstallmentCharge,
   createPixInstallmentCharge,
+  getPixInstallmentCharge,
   recoverPixInstallmentCharge,
   refreshPixInstallmentCharge,
   sendPixInstallmentChargeWhatsApp,
@@ -79,6 +80,7 @@ export default function PixInstallmentChargeModal({
   const [isAuthOpen, setIsAuthOpen] = useState(false)
   const [isWorking, startTransition] = useTransition()
   const [isSending, setIsSending] = useState(false)
+  const automaticallyFinishedChargeId = useRef<number | null>(null)
 
   useEffect(() => setMounted(true), [])
   useEffect(() => {
@@ -98,10 +100,10 @@ export default function PixInstallmentChargeModal({
 
   const expiresAt = useMemo(() => charge?.expiresAt ? new Date(charge.expiresAt).toLocaleString('pt-BR') : null, [charge?.expiresAt])
 
-  const updateCharge = (next: PixInstallmentCharge | null) => {
+  const updateCharge = useCallback((next: PixInstallmentCharge | null) => {
     setCharge(next)
     onChargeChanged(next)
-  }
+  }, [onChargeChanged])
 
   const resetChargeForm = () => {
     updateCharge(null)
@@ -110,12 +112,12 @@ export default function PixInstallmentChargeModal({
     setStrategy(getDefaultPartialReceiptStrategy(hasNextInstallment))
   }
 
-  const openReceipt = (paymentIds: number[]) => {
+  const openReceipt = useCallback((paymentIds: number[]) => {
     if (paymentIds.length === 0) return false
     return Boolean(window.open(`/print/recibo/${paymentIds.join('-')}?t=${Date.now()}`, '_blank'))
-  }
+  }, [])
 
-  const finishSettledCharge = async (nextCharge: PixInstallmentCharge, messagePrefix = 'Pagamento confirmado') => {
+  const finishSettledCharge = useCallback(async (nextCharge: PixInstallmentCharge, messagePrefix = 'Pagamento confirmado') => {
     updateCharge(nextCharge)
     const receiptOpened = openReceipt(nextCharge.settlementPaymentIds || [])
     await onSettled?.()
@@ -123,7 +125,51 @@ export default function PixInstallmentChargeModal({
     toast.success(receiptOpened
       ? `${messagePrefix}, baixa concluida e recibo aberto.`
       : `${messagePrefix} e baixa concluida. Use Recibos para imprimir.`)
-  }
+  }, [onClose, onSettled, openReceipt, updateCharge])
+
+  useEffect(() => {
+    if (!isOpen || !charge) return
+    if (charge.status === 'PAID' && charge.settlementStatus === 'COMPLETED') return
+    if (!['CREATING', 'PENDING', 'PAID'].includes(charge.status)) return
+
+    let cancelled = false
+    let inFlight = false
+    const pollLocalCharge = async () => {
+      if (inFlight) return
+      inFlight = true
+      const result = await getPixInstallmentCharge(storeId, charge.id)
+      inFlight = false
+      if (cancelled || !result.success || !result.data) return
+
+      const nextCharge = result.data
+      if (nextCharge.status === 'PAID' && nextCharge.settlementStatus === 'COMPLETED') {
+        if (automaticallyFinishedChargeId.current === nextCharge.id) return
+        automaticallyFinishedChargeId.current = nextCharge.id
+        try {
+          await finishSettledCharge(nextCharge, 'Pagamento confirmado automaticamente')
+        } catch {
+          automaticallyFinishedChargeId.current = null
+          toast.error('O pagamento foi baixado, mas nao foi possivel concluir a atualizacao da tela. Abra a parcela novamente.')
+        }
+        return
+      }
+
+      if (
+        nextCharge.status !== charge.status
+        || nextCharge.settlementStatus !== charge.settlementStatus
+        || nextCharge.paidAt !== charge.paidAt
+        || nextCharge.pixCopyPaste !== charge.pixCopyPaste
+      ) {
+        updateCharge(nextCharge)
+      }
+    }
+
+    const timer = window.setInterval(() => void pollLocalCharge(), 3000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [charge, finishSettledCharge, isOpen, storeId, updateCharge])
 
   const requestAuthorization = (operation: Exclude<PendingOperation, null>) => {
     if (operation === 'create' && !canGenerate) {
