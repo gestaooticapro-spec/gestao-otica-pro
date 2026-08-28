@@ -1,7 +1,8 @@
 // ARQUIVO: src/app/print/recibo/[id]/page.tsx
 
-import { notFound } from 'next/navigation'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { notFound, redirect } from 'next/navigation'
+import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
+import { createClient } from '@/lib/supabase/server'
 import { ReceiptPhantom } from '@/components/print/ReceiptPhantom'
 import { ReceiptBlankHalfA4 } from '@/components/print/ReceiptBlankHalfA4'
 
@@ -15,36 +16,35 @@ export default async function PrintReciboPage(
     const searchParams = await props.searchParams;
     const params = await props.params;
     const idsString = params.id
-    const ids = idsString.split('-').map(id => parseInt(id)).filter(n => !isNaN(n))
+    const ids = Array.from(new Set(idsString.split('-').map(id => parseInt(id)).filter(n => !isNaN(n))))
 
     if (ids.length === 0) return notFound()
 
     const isReprint = searchParams.reprint === 'true'
     const isExperimentalInstallmentReceipt = searchParams.installment_receipt === 'true'
 
+    const session = createClient()
+    const { data: { user } } = await session.auth.getUser()
+    if (!user) redirect('/login')
+
+    const profile = await getProfileByAdmin(user.id) as { tenant_id?: string | null; role?: string | null; store_id?: number | null } | null
+    if (!profile?.tenant_id) return notFound()
+
     const supabase = createAdminClient()
 
     // 1. Busca OS Pagamentos
-    let { data: pagamentos } = await (supabase
+    let pagamentosQuery = (supabase
         .from('pagamentos') as any)
         .select('*')
         .in('id', ids)
-        .order('created_at', { ascending: true })
-
-    // Se não encontrou por ID de pagamento, tenta buscar por ID de venda (vendaIdGerada)
-    if (!pagamentos || pagamentos.length === 0) {
-        const { data: pagamentosByVenda } = await (supabase
-            .from('pagamentos') as any)
-            .select('*')
-            .in('venda_id', ids)
-            .order('created_at', { ascending: false }) // Pega os mais recentes, se houver vários associados àquela venda nesta "sessão"
-
-        if (pagamentosByVenda && pagamentosByVenda.length > 0) {
-            pagamentos = pagamentosByVenda;
-        }
+        .eq('tenant_id', profile.tenant_id)
+    if (profile.role !== 'admin') {
+        if (!profile.store_id) return notFound()
+        pagamentosQuery = pagamentosQuery.eq('store_id', profile.store_id)
     }
+    const { data: pagamentos, error: pagamentosError } = await pagamentosQuery.order('created_at', { ascending: true })
 
-    if (!pagamentos || pagamentos.length === 0) return <div className="p-10">Pagamentos não encontrados. (Tentei o ID {ids.join(',')} como ID de Pagamento e como ID de Venda)</div>
+    if (pagamentosError || !pagamentos || pagamentos.length !== ids.length) return notFound()
 
     const vendaId = pagamentos[0].venda_id
 
@@ -53,6 +53,8 @@ export default async function PrintReciboPage(
         .from('vendas') as any)
         .select('*, customers(*), venda_itens(*)')
         .eq('id', vendaId)
+        .eq('tenant_id', profile.tenant_id)
+        .eq('store_id', pagamentos[0].store_id)
         .single()
 
     if (!vendaRaw) return <div className="p-10">Venda original não encontrada.</div>
