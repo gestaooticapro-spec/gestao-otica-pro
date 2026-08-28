@@ -111,12 +111,20 @@ function pixChargesTable(admin: any) {
   return admin.from('pix_installment_charges') as any
 }
 
+function isRetryableSicrediAvailabilityError(message: string) {
+  const httpStatus = Number(message.match(/\(HTTP (\d{3})\)/)?.[1])
+  return /tempo limite|falha de conexao mTLS/i.test(message)
+    || httpStatus === 408
+    || httpStatus === 429
+    || httpStatus >= 500
+}
+
 async function ensureSicrediIsAvailableBeforeChargeCreation() {
   try {
     await getSicrediPixAccessToken()
   } catch (error) {
     const message = error instanceof Error ? error.message : ''
-    if (/tempo limite|falha de conexao mTLS/i.test(message)) {
+    if (isRetryableSicrediAvailabilityError(message)) {
       throw new Error('Nao foi possivel conectar ao Sicredi agora. Nenhuma cobranca foi criada; tente novamente em alguns instantes.')
     }
     throw new Error('Nao foi possivel autenticar no Sicredi. A configuracao da integracao precisa ser verificada antes de uma nova tentativa.')
