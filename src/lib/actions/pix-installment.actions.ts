@@ -10,6 +10,7 @@ import { getStoreProfile } from '@/lib/actions/store.actions'
 import {
   cancelSicrediImmediateCharge,
   createSicrediImmediateCharge,
+  getSicrediPixAccessToken,
   getSicrediImmediateCharge,
   SicrediPixHttpError,
   type SicrediImmediateCharge,
@@ -108,6 +109,18 @@ async function getSettlementPaymentIds(admin: any, row: any) {
 
 function pixChargesTable(admin: any) {
   return admin.from('pix_installment_charges') as any
+}
+
+async function ensureSicrediIsAvailableBeforeChargeCreation() {
+  try {
+    await getSicrediPixAccessToken()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : ''
+    if (/tempo limite|falha de conexao mTLS/i.test(message)) {
+      throw new Error('Nao foi possivel conectar ao Sicredi agora. Nenhuma cobranca foi criada; tente novamente em alguns instantes.')
+    }
+    throw new Error('Nao foi possivel autenticar no Sicredi. A configuracao da integracao precisa ser verificada antes de uma nova tentativa.')
+  }
 }
 
 function createAuthorizationContext(input: {
@@ -527,6 +540,10 @@ export async function createPixInstallmentCharge(input: z.input<typeof CreateCha
     }
 
     const pixKey = getSicrediPixKey()
+    // A autenticacao e conferida antes da reserva. Assim, timeout ou falha de
+    // conexao aqui ainda nao podem ter criado uma cobranca remota e a proxima
+    // tentativa pode ser orientada com seguranca.
+    await ensureSicrediIsAvailableBeforeChargeCreation()
 
     const configuredExpiration = Number(process.env.SICREDI_PIX_PROD_CHARGE_EXPIRATION_SECONDS || 86_400)
     const expirationSeconds = Number.isInteger(configuredExpiration) && configuredExpiration >= 60 ? configuredExpiration : 86_400

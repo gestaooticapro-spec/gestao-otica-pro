@@ -37,6 +37,8 @@ test('cobranca Pix exige autorizacao, evita duplicidade e confere o Sicredi ante
   assert.match(actions, /await cancelSicrediImmediateCharge\(charge\.txid\)/)
   assert.doesNotMatch(actions, /getPixChargesForInstallments[\s\S]*?catch \{\s*return \{\}/)
   assert.match(actions, /verifyEmployeeAuthorization\(data\.authorizationToken/)
+  assert.match(actions, /ensureSicrediIsAvailableBeforeChargeCreation/)
+  assert.match(actions, /Nenhuma cobranca foi criada; tente novamente em alguns instantes/)
   assert.match(actions, /status: 'CREATING'/)
   assert.match(actions, /reconcileChargeWithSicredi/)
   assert.match(actions, /locallyExpired\.status === 'EXPIRED'/)
