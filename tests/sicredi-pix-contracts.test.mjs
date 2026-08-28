@@ -81,7 +81,7 @@ test('cobranca Pix exige autorizacao, evita duplicidade e confere o Sicredi ante
   assert.match(salesActions, /financiamento_id: p\.financiamento_id/)
   assert.doesNotMatch(parcelasActions, /const firstSnapshot/)
   assert.match(modal, /shouldGenerateRemainingBalance/)
-  assert.match(modal, /O Pix anterior foi baixado/)
+  assert.doesNotMatch(modal, /O Pix anterior foi baixado/)
   assert.match(parcelaSearch, /refreshSelectedClientData/)
   assert.match(parcelaSearch, /await refreshSelectedClientData\(\)/)
   assert.match(parcelaSearch, /hasNextInstallment=\{Boolean\(pixInstallment\.has_next_installment\)\}/)

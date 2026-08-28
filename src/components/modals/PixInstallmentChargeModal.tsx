@@ -318,7 +318,6 @@ export default function PixInstallmentChargeModal({
             ) : (
               <>
                 <div className="text-center"><p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Saldo atual da parcela</p><p className="mt-1 text-4xl font-black text-white">R$ {money(outstanding)}</p></div>
-                {shouldGenerateRemainingBalance ? <p className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-xs text-emerald-100">O Pix anterior foi baixado. Gere agora uma nova cobranca apenas para o saldo restante.</p> : null}
                 <div className="grid grid-cols-2 gap-3">
                   <label className="block text-xs font-bold text-slate-300">Valor a cobrar<input value={amountText} onChange={(event) => setAmountText(event.target.value)} className="mt-1 h-11 w-full rounded-lg border border-white/10 bg-white/5 px-3 text-right text-lg font-bold text-emerald-300 outline-none focus:border-emerald-500/50" /></label>
                   <label className="block text-xs font-bold text-slate-300">Juros / multa<input value={interestText} onChange={(event) => setInterestText(event.target.value)} className="mt-1 h-11 w-full rounded-lg border border-white/10 bg-white/5 px-3 text-right text-lg font-bold text-amber-300 outline-none focus:border-amber-500/50" /></label>
