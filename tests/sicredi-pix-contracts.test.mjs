@@ -108,6 +108,7 @@ test('PDV Express protege baixa, estoque, replay e fila da maquininha', () => {
   const tabletPage = readSource('src/app/tablet/[storeId]/page.tsx')
   const machinePage = readSource('src/app/dashboard/loja/[storeId]/pix-maquininha/page.tsx')
   const safetyMigration = readSource('supabase/migrations/20260818160000_sicredi_pix_express_safety.sql')
+  const paymentUniquenessScopeMigration = readSource('supabase/migrations/20260828100000_scope_pix_sale_payment_uniqueness.sql')
 
   assert.match(saleActions, /settlement_idempotency_key/)
   assert.match(saleActions, /SICREDI_PIX_PROD_CHARGE_EXPIRATION_SECONDS/)
@@ -129,4 +130,6 @@ test('PDV Express protege baixa, estoque, replay e fila da maquininha', () => {
   assert.match(displayClient, /QR Code indisponivel/)
   assert.match(safetyMigration, /pix_express_creation_requests/)
   assert.match(safetyMigration, /pagamentos_pix_sicredi_venda_obs_idx/)
+  assert.match(paymentUniquenessScopeMigration, /drop index if exists public\.pagamentos_pix_sicredi_venda_obs_idx/)
+  assert.match(paymentUniquenessScopeMigration, /and parcela_id is null/)
 })
