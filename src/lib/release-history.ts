@@ -25,6 +25,7 @@ export const PENDING_RELEASE_CHANGES: readonly string[] = [
   'A impressão de recibos passou a exigir uma sessão autorizada para a empresa e a loja dos pagamentos selecionados, sem reutilizar um ID de pagamento inexistente como se fosse o código de uma venda.',
   'Enquanto o modal Pix estiver aberto, a tela passa a acompanhar a baixa feita pelo webhook e conclui automaticamente o mesmo fluxo de conferir pagamento, mantendo o botão manual como alternativa.',
   'A geração de Pix na venda experimental volta a abrir o modal e o PIN acima da janela de pagamento, em vez de deixá-los ocultos atrás dela.',
+  'Na venda experimental, escolher Pix Sicredi não abre mais uma cobrança por conta própria: o botão Gerar Pix da venda pede o PIN antes de criar o QR Code.',
 ]
 const RELEASE_10205_CHANGES: readonly string[] = [
   'IMPLEMENTAÇÃO DO MÓDULO PONTOS DE ATENÇÃO - A IA VASCULHA OS REGISTROS E AJUDA NA GESTÃO DA EMPRESA.',

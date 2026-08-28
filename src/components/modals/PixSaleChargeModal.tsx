@@ -21,6 +21,7 @@ export default function PixSaleChargeModal({
   storeId,
   vendaId,
   amount,
+  requestCreationOnOpen = false,
   onClose,
   onPaymentAdded,
 }: {
@@ -28,6 +29,7 @@ export default function PixSaleChargeModal({
   storeId: number
   vendaId: number
   amount: number
+  requestCreationOnOpen?: boolean
   onClose: () => void
   onPaymentAdded: (charge?: PixSaleCharge) => Promise<void>
 }) {
@@ -38,24 +40,32 @@ export default function PixSaleChargeModal({
   const [isWorking, startTransition] = useTransition()
   const [pendingOperation, setPendingOperation] = useState<'create' | 'cancel' | null>(null)
   const automaticallyFinishedChargeId = useRef<number | null>(null)
+  const automaticCreationRequested = useRef(false)
 
   useEffect(() => setMounted(true), [])
   useEffect(() => {
     if (!isOpen) {
       setIsAuthOpen(false)
       setPendingOperation(null)
+      automaticCreationRequested.current = false
       return
     }
     let cancelled = false
     setCharge(null)
     setIsLoadingCharge(true)
     void getPixSaleCharge(storeId, vendaId).then((current) => {
-      if (!cancelled) setCharge(current)
+      if (cancelled) return
+      setCharge(current)
+      if (!current && requestCreationOnOpen && !automaticCreationRequested.current) {
+        automaticCreationRequested.current = true
+        setPendingOperation('create')
+        setIsAuthOpen(true)
+      }
     }).finally(() => {
       if (!cancelled) setIsLoadingCharge(false)
     })
     return () => { cancelled = true }
-  }, [isOpen, storeId, vendaId])
+  }, [isOpen, requestCreationOnOpen, storeId, vendaId])
 
   useEffect(() => {
     if (!isOpen || !charge) return

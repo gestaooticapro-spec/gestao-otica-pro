@@ -80,6 +80,7 @@ export default function AddPagamentoForm({
   const [obs, setObs] = useState<string>('')
   const [pixProvider, setPixProvider] = useState<'manual' | 'sicredi'>('manual')
   const [isPixSaleModalOpen, setIsPixSaleModalOpen] = useState(false)
+  const [shouldCreatePixSale, setShouldCreatePixSale] = useState(false)
 
   useEffect(() => {
     void getPixProviderForStore(storeId).then(setPixProvider)
@@ -188,7 +189,10 @@ export default function AddPagamentoForm({
                 onChange={(e) => {
                   const value = e.target.value
                   setFormaPagamento(value)
-                  if (value === 'Pix Sicredi') setIsPixSaleModalOpen(true)
+                  if (value !== 'Pix Sicredi') {
+                    setIsPixSaleModalOpen(false)
+                    setShouldCreatePixSale(false)
+                  }
                 }}
                 className={`${inputStyle} font-bold cursor-pointer text-[10px]`}
               >
@@ -264,7 +268,7 @@ export default function AddPagamentoForm({
           )}
           
           {formaPagamento === 'Pix Sicredi' ? (
-            <button type="button" onClick={() => setIsPixSaleModalOpen(true)} className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs rounded-lg shadow-lg shadow-cyan-900/20 w-full bg-cyan-600 hover:bg-cyan-500 text-white border border-cyan-500/50 font-bold transition-all active:scale-95 uppercase tracking-wide">
+            <button type="button" onClick={() => { setShouldCreatePixSale(true); setIsPixSaleModalOpen(true) }} className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs rounded-lg shadow-lg shadow-cyan-900/20 w-full bg-cyan-600 hover:bg-cyan-500 text-white border border-cyan-500/50 font-bold transition-all active:scale-95 uppercase tracking-wide">
               <QrCode className="h-4 w-4" /> <span>GERAR PIX DA VENDA</span>
             </button>
           ) : isQuitado ? (
@@ -294,7 +298,8 @@ export default function AddPagamentoForm({
         storeId={storeId}
         vendaId={vendaId}
         amount={parseFloat(valorPago.replace(/\./g, '').replace(',', '.')) || 0}
-        onClose={() => setIsPixSaleModalOpen(false)}
+        requestCreationOnOpen={shouldCreatePixSale}
+        onClose={() => { setIsPixSaleModalOpen(false); setShouldCreatePixSale(false) }}
         onPaymentAdded={onPaymentAdded}
       />
     </div>
