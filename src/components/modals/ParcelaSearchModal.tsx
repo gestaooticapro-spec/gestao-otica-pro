@@ -31,6 +31,36 @@ const parseMoney = (val: string) => {
 
 const PAYMENT_METHODS = ['PIX Remoto', 'PIX na maquininha', 'Dinheiro', 'Cartão Débito', 'Cartão Crédito']
 
+function getPixStatusPresentation(charge: PixInstallmentCharge) {
+    if (charge.status === 'PAID' && charge.settlementStatus === 'COMPLETED') {
+        return { label: 'pago', className: 'text-emerald-400' }
+    }
+    if (charge.status === 'PAID') {
+        return { label: 'baixa pendente', className: 'text-amber-300' }
+    }
+    if (charge.status === 'PENDING') {
+        return { label: 'pendente', className: 'text-cyan-400' }
+    }
+    if (charge.status === 'CREATING') {
+        return { label: 'gerando', className: 'text-cyan-300' }
+    }
+    return {
+        label: charge.status === 'EXPIRED' ? 'expirado' : charge.status === 'CANCELLED' ? 'cancelado' : charge.status === 'ERROR' ? 'com erro' : charge.status.toLowerCase(),
+        className: 'text-slate-500',
+    }
+}
+
+function getPixActionLabel(p: any, charge?: PixInstallmentCharge) {
+    if (!charge) return 'Gerar QR Code'
+    if (charge.status === 'PENDING') return 'Ver Pix'
+    if (charge.status === 'PAID' && charge.settlementStatus !== 'COMPLETED') return 'Conferir pagamento'
+    if (charge.status === 'PAID') return getSaldoParcela(p) > 0.01 ? 'Gerar QR Code' : 'Pagamento concluído'
+    if (charge.status === 'CREATING') return 'Verificar geração'
+    if (charge.status === 'ERROR') return 'Conferir situação'
+    if (charge.status === 'EXPIRED' || charge.status === 'CANCELLED') return 'Gerar novo QR Code'
+    return 'Gerar QR Code'
+}
+
 function ParcelaCard({
     p,
     onReceive,
@@ -43,6 +73,9 @@ function ParcelaCard({
     pixCharge?: PixInstallmentCharge
 }) {
     const isVencida = new Date(p.data_vencimento) < new Date(getToday())
+    const pixStatus = pixCharge ? getPixStatusPresentation(pixCharge) : null
+    const pixActionLabel = getPixActionLabel(p, pixCharge)
+    const pixActionDisabled = Boolean(pixCharge?.status === 'PAID' && pixCharge.settlementStatus === 'COMPLETED' && getSaldoParcela(p) <= 0.01)
 
     return (
         <div className="w-full p-3 bg-white/5 border border-white/10 rounded-xl hover:border-amber-500/30 transition-all group text-left relative overflow-hidden">
@@ -63,10 +96,10 @@ function ParcelaCard({
             </div>
             <div className="text-right">
                 <span className="block text-slate-200 font-black text-base">{formatCurrency(getSaldoParcela(p))}</span>
-                {pixCharge ? <span className={`text-[9px] font-bold uppercase tracking-wide ${pixCharge.status === 'PENDING' ? 'text-cyan-400' : pixCharge.status === 'PAID' ? 'text-emerald-400' : 'text-slate-500'}`}>Pix: {pixCharge.status === 'PENDING' ? 'pendente' : pixCharge.status === 'PAID' ? 'pago' : pixCharge.status.toLowerCase()}</span> : <span className="text-[9px] font-bold text-amber-500 opacity-0 group-hover:opacity-100 transition-opacity uppercase tracking-wide">Receber</span>}
+                {pixStatus ? <span className={`text-[9px] font-bold uppercase tracking-wide ${pixStatus.className}`}>Pix: {pixStatus.label}</span> : <span className="text-[9px] font-bold text-amber-500 opacity-0 group-hover:opacity-100 transition-opacity uppercase tracking-wide">Receber</span>}
             </div>
             </button>
-            {onGeneratePix ? <div className="mt-3 flex justify-end border-t border-white/5 pt-3"><button type="button" onClick={onGeneratePix} className="rounded-lg border border-cyan-500/20 bg-cyan-500/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-cyan-300 hover:bg-cyan-500/20">{pixCharge?.status === 'PENDING' ? 'Ver Pix' : 'Gerar QR Code'}</button></div> : null}
+            {onGeneratePix ? <div className="mt-3 flex justify-end border-t border-white/5 pt-3"><button type="button" onClick={onGeneratePix} disabled={pixActionDisabled} className="rounded-lg border border-cyan-500/20 bg-cyan-500/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-cyan-300 hover:bg-cyan-500/20 disabled:cursor-default disabled:border-emerald-500/20 disabled:bg-emerald-500/10 disabled:text-emerald-300">{pixActionLabel}</button></div> : null}
         </div>
     )
 }
