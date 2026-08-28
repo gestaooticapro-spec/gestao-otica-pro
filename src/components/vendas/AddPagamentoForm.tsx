@@ -16,6 +16,7 @@ import { toast } from 'sonner'
 import { Database } from '@/lib/database.types'
 import { getPixProviderForStore } from '@/lib/actions/pix-installment.actions'
 import PixSaleChargeModal from '@/components/modals/PixSaleChargeModal'
+import { getPixSaleCharge, type PixSaleCharge } from '@/lib/actions/pix-sale.actions'
 
 type Employee = Database['public']['Tables']['employees']['Row']
 
@@ -37,6 +38,13 @@ const formatCurrency = (value: number | null | undefined): string => {
   })
 }
 const getToday = (): string => new Date().toISOString().split('T')[0]
+const isActivePixSaleCharge = (charge: PixSaleCharge | null) => Boolean(
+  charge && (
+    charge.status === 'CREATING'
+    || charge.status === 'PENDING'
+    || (charge.status === 'PAID' && charge.settlementStatus !== 'COMPLETED')
+  )
+)
 
 function SubmitFinalButton({ employeeName }: { employeeName: string | null }) {
   const { pending } = useFormStatus()
@@ -81,10 +89,30 @@ export default function AddPagamentoForm({
   const [pixProvider, setPixProvider] = useState<'manual' | 'sicredi'>('manual')
   const [isPixSaleModalOpen, setIsPixSaleModalOpen] = useState(false)
   const [shouldCreatePixSale, setShouldCreatePixSale] = useState(false)
+  const [existingPixSaleCharge, setExistingPixSaleCharge] = useState<PixSaleCharge | null>(null)
+  const [isCheckingExistingPixSaleCharge, setIsCheckingExistingPixSaleCharge] = useState(false)
 
   useEffect(() => {
     void getPixProviderForStore(storeId).then(setPixProvider)
   }, [storeId])
+
+  useEffect(() => {
+    if (formaPagamento !== 'Pix Sicredi') {
+      setExistingPixSaleCharge(null)
+      setIsCheckingExistingPixSaleCharge(false)
+      return
+    }
+    let cancelled = false
+    setIsCheckingExistingPixSaleCharge(true)
+    void getPixSaleCharge(storeId, vendaId).then((charge) => {
+      if (cancelled) return
+      setExistingPixSaleCharge(charge)
+      if (charge && isActivePixSaleCharge(charge)) setValorPago(formatCurrency(charge.amount))
+    }).finally(() => {
+      if (!cancelled) setIsCheckingExistingPixSaleCharge(false)
+    })
+    return () => { cancelled = true }
+  }, [formaPagamento, storeId, vendaId])
 
   // LÓGICA DE CONTROLE DO CAMPO PARCELAS
   const isParcelable = formaPagamento === 'Cartão Crédito' || formaPagamento === 'Cheque-Pré'
@@ -129,6 +157,7 @@ export default function AddPagamentoForm({
   }
 
   const isBloqueado = disabled || isQuitado;
+  const hasActivePixSaleCharge = isActivePixSaleCharge(existingPixSaleCharge)
 
   const labelStyle = 'block text-[10px] font-bold text-slate-400 mb-0.5 uppercase tracking-wider'
   // MODIFICADO: Estilos Dark Padronizados
@@ -178,6 +207,7 @@ export default function AddPagamentoForm({
                 value={valorPago}
                 onChange={(e) => setValorPago(e.target.value)}
                 onKeyDown={handleKeyDown}
+                disabled={formaPagamento === 'Pix Sicredi' && (isCheckingExistingPixSaleCharge || hasActivePixSaleCharge)}
                 className={`${inputStyle} font-bold text-emerald-400 text-right text-base`}
               />
             </div>
@@ -248,6 +278,13 @@ export default function AddPagamentoForm({
               placeholder="Ex: Sinal óculos..."
             />
           </div>}
+
+          {formaPagamento === 'Pix Sicredi' && hasActivePixSaleCharge && (
+            <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-3 text-xs text-cyan-100">
+              <p className="font-bold">Já existe um Pix de R$ {formatCurrency(existingPixSaleCharge?.amount)} aguardando pagamento.</p>
+              <p className="mt-1 text-cyan-100/70">Abra essa cobrança para acompanhar o pagamento antes de gerar outro QR Code.</p>
+            </div>
+          )}
         </div>
 
         {saveState.message && !saveState.success && (
@@ -268,8 +305,8 @@ export default function AddPagamentoForm({
           )}
           
           {formaPagamento === 'Pix Sicredi' ? (
-            <button type="button" onClick={() => { setShouldCreatePixSale(true); setIsPixSaleModalOpen(true) }} className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs rounded-lg shadow-lg shadow-cyan-900/20 w-full bg-cyan-600 hover:bg-cyan-500 text-white border border-cyan-500/50 font-bold transition-all active:scale-95 uppercase tracking-wide">
-              <QrCode className="h-4 w-4" /> <span>GERAR PIX DA VENDA</span>
+            <button type="button" disabled={isCheckingExistingPixSaleCharge} onClick={() => { setShouldCreatePixSale(!hasActivePixSaleCharge); setIsPixSaleModalOpen(true) }} className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs rounded-lg shadow-lg shadow-cyan-900/20 w-full bg-cyan-600 hover:bg-cyan-500 text-white border border-cyan-500/50 font-bold transition-all active:scale-95 uppercase tracking-wide disabled:cursor-wait disabled:opacity-60">
+              {isCheckingExistingPixSaleCharge ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />} <span>{isCheckingExistingPixSaleCharge ? 'VERIFICANDO PIX...' : hasActivePixSaleCharge ? 'ACOMPANHAR PIX EXISTENTE' : 'GERAR PIX DA VENDA'}</span>
             </button>
           ) : isQuitado ? (
             <div className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs rounded-lg w-full bg-white/20 text-white border border-white/30 font-bold">

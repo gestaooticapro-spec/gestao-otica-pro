@@ -8,12 +8,13 @@ import Link from 'next/link'
 import {
     ShoppingBag, DollarSign, FileText, User,
     Briefcase, Wrench, ArrowLeft, Plus, X, Save, Loader2, UserPlus, Stethoscope,
-    ChevronLeft, ChevronRight, ChevronDown, ChevronUp, CalendarDays
+    ChevronLeft, ChevronRight, ChevronDown, ChevronUp, CalendarDays, QrCode
 } from 'lucide-react'
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 
 import AddItemFormExperimental, { type CatalogLensPrefill } from '@/components/vendas/AddItemFormExperimental'
 import AddPagamentoForm from '@/components/vendas/AddPagamentoForm'
+import PixSaleChargeModal from '@/components/modals/PixSaleChargeModal'
 import FinanciamentoBox from '@/components/vendas/FinanciamentoBox'
 import ListaItens from '@/components/vendas/ListaItens'
 import ListaPagamentos from '@/components/vendas/ListaPagamentos'
@@ -31,6 +32,7 @@ import { useStoreModules } from '@/lib/contexts/StoreModulesContext'
 import { currentPathWithSearch, withReturnTo } from '@/lib/return-navigation'
 import { DegreeInput } from '@/components/ui/DegreeInput'
 import { StoreSettings } from '@/lib/store-modules'
+import { getPixSaleCharge, type PixSaleCharge } from '@/lib/actions/pix-sale.actions'
 
 import { Database } from '@/lib/database.types'
 
@@ -67,6 +69,14 @@ const formatVendaDate = (dateValue: string | null | undefined, withTime = false)
 
 const formatVendaCurrency = (value: number | null | undefined) =>
     Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
+const isActivePixSaleCharge = (charge: PixSaleCharge | null) => Boolean(
+    charge && (
+        charge.status === 'CREATING'
+        || charge.status === 'PENDING'
+        || (charge.status === 'PAID' && charge.settlementStatus !== 'COMPLETED')
+    )
+)
 
 interface VendaInterfaceProps {
     venda: Venda
@@ -758,6 +768,8 @@ export default function VendaInterfaceExperimental({
     const modules = useStoreModules()
     const { preference } = useBackgroundPreference();
     const [isPrintModalOpen, setIsPrintModalOpen] = useState(false)
+    const [pixSaleCharge, setPixSaleCharge] = useState<PixSaleCharge | null>(null)
+    const [isPixSaleChargeModalOpen, setIsPixSaleChargeModalOpen] = useState(false)
 
     // Estado para controlar qual modal está aberto
     const [activeModal, setActiveModal] = useState<'none' | 'produto' | 'pagamento' | 'parcelamento'>('none')
@@ -816,6 +828,14 @@ export default function VendaInterfaceExperimental({
             setActiveModal('none')
         }
     }, [activeModal, modules.installments])
+
+    useEffect(() => {
+        let cancelled = false
+        void getPixSaleCharge(venda.store_id, venda.id).then((charge) => {
+            if (!cancelled) setPixSaleCharge(charge)
+        })
+        return () => { cancelled = true }
+    }, [venda.id, venda.store_id])
 
     useEffect(() => {
         if (!initialCatalogLens || openedCatalogLensRef.current || isVendaFechadaOuCancelada) return
@@ -1126,6 +1146,22 @@ export default function VendaInterfaceExperimental({
                         theme="green"
                     >
                         <div className="p-1">
+                            {isActivePixSaleCharge(pixSaleCharge) && (
+                                <button
+                                    type="button"
+                                    onClick={() => setIsPixSaleChargeModalOpen(true)}
+                                    className="mb-3 flex w-full items-center justify-between gap-4 rounded-xl border border-cyan-400/25 bg-cyan-500/10 px-4 py-3 text-left transition-colors hover:bg-cyan-500/15"
+                                >
+                                    <span className="flex min-w-0 items-center gap-3">
+                                        <span className="rounded-lg bg-cyan-500/15 p-2 text-cyan-200"><QrCode className="h-5 w-5" /></span>
+                                        <span className="min-w-0">
+                                            <span className="block text-xs font-black uppercase tracking-wide text-cyan-100">Pix de {formatVendaCurrency(pixSaleCharge?.amount)} aguardando pagamento</span>
+                                            <span className="mt-0.5 block text-[10px] font-medium text-cyan-200/70">Acompanhe esta cobrança antes de registrar outro pagamento.</span>
+                                        </span>
+                                    </span>
+                                    <span className="shrink-0 rounded-lg border border-cyan-300/20 bg-cyan-300/10 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-cyan-100">Acompanhar pagamento</span>
+                                </button>
+                            )}
                             <ListaPagamentos
                                 pagamentos={pagamentos}
                                 vendaId={venda.id}
@@ -1258,6 +1294,19 @@ export default function VendaInterfaceExperimental({
                     isModal={true}
                 />
             </SimpleModal>
+
+            <PixSaleChargeModal
+                isOpen={isPixSaleChargeModalOpen}
+                storeId={venda.store_id}
+                vendaId={venda.id}
+                amount={pixSaleCharge?.amount ?? venda.valor_restante ?? 0}
+                onClose={() => setIsPixSaleChargeModalOpen(false)}
+                onPaymentAdded={async () => {
+                    setIsPixSaleChargeModalOpen(false)
+                    setPixSaleCharge(null)
+                    await onDataReload()
+                }}
+            />
 
             {/* Modal de Parcelamento (LARANJA) */}
             {modules.installments && <SimpleModal
