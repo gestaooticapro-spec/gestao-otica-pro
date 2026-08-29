@@ -31,7 +31,7 @@ export async function GET(request: Request) {
     .limit(365)
   if (error) {
     console.error('[Daily health] unable to load latest relevant message', error)
-    return NextResponse.json({ error: 'Nao foi possivel carregar a ultima atualizacao relevante.' }, { status: 500 })
+    return NextResponse.json({ error: 'Não foi possível carregar a última atualização relevante.' }, { status: 500 })
   }
 
   for (const row of (data || []) as any[]) {

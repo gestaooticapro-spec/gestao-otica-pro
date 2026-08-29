@@ -28,6 +28,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ result }, { headers: { 'Cache-Control': 'private, no-store' } })
   } catch (error) {
     console.error('[Daily health] failed to requeue post-sales', error)
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Nao foi possivel recolocar os pos-vendas na fila.' }, { status: 500 })
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Não foi possível recolocar os pós-vendas na fila.' }, { status: 500 })
   }
 }

@@ -22,6 +22,40 @@ test('does not mark an alert resolved when its data source is unavailable', () =
   assert.equal(result.lifecycle.financeiro.resolvedCount, 0)
 })
 
+test('selects a critical alert before a newer attention alert', () => {
+  const critical = alert({ id: 'lens-mounting-overdue', area: 'operacao', priority: 'critico', impact: 1, lifecycle: { state: 'persistente', firstSeen: '2026-08-20', daysOpen: 4, previousImpact: 1, impactChange: 0, newRecords: 0, resolvedRecords: 0, show: true } })
+  const attention = alert({ id: 'duplicate-customers', area: 'cadastros', priority: 'atencao', impact: 99, lifecycle: { state: 'novo', firstSeen: '2026-08-24', daysOpen: 1, previousImpact: null, impactChange: null, newRecords: 99, resolvedRecords: 0, show: true } })
+
+  assert.deepEqual(dailyHealthTestables.selectPrimaryAlerts([attention, critical]).map((item) => item.id), [critical.id])
+})
+
+test('prefers a worsening alert and then its impact when priority is tied', () => {
+  const persistent = alert({ id: 'payable-overdue', impact: 900, lifecycle: { state: 'persistente', firstSeen: '2026-08-20', daysOpen: 4, previousImpact: 900, impactChange: 0, newRecords: 0, resolvedRecords: 0, show: false } })
+  const worsening = alert({ id: 'overdue-installments', impact: 100, lifecycle: { state: 'piorou', firstSeen: '2026-08-23', daysOpen: 2, previousImpact: 90, impactChange: 10, newRecords: 1, resolvedRecords: 0, show: true } })
+  const higherImpact = alert({ id: 'ready-pickup-stale', area: 'operacao', impact: 300, lifecycle: { state: 'piorou', firstSeen: '2026-08-23', daysOpen: 2, previousImpact: 200, impactChange: 100, newRecords: 1, resolvedRecords: 0, show: true } })
+
+  assert.deepEqual(dailyHealthTestables.selectPrimaryAlerts([persistent, worsening, higherImpact]).map((item) => item.id), [higherImpact.id, worsening.id])
+})
+
+test('builds a safe headline with the selected alert identities and a calm empty state', () => {
+  const selected = alert({ id: 'lens-mounting-overdue', area: 'operacao', priority: 'critico', title: '8 oculos aguardam montagem ha mais de 24 horas' })
+  const relationship = alert({ id: 'post-sales-human-review', area: 'relacionamento', priority: 'critico', title: '1 resposta de pos-venda aguarda revisao humana' })
+  const headline = dailyHealthTestables.fallbackHeadline([selected, relationship])
+
+  assert.deepEqual(headline.alertIds, [selected.id, relationship.id])
+  assert.deepEqual(headline.areas, ['operacao', 'relacionamento'])
+  assert.equal(headline.priority, 'critico')
+  assert.equal(headline.generatedBy, 'fallback')
+  assert.match(headline.text, /^Olá\. Acredito que/)
+  assert.match(headline.text, /8 óculos aguardam montagem há mais de 24 horas/i)
+  assert.match(headline.text, /revisão humana/i)
+  assert.deepEqual(dailyHealthTestables.fallbackHeadline([]), { text: 'Olá. Nenhum ponto crítico foi identificado na última varredura.', alertIds: [], areas: [], priority: null, generatedBy: 'fallback' })
+})
+
+test('normalizes Portuguese spelling in the factual headline fallback', () => {
+  assert.equal(dailyHealthTestables.humanizeFallbackTopic('oculos nao chegaram ate o laboratorio e estao sem armacao'), 'óculos não chegaram até o laboratório e estão sem armação')
+})
+
 test('repeats a persistent alert when a scheduled milestone was crossed during a missed generation', () => {
   const previous = alert({ lifecycle: { state: 'persistente', firstSeen: '2026-08-17', daysOpen: 6, previousImpact: 200, impactChange: 0, newRecords: 0, resolvedRecords: 0, show: false } })
   const result = dailyHealthTestables.compareAlerts([alert()], [previous], '2026-08-22', '2026-08-24')
@@ -52,7 +86,7 @@ test('keeps an unresolved local mounting alert visible on the following day', ()
   const result = dailyHealthTestables.compareAlerts([current], [previous], '2026-08-22', '2026-08-23')
 
   assert.equal(result.alerts[0].lifecycle?.show, true)
-  assert.match(result.alerts[0].detail, /nao foi resolvido desde ontem/i)
+  assert.match(result.alerts[0].detail, /não foi resolvido desde ontem/i)
 })
 
 test('keeps an unresolved data-quality alert visible every day until it is decided', () => {
@@ -141,6 +175,16 @@ test('rejects AI text that invents a number or unsupported explanation', () => {
   assert.equal(dailyHealthTestables.isGroundedAiText('[[highlight:orders-without-promise]]Existem 3 OS sem data prometida.[[/highlight]]', evidence), true)
   assert.equal(dailyHealthTestables.isGroundedAiText('Existem 9 OS sem data prometida.', evidence), false)
   assert.equal(dailyHealthTestables.isGroundedAiText('Existem 3 OS sem data prometida porque a equipe esqueceu.', evidence), false)
+})
+
+test('rejects a generic headline that omits the facts of selected alerts', () => {
+  const alerts = [
+    alert({ id: 'lens-mounting-overdue', area: 'operacao', priority: 'critico', title: '2 oculos aguardam montagem ha mais de 24 horas' }),
+    alert({ id: 'duplicate-customers', area: 'cadastros', priority: 'critico', title: '569 clientes parecem estar duplicados' }),
+  ]
+
+  assert.equal(dailyHealthTestables.keepsHeadlineFacts('Olá! Hoje temos alertas sobre montagem e cadastros duplicados. Veja mais detalhes abaixo.', alerts), false)
+  assert.equal(dailyHealthTestables.keepsHeadlineFacts('Olá! Os pontos críticos são 2 óculos aguardando montagem há mais de 24 horas e 569 clientes que parecem estar duplicados. Veja mais detalhes abaixo.', alerts), true)
 })
 
 test('keeps a ready snapshot immutable', () => {

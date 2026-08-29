@@ -4,34 +4,21 @@ export type Release = {
   changes: string[]
 }
 
-// Registre aqui todas as mudancas do proximo lote depois que ele for iniciado.
-// A primeira mudanca apos um deploy abre a proxima versao; as seguintes apenas
-// completam essa mesma versao ate o proximo deploy.
-// Se uma implementacao for desfeita ou substituida antes do deploy, remova ou corrija
-// o respectivo item para que a lista descreva somente o que realmente sera entregue.
-export const PENDING_RELEASE_VERSION: string | null = '1.02.07'
-export const PENDING_RELEASE_CHANGES: readonly string[] = [
-  'Na leitura NFC do celular logado na loja da tag, a tela de óculos pronto passou a oferecer aviso no WhatsApp da loja, com a mesma mensagem do laboratório para titular ou dependente.',
-]
+// Registre aqui somente correções de funcionalidades já em produção.
+// Novas implementações e correções anteriores à primeira publicação não recebem
+// versão nem item no histórico, salvo solicitação expressa do usuário.
+export const PENDING_RELEASE_VERSION: string | null = null
+export const PENDING_RELEASE_CHANGES: readonly string[] = []
 
 const RELEASE_10206_CHANGES: readonly string[] = [
-  'A integração Pix Sicredi passou a usar exclusivamente as credenciais e a API oficial de produção, mantendo a liberação restrita à Ótica Ocular configurada como loja-piloto.',
-  'Certificados do Pix Sicredi podem ser configurados como segredos Base64 no ambiente hospedado, preservando os arquivos locais apenas para desenvolvimento.',
-  'Baixas confirmadas de parcelas por Pix Sicredi passam a abrir o recibo automaticamente; a tela de contas a receber diferencia pagamento parcial da quitacao total.',
-  'Contas a receber passou a calcular o saldo da parcela sem somar juros; cancelamentos que encontram QR ja pago concluem a baixa automatica e conciliacoes simultaneas nao gravam erro transitorio.',
-  'O recebimento de parcelas por Pix Sicredi passou a usar as mesmas regras da baixa manual para juros, pagamento parcial, transferencia do saldo e amortizacao das parcelas seguintes.',
-  'O acesso em celular volta ao menu tablet a cada novo login, mesmo que a sessao anterior tenha usado a versao desktop.',
-  'Parcelas parcialmente recebidas por Pix passam a abrir nova cobranca pelo saldo atual; contas a receber e o atendimento atualizam o valor restante real da parcela, inclusive apos renegociacoes.',
-  'A transferencia do saldo de uma baixa Pix parcial voltou a reconhecer as proximas parcelas pendentes do mesmo carne.',
-  'A baixa de parcelas agora usa no banco o mesmo saldo efetivo da interface, incluindo valores ja retirados por renegociacao; o atendimento aguarda a atualizacao antes de reabrir a parcela e o modo maquininha fica restrito a loja Sicredi habilitada.',
-  'Cobranças Pix pagas com baixa pendente agora bloqueiam um novo QR Code e podem concluir o registro diretamente pelo estado confirmado, sem depender de uma nova consulta ao Sicredi; a expiração também preserva pagamentos confirmados simultaneamente.',
-  'Os botões Pix do carnê e da venda experimental passaram a refletir a ação necessária, incluindo conferir pagamento, conferir situação e gerar novo QR Code; o PIN da cobrança direta da venda voltou a aceitar o contexto correto.',
-  'A impressão de recibos passou a exigir uma sessão autorizada para a empresa e a loja dos pagamentos selecionados, sem reutilizar um ID de pagamento inexistente como se fosse o código de uma venda.',
-  'Enquanto os modais Pix de parcelas, venda experimental e venda expressa estiverem abertos, a tela consulta silenciosamente o Sicredi e também acompanha a baixa do webhook, concluindo automaticamente o pagamento e o fluxo de recibo; o botão manual permanece como alternativa.',
-  'A geração de Pix na venda experimental volta a abrir o modal e o PIN acima da janela de pagamento, em vez de deixá-los ocultos atrás dela.',
-  'Na venda experimental, escolher Pix Sicredi não abre mais uma cobrança por conta própria: o botão Gerar Pix da venda pede o PIN antes de criar o QR Code.',
+  'IMPLEMENTADA A INTEGRAÇÃO COM O PIX SICREDI.',
+  'Permite gerar cobranças PIX para parcelas, vendas experimentais e vendas expressas.',
+  'Acompanha automaticamente a confirmação do pagamento pelo Sicredi e conclui a baixa com a abertura do recibo.',
+  'Trata pagamentos parciais, mantendo o saldo correto da parcela e permitindo uma nova cobrança pelo valor restante.',
+  'Exibe o estado da cobrança durante o atendimento, com opção de conferir o pagamento ou gerar um novo QR Code quando necessário.',
+  'Evita cobranças duplicadas enquanto houver um PIX pendente ou um pagamento confirmado em processo de baixa.',
 ]
-const RELEASE_10205_CHANGES: readonly string[] = [
+const RELEASE_10205_DETAILED_CHANGES: readonly string[] = [
   'IMPLEMENTAÇÃO DO MÓDULO PONTOS DE ATENÇÃO - A IA VASCULHA OS REGISTROS E AJUDA NA GESTÃO DA EMPRESA.',
   'A pagina Pontos de Atencao ganhou retorno a Central de Operacoes no cabecalho, identificacao Beta e uma descricao da leitura noturna com a referencia do relatorio; a orientacao da lista diaria passou a usar a cor de atencao.',
   'Pendencias de Cadastros passaram a permanecer visiveis diariamente ate receberem uma decisao; a regra de silencio por ausencia de mudanca continua nos modulos analiticos.',
@@ -75,11 +62,20 @@ const RELEASE_10205_CHANGES: readonly string[] = [
   'Resposta ao agradecimento após lembrete de parcela passou a usar uma confirmação humana e específica, sem sugerir recebimento de pagamento ou documento.',
 ]
 
-// Esta lista contem somente deploys concluidos e deve preservar todo o historico.
+const RELEASE_10205_CHANGES: readonly string[] = [
+  'IMPLEMENTAÇÃO DO MÓDULO PONTOS DE ATENÇÃO.',
+  'Realiza uma varredura diária dos dados financeiros, operacionais, de relacionamento e de cadastros para destacar situações que exigem acompanhamento.',
+  'Organiza a leitura em relatórios diário, semanal e mensal, preservando o histórico de cada loja autorizada.',
+  'Apresenta alertas priorizados com quantidades, contexto e acesso aos casos afetados, como parcelas vencidas, atrasos de laboratório, retiradas pendentes e interações de pós-venda.',
+  'Gera uma leitura em linguagem natural baseada nos fatos encontrados para orientar a gestão, sem substituir os detalhes dos alertas.',
+  'Disponibiliza filas protegidas para revisar cadastros duplicados, produtos sem custo e vendas antigas, com ações auditáveis para o gerente.',
+  'Inclui uma leitura mensal de subutilização do programa, indicando áreas e recursos que merecem atenção.',
+]
+
+// Esta lista contém somente deploys concluídos e deve preservar todo o histórico.
 // A versao 1.02.00 e o registro mais antigo atualmente disponivel neste repositorio.
-// Ao iniciar o proximo lote, use 1.02.07 em PENDING_RELEASE_VERSION. Depois do deploy,
-// mova as mudancas pendentes para a nova versao e limpe as duas constantes pendentes.
-// Alteracoes de linha/minor (ex.: 1.02.xx -> 1.03.00) exigem solicitacao expressa.
+// Abra uma versão pendente somente para correções de funcionalidades já em produção.
+// Alterações de linha/minor (ex.: 1.02.xx -> 1.03.00) exigem solicitação expressa.
 export const RELEASE_HISTORY: Release[] = [
   {
     version: '1.02.06',

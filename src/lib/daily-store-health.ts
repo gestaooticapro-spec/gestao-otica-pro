@@ -33,6 +33,14 @@ export type DailyHealthAlert = {
   lifecycle?: DailyHealthAlertLifecycle
 }
 
+export type DailyHealthHeadline = {
+  text: string
+  alertIds: string[]
+  areas: DailyHealthArea[]
+  priority: DailyHealthPriority | null
+  generatedBy: 'ai' | 'fallback'
+}
+
 export type DailyHealthAreaLifecycle = {
   newCount: number
   worsenedCount: number
@@ -200,6 +208,7 @@ export type DailyHealthReport = {
   status: 'generating' | 'ready' | 'failed'
   metrics: DailyHealthMetrics
   alerts: DailyHealthAlert[]
+  headline: DailyHealthHeadline
   narrative: string
   sourceFailures: string[]
   generatedAt: string | null
@@ -225,6 +234,7 @@ function reportFromStoredRow(data: any): DailyHealthReport {
     status: data.status,
     metrics: data.metrics,
     alerts: data.alerts,
+    headline: data.metrics?.headline || fallbackHeadline(Array.isArray(data.alerts) ? data.alerts : []),
     narrative: data.narrative,
     sourceFailures: data.source_failures || [],
     generatedAt: data.generated_at,
@@ -943,7 +953,7 @@ function compareAlerts(currentAlerts: DailyHealthAlert[], previousAlerts: DailyH
     return {
       ...alert,
       detail: ['lens-mounting-overdue', 'lens-mounting-waiting-frame'].includes(alert.id) && state === 'persistente'
-        ? `${alert.detail} O assunto ainda nao foi resolvido desde ontem.`
+        ? `${alert.detail} O assunto ainda não foi resolvido desde ontem.`
         : alert.detail,
       lifecycle: {
         state,
@@ -964,6 +974,79 @@ function compareAlerts(currentAlerts: DailyHealthAlert[], previousAlerts: DailyH
   return { alerts, lifecycle }
 }
 
+function compareHeadlineAlerts(selected: DailyHealthAlert, alert: DailyHealthAlert) {
+  const priority = { critico: 2, atencao: 1, informativo: 0 }
+  const lifecycle = { piorou: 3, novo: 2, persistente: 1, melhorou: 0 }
+  const selectedPriority = priority[selected.priority]
+  const alertPriority = priority[alert.priority]
+  if (alertPriority !== selectedPriority) return alertPriority - selectedPriority
+  const selectedLifecycle = lifecycle[selected.lifecycle?.state || 'persistente']
+  const alertLifecycle = lifecycle[alert.lifecycle?.state || 'persistente']
+  if (alertLifecycle !== selectedLifecycle) return alertLifecycle - selectedLifecycle
+  const selectedImpact = alertImpact(selected)
+  const candidateImpact = alertImpact(alert)
+  if (candidateImpact !== selectedImpact) return candidateImpact - selectedImpact
+  if (alert.records.ids.length !== selected.records.ids.length) return alert.records.ids.length - selected.records.ids.length
+  const selectedDaysOpen = selected.lifecycle?.daysOpen || 0
+  const alertDaysOpen = alert.lifecycle?.daysOpen || 0
+  if (alertDaysOpen !== selectedDaysOpen) return alertDaysOpen - selectedDaysOpen
+  return selected.id.localeCompare(alert.id)
+}
+
+function selectPrimaryAlerts(alerts: DailyHealthAlert[]): DailyHealthAlert[] {
+  const ranked = [...alerts].sort((left, right) => compareHeadlineAlerts(left, right))
+  const primary = ranked[0]
+  if (!primary) return []
+  const limit = primary.priority === 'critico' ? 3 : 2
+  return ranked.filter((alert) => alert.priority === primary.priority).slice(0, limit)
+}
+
+function humanizeFallbackTopic(value: string) {
+  const corrections: Array<[RegExp, string]> = [
+    [/\boculos\b/gi, 'óculos'],
+    [/\bnao\b/gi, 'não'],
+    [/\bha\b/gi, 'há'],
+    [/\bja\b/gi, 'já'],
+    [/\bate\b/gi, 'até'],
+    [/\bestao\b/gi, 'estão'],
+    [/\bsao\b/gi, 'são'],
+    [/\blaboratorio\b/gi, 'laboratório'],
+    [/\bservico\b/gi, 'serviço'],
+    [/\barmacao\b/gi, 'armação'],
+    [/\brevisao\b/gi, 'revisão'],
+    [/\bpos-venda\b/gi, 'pós-venda'],
+    [/\bpos-vendas\b/gi, 'pós-vendas'],
+    [/\bvalido\b/gi, 'válido'],
+    [/\bconfiavel\b/gi, 'confiável'],
+    [/\bindisponivel\b/gi, 'indisponível'],
+    [/\boftalmicas\b/gi, 'oftálmicas'],
+    [/\bverificacao\b/gi, 'verificação'],
+    [/\breferencia\b/gi, 'referência'],
+    [/\bcompativeis\b/gi, 'compatíveis'],
+    [/\bpreco\b/gi, 'preço'],
+    [/\bultimos\b/gi, 'últimos'],
+    [/\bconcluida\b/gi, 'concluída'],
+    [/\bpendencia\b/gi, 'pendência'],
+    [/\bpendencias\b/gi, 'pendências'],
+    [/\bpossivel\b/gi, 'possível'],
+  ]
+  return corrections.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), value)
+}
+
+function fallbackHeadline(alerts: DailyHealthAlert[]): DailyHealthHeadline {
+  const selected = selectPrimaryAlerts(alerts)
+  if (!selected.length) return { text: 'Olá. Nenhum ponto crítico foi identificado na última varredura.', alertIds: [], areas: [], priority: null, generatedBy: 'fallback' }
+  const topics = selected.map((alert) => humanizeFallbackTopic(alert.title.toLowerCase()))
+  const listed = topics.length === 1 ? topics[0] : topics.length === 2 ? `${topics[0]} e ${topics[1]}` : `${topics.slice(0, -1).join(', ')} e ${topics[topics.length - 1]}`
+  return {
+    text: `Olá. Acredito que os pontos mais importantes são ${listed}. Veja mais detalhes abaixo.`,
+    alertIds: selected.map((alert) => alert.id),
+    areas: [...new Set(selected.map((alert) => alert.area))],
+    priority: selected[0].priority,
+    generatedBy: 'fallback',
+  }
+}
+
 export const dailyHealthTestables = {
   buildAccountsPayableAnalysis,
   buildDataQualityAnalysis,
@@ -973,7 +1056,11 @@ export const dailyHealthTestables = {
   buildReadyPickupAttention,
   compareAlerts,
   isGroundedAiText,
+  keepsHeadlineFacts,
   isReadySnapshot,
+  selectPrimaryAlerts,
+  humanizeFallbackTopic,
+  fallbackHeadline,
 }
 
 function fallbackNarrative(metrics: DailyHealthMetrics, alerts: DailyHealthAlert[]) {
@@ -990,11 +1077,11 @@ function fallbackFinancialNarrative(credit: CreditAnalysis) {
   const aging = credit.delinquencyAging
   const current = credit.currentDelinquencyInstallments
     ? `Hoje existem ${credit.currentDelinquencyInstallments} parcelas vencidas em aberto, somando ${money(credit.currentDelinquencyValue)}.`
-    : 'Hoje nao ha parcelas vencidas em aberto.'
+    : 'Hoje não há parcelas vencidas em aberto.'
   const lossRisk = aging.over90Installments
-    ? `Dessas, ${aging.over90Installments} ja ultrapassaram 90 dias de atraso, no valor de ${money(aging.over90Value)}; ${aging.over90CustomersOutsideSpc} cliente${aging.over90CustomersOutsideSpc === 1 ? '' : 's'} desse grupo ainda nao esta${aging.over90CustomersOutsideSpc === 1 ? '' : 'o'} no SPC.`
+    ? `Dessas, ${aging.over90Installments} já ultrapassaram 90 dias de atraso, no valor de ${money(aging.over90Value)}; ${aging.over90CustomersOutsideSpc} cliente${aging.over90CustomersOutsideSpc === 1 ? '' : 's'} desse grupo ainda não está${aging.over90CustomersOutsideSpc === 1 ? '' : 'o'} no SPC.`
     : 'Nenhuma parcela aberta ultrapassou 90 dias de atraso.'
-  return `${current} ${lossRisk} ${credit.multiplePurchaseSignal || 'A prioridade e agir primeiro sobre os valores mais antigos e de maior impacto.'}`
+  return `${current} ${lossRisk} ${credit.multiplePurchaseSignal || 'A prioridade é agir primeiro sobre os valores mais antigos e de maior impacto.'}`
 }
 
 function fallbackAreaNarratives(metrics: DailyHealthMetrics, alerts: DailyHealthAlert[] = []): DailyHealthAreaNarratives {
@@ -1006,17 +1093,17 @@ function fallbackAreaNarratives(metrics: DailyHealthMetrics, alerts: DailyHealth
   }
   const quiet = (area: DailyHealthArea) => {
     const resolved = metrics.alertLifecycle?.[area]?.resolvedCount || 0
-    return resolved ? `${resolved} pendencia${resolved === 1 ? '' : 's'} foi${resolved === 1 ? '' : 'ram'} resolvida${resolved === 1 ? '' : 's'} desde ontem.` : 'Nao houve mudanca material desde ontem.'
+    return resolved ? `${resolved} pendência${resolved === 1 ? '' : 's'} foi${resolved === 1 ? '' : 'ram'} resolvida${resolved === 1 ? '' : 's'} desde ontem.` : 'Não houve mudança material desde ontem.'
   }
   const operationFacts = [
     metrics.overdueOrders > 0 ? `${metrics.overdueOrders} pedidos alem do prazo` : '',
-    metrics.ordersWithoutLabRequest > 0 ? `${metrics.ordersWithoutLabRequest} pedidos sem envio ao laboratorio` : '',
+    metrics.ordersWithoutLabRequest > 0 ? `${metrics.ordersWithoutLabRequest} pedidos sem envio ao laboratório` : '',
     metrics.mountingOverdue > 0 ? `${metrics.mountingOverdue} montagens locais acima de 24 horas` : '',
-    metrics.mountingWaitingForFrame > 0 ? `${metrics.mountingWaitingForFrame} montagens aguardam a armacao do cliente ha mais de 7 dias` : '',
+    metrics.mountingWaitingForFrame > 0 ? `${metrics.mountingWaitingForFrame} montagens aguardam a armação do cliente há mais de 7 dias` : '',
     metrics.ordersWithoutPromise > 0 ? `${metrics.ordersWithoutPromise} OS sem data prometida` : '',
-    metrics.ordersWithoutLensLink > 0 ? `${metrics.ordersWithoutLensLink} OS estao sem lente vinculada` : '',
-    metrics.ordersWithoutPrescription > 0 ? `${metrics.ordersWithoutPrescription} OS com lente vinculada estao sem grau preenchido` : '',
-    metrics.staleReadyForPickup > 0 ? `${metrics.staleReadyForPickup} oculos prontos estao na gaveta ha mais de 7 dias` : '',
+    metrics.ordersWithoutLensLink > 0 ? `${metrics.ordersWithoutLensLink} OS estão sem lente vinculada` : '',
+    metrics.ordersWithoutPrescription > 0 ? `${metrics.ordersWithoutPrescription} OS com lente vinculada estão sem grau preenchido` : '',
+    metrics.staleReadyForPickup > 0 ? `${metrics.staleReadyForPickup} óculos prontos estão na gaveta há mais de 7 dias` : '',
   ].filter(Boolean)
   const relationshipFacts = [
     postSale.lowRatingYesterdayCount > 0 ? `Ontem, ${postSale.lowRatingYesterdayCount} nota${postSale.lowRatingYesterdayCount === 1 ? '' : 's'} baixa${postSale.lowRatingYesterdayCount === 1 ? '' : 's'} foi${postSale.lowRatingYesterdayCount === 1 ? '' : 'ram'} registrada${postSale.lowRatingYesterdayCount === 1 ? '' : 's'}.` : '',
@@ -1027,18 +1114,18 @@ function fallbackAreaNarratives(metrics: DailyHealthMetrics, alerts: DailyHealth
   ].filter(Boolean)
   const dataQuality = metrics.dataQualityAnalysis
   const cadastroFacts = [
-    dataQuality.duplicateCustomerIds.length > 0 ? `${dataQuality.duplicateCustomerIds.length} clientes com possivel duplicidade` : '',
-    dataQuality.duplicateProductIds.length > 0 ? `${dataQuality.duplicateProductIds.length} produtos com possivel duplicidade` : '',
+    dataQuality.duplicateCustomerIds.length > 0 ? `${dataQuality.duplicateCustomerIds.length} clientes com possível duplicidade` : '',
+    dataQuality.duplicateProductIds.length > 0 ? `${dataQuality.duplicateProductIds.length} produtos com possível duplicidade` : '',
     dataQuality.usedProductsWithoutCostIds.length > 0 ? `${dataQuality.usedProductsWithoutCostIds.length} produtos vendidos sem custo cadastrado` : '',
-    dataQuality.staleOpenSaleIds.length > 0 ? `${dataQuality.staleOpenSaleIds.length} vendas em aberto ha mais de 7 dias` : '',
+    dataQuality.staleOpenSaleIds.length > 0 ? `${dataQuality.staleOpenSaleIds.length} vendas em aberto há mais de 7 dias` : '',
   ].filter(Boolean)
   return {
-    financeiro: hasUnavailableData('financeiro') ? 'Nao foi possivel atualizar todos os dados financeiros. O relatorio nao concluiu que pendencias anteriores foram resolvidas.' : changed('financeiro') ? fallbackFinancialNarrative(metrics.creditAnalysis) : quiet('financeiro'),
-    operacao: hasUnavailableData('operacao') ? 'Nao foi possivel atualizar todos os dados operacionais. O relatorio nao concluiu que pendencias anteriores foram resolvidas.' : changed('operacao') ? (operationFacts.length ? `A operacao pede atencao: ${operationFacts.join('; ')}.` : 'A operacao nao trouxe desvios relevantes nas fontes disponiveis.') : quiet('operacao'),
-    relacionamento: hasUnavailableData('relacionamento') ? 'Nao foi possivel atualizar todos os dados de relacionamento. O relatorio nao concluiu que pendencias anteriores foram resolvidas.' : changed('relacionamento') && relationshipFacts.length ? relationshipFacts.join(' ') : quiet('relacionamento'),
-    cadastros: hasUnavailableData('cadastros') ? 'Nao foi possivel atualizar todos os dados cadastrais. O relatorio preservou as pendencias anteriores.' : changed('cadastros') && cadastroFacts.length ? `A faxina encontrou: ${cadastroFacts.join('; ')}.` : quiet('cadastros'),
+    financeiro: hasUnavailableData('financeiro') ? 'Não foi possível atualizar todos os dados financeiros. O relatório não concluiu que pendências anteriores foram resolvidas.' : changed('financeiro') ? fallbackFinancialNarrative(metrics.creditAnalysis) : quiet('financeiro'),
+    operacao: hasUnavailableData('operacao') ? 'Não foi possível atualizar todos os dados operacionais. O relatório não concluiu que pendências anteriores foram resolvidas.' : changed('operacao') ? (operationFacts.length ? `A operação pede atenção: ${operationFacts.join('; ')}.` : 'A operação não trouxe desvios relevantes nas fontes disponíveis.') : quiet('operacao'),
+    relacionamento: hasUnavailableData('relacionamento') ? 'Não foi possível atualizar todos os dados de relacionamento. O relatório não concluiu que pendências anteriores foram resolvidas.' : changed('relacionamento') && relationshipFacts.length ? relationshipFacts.join(' ') : quiet('relacionamento'),
+    cadastros: hasUnavailableData('cadastros') ? 'Não foi possível atualizar todos os dados cadastrais. O relatório preservou as pendências anteriores.' : changed('cadastros') && cadastroFacts.length ? `A faxina encontrou: ${cadastroFacts.join('; ')}.` : quiet('cadastros'),
     relacionamentoConcern: !hasUnavailableData('relacionamento') && changed('relacionamento') && postSale.awaitingHumanReview > 0
-      ? `Fiquei preocupado com ${postSale.awaitingHumanReview} caso${postSale.awaitingHumanReview === 1 ? '' : 's'} em revisao humana aberta. Confira esses retornos antes de seguirmos com novos contatos.`
+      ? `Fiquei preocupado com ${postSale.awaitingHumanReview} caso${postSale.awaitingHumanReview === 1 ? '' : 's'} em revisão humana aberta. Confira esses retornos antes de seguirmos com novos contatos.`
       : null,
   }
 }
@@ -1047,6 +1134,7 @@ type DailyHealthNarrativeResult = {
   narrative: string
   areas: DailyHealthAreaNarratives
   cards: Record<string, { title: string; detail: string }>
+  headline: DailyHealthHeadline
 }
 
 function aiText(value: unknown) {
@@ -1071,11 +1159,22 @@ function groundedAiText(value: unknown, fallbackValue: string, evidence: string[
   return isGroundedAiText(value, evidence) ? normalizeNarrativeHighlights(String(value).trim()) : fallbackValue
 }
 
+function keepsHeadlineFacts(value: unknown, alerts: DailyHealthAlert[]) {
+  if (!isGroundedAiText(value, alerts.flatMap((alert) => [alert.title, alert.detail]))) return false
+  const text = String(value)
+  return alerts.every((alert) => {
+    const requiredNumbers = alert.title.match(/\d+(?:[.,]\d+)?/g) || []
+    return requiredNumbers.every((number) => new RegExp(`(^|\\D)${number.replace('.', '\\.')}($|\\D)`).test(text))
+  })
+}
+
 async function createNarrative(metrics: DailyHealthMetrics, alerts: DailyHealthAlert[]): Promise<DailyHealthNarrativeResult> {
+  const primaryAlerts = selectPrimaryAlerts(alerts)
   const fallback: DailyHealthNarrativeResult = {
     narrative: fallbackNarrative(metrics, alerts),
     areas: fallbackAreaNarratives(metrics, alerts),
     cards: Object.fromEntries(alerts.map((alert) => [alert.id, { title: alert.title, detail: alert.detail }])),
+    headline: fallbackHeadline(alerts),
   }
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) {
@@ -1099,6 +1198,9 @@ async function createNarrative(metrics: DailyHealthMetrics, alerts: DailyHealthA
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'gpt-4.1-mini',
+        instructions: primaryAlerts.length
+          ? `Inclua obrigatoriamente a propriedade JSON headline com uma única frase curta, em português brasileiro natural, com acentuação correta, tom humano e saudação inicial. Termine com “Veja mais detalhes abaixo.”. Cite exclusivamente estes alertas principais: ${primaryAlerts.map((alert) => `id=${alert.id}; titulo=${alert.title}; detalhe=${alert.detail}`).join(' | ')}. Para CADA alerta, mantenha na frase a quantidade exata e o problema concreto; não resuma como “alertas sobre montagem”, “parcelas” ou “cadastros”. Exemplo de densidade esperada: “2 óculos aguardam montagem há mais de 24 horas, 55 parcelas vencidas e 569 clientes parecem estar duplicados.” Reescreva os títulos técnicos em uma frase humana, sem copiar literalmente grafias sem acento. Não inclua recomendação, causa ou número que não esteja nesses fatos.`
+          : 'Inclua obrigatoriamente a propriedade JSON headline com a frase: Olá. Nenhum ponto crítico foi identificado na última varredura.',
         input: `Voce escreve a leitura diaria de uma otica em portugues brasileiro. Retorne SOMENTE JSON valido, sem markdown, neste formato: {"geral":"...","financeiro":"...","operacao":"...","relacionamento":"...","cadastros":"...","relacionamentoConcern":"texto ou null","cards":{"id-do-alerta":{"title":"...","detail":"..."}}}. Use SOMENTE os fatos estruturados abaixo. Nao invente causas, valores, clientes ou acoes. Cada leitura deve ser humana, direta e curta. Quando quiser destacar uma parte do texto, use [[highlight:id-do-alerta]]trecho[[/highlight]]. Use apenas o id de um alerta fornecido abaixo e marque a frase ou ideia relevante, nunca um numero isolado. A prioridade e a cor sao definidas exclusivamente pelo sistema a partir do alerta; voce nao decide se algo e critico ou atencao. Os textos financeiro, operacao, relacionamento e cadastros sao leituras de modulo, nao listas de botoes. O relatorio e diario: use lifecycle.show para decidir o que merece ser mencionado. Se um modulo nao tiver alerta com show=true, diga apenas que nao houve mudanca material desde ontem, citando resolucoes quando houver; nao repita numeros persistentes. No financeiro, quando houver mudanca relevante, fale de inadimplencia atual: parcelas que continuam vencidas em aberto, valor, envelhecimento acima de 90 dias e quantos clientes desse grupo ainda nao estao no SPC. Se houver alerta de contas a pagar com lifecycle.show=true, mencione somente o vencimento em aberto ou a concentracao material nos proximos 7 dias. Nunca mencione parcelas que foram quitadas com atraso, historico de atraso ou comparacoes de pagamento passado. Mencione varias compras parceladas apenas se multiplePurchaseSignal existir e houver mudanca relevante no financeiro, como associacao atual observada e nao causa. Os cards sao excecoes com lifecycle.show=true: reescreva titulo e detalhe de forma variada e concreta. Quando houver lens-mounting-overdue persistente, deixe claro que a data da montagem local ainda nao foi preenchida desde ontem. Quando houver lens-mounting-waiting-frame persistente, deixe claro que a armação do cliente ainda nao foi recebida desde ontem. Para CADA card, use exclusivamente os fatos do alerta com o mesmo id; nao acrescente porcentagens, causas, comparacoes, estados de resposta ou conclusoes que nao estejam no titulo e detalhe daquele alerta. Nao crie uma acao nova nem repita literalmente o titulo original. Em relacionamento, explique os pos-vendas concluidos ontem e na semana somente quando relacionamento tiver mudanca relevante. Nunca escreva que uma resposta foi 'avaliada' quando o fato e apenas nao haver nota registrada. Preencha relacionamentoConcern somente quando houver revisao humana aberta e show=true, em tom de consultor preocupado. ${JSON.stringify({ metrics: aiMetrics, lifecycle: metrics.alertLifecycle, alerts: alerts.map(({ id, title, detail, priority, area, lifecycle }) => ({ id, title, detail, priority, area, lifecycle })) })}`,
       }),
       cache: 'no-store',
@@ -1121,7 +1223,7 @@ async function createNarrative(metrics: DailyHealthMetrics, alerts: DailyHealthA
       console.warn(`[Daily health][IA] JSON invalido: ${text.slice(0, 1000)}`)
       return fallback
     }
-    let parsed: Partial<Record<'geral' | 'financeiro' | 'operacao' | 'relacionamento' | 'cadastros' | 'relacionamentoConcern', unknown>> & { cards?: unknown }
+    let parsed: Partial<Record<'headline' | 'geral' | 'financeiro' | 'operacao' | 'relacionamento' | 'cadastros' | 'relacionamentoConcern', unknown>> & { cards?: unknown }
     try {
       parsed = JSON.parse(text.slice(jsonStart, jsonEnd + 1))
     } catch {
@@ -1130,6 +1232,9 @@ async function createNarrative(metrics: DailyHealthMetrics, alerts: DailyHealthA
     }
     const hasForbiddenCreditHistoryLanguage = (value: string) => /historico|quitad|paga[sd]? com atraso/i.test(value)
     const cards = Object.fromEntries(alerts.map((alert) => [alert.id, { title: alert.title, detail: alert.detail }]))
+    const headline = primaryAlerts.length && keepsHeadlineFacts(parsed.headline, primaryAlerts)
+      ? { ...fallback.headline, text: normalizeNarrativeHighlights(String(parsed.headline).trim()), generatedBy: 'ai' as const }
+      : fallback.headline
     const financialEvidence = [fallback.areas.financeiro, ...alerts.filter((alert) => alert.area === 'financeiro').flatMap((alert) => [alert.title, alert.detail])]
     const operationEvidence = [fallback.areas.operacao, ...alerts.filter((alert) => alert.area === 'operacao').flatMap((alert) => [alert.title, alert.detail])]
     const relationshipEvidence = [fallback.areas.relacionamento, ...alerts.filter((alert) => alert.area === 'relacionamento').flatMap((alert) => [alert.title, alert.detail])]
@@ -1148,6 +1253,7 @@ async function createNarrative(metrics: DailyHealthMetrics, alerts: DailyHealthA
       ? `${financeiro} ${metrics.creditAnalysis.multiplePurchaseSignal}`
       : financeiro
     return {
+      headline,
       narrative: groundedAiText(parsed.geral, fallback.narrative, [fallback.narrative, ...alerts.flatMap((alert) => [alert.title, alert.detail])]),
       areas: {
         financeiro: !dadosIndisponiveis('financeiro') && financeiroTemMudanca ? financeiroComSinal : fallback.areas.financeiro,
@@ -1365,18 +1471,18 @@ export async function generateDailyStoreHealthReport(storeId = 1, reportDate = p
   const sourceAvailable = (...sources: string[]) => sources.every((source) => !unavailableSources.has(source))
   const alerts: DailyHealthAlert[] = []
   if (sourceAvailable('parcelas') && metrics.overdue > 0) alerts.push({ id: 'overdue-installments', area: 'financeiro', priority: metrics.overdue > settings.overdueCriticalValue ? 'critico' : 'atencao', title: `${metrics.overdueInstallments} parcelas vencidas`, detail: `${money(metrics.overdue)} permanecem em aberto.`, impact: metrics.overdue, confidence: 'alta', href: `/dashboard/loja/${storeId}/financeiro/parcelas`, records: { type: 'parcela', ids: overdue.map((item) => item.id) } })
-  if (sourceAvailable('ordens de servico') && metrics.ordersWithoutLabRequest > 0) alerts.push({ id: 'orders-without-lab', area: 'operacao', priority: 'critico', title: `${metrics.ordersWithoutLabRequest} lentes ainda nao foram pedidas ao laboratorio`, detail: `Essas OS estao abertas ha mais de ${settings.labRequestHours} horas sem pedido registrado.`, impact: metrics.ordersWithoutLabRequest, confidence: 'alta', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: oldWithoutLab.map((item) => item.id) } })
-  if (sourceAvailable('ordens de servico') && metrics.labArrivalOverdue > 0) alerts.push({ id: 'lenses-not-arrived', area: 'operacao', priority: 'critico', title: `${metrics.labArrivalOverdue} lentes nao chegaram ate a data prometida`, detail: 'O pedido foi registrado no laboratorio, mas a lente ainda nao chegou para a montagem.', impact: metrics.labArrivalOverdue, confidence: 'alta', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: lensNotArrivedByPromise.map((item) => item.id) } })
-  if (sourceAvailable('ordens de servico') && metrics.mountingOverdue > 0) alerts.push({ id: 'lens-mounting-overdue', area: 'operacao', priority: 'critico', title: `${metrics.mountingOverdue} oculos aguardam montagem ha mais de 24 horas`, detail: 'A lente ja chegou na loja, mas a data da montagem local ainda nao foi preenchida.', impact: metrics.mountingOverdue, confidence: 'alta', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: mountingOverdue.map((item) => item.id) } })
-  if (sourceAvailable('ordens de servico') && metrics.mountingWaitingForFrame > 0) alerts.push({ id: 'lens-mounting-waiting-frame', area: 'operacao', priority: 'atencao', title: `${metrics.mountingWaitingForFrame} oculos aguardam a armação do cliente ha mais de 7 dias`, detail: 'A lente chegou na loja, mas a montagem depende da armação que ainda esta com o cliente.', impact: metrics.mountingWaitingForFrame, confidence: 'alta', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: mountingWaitingForFrame.map((item) => item.id) } })
-  if (sourceAvailable('ordens de servico') && metrics.staleReadyForPickup > 0) alerts.push({ id: 'ready-pickup-stale', area: 'operacao', priority: metrics.readyForPickupLongStay > 0 ? 'critico' : 'atencao', title: `${metrics.staleReadyForPickup} oculos prontos estao na gaveta ha mais de 7 dias`, detail: metrics.readyForPickupLongStay > 0 ? `${metrics.readyForPickupLongStay} ja ultrapassaram 30 dias. Confira se houve abandono do cliente ou se a entrega ficou sem baixa.` : 'Confira se o cliente foi avisado e se a entrega foi registrada corretamente.', impact: metrics.staleReadyForPickup, confidence: 'alta', href: `/dashboard/loja/${storeId}/gaveta`, records: { type: 'os', ids: pickupAttention.staleReadyForPickup.map((item) => item.id) } })
-  if (sourceAvailable('ordens de servico') && metrics.readyForPickupWithoutPhone > 0) alerts.push({ id: 'ready-pickup-without-phone', area: 'operacao', priority: 'atencao', title: `${metrics.readyForPickupWithoutPhone} oculos na gaveta estao sem telefone valido`, detail: 'Esses clientes esperam ha mais de 7 dias e a loja nao tem telefone valido registrado para confirmar a retirada.', impact: metrics.readyForPickupWithoutPhone, confidence: 'alta', href: `/dashboard/loja/${storeId}/gaveta`, records: { type: 'os', ids: pickupAttention.withoutPhone.map((item) => item.id) } })
-  if (sourceAvailable('ordens de servico', 'avisos de retirada') && metrics.readyForPickupWithoutNotice > 0) alerts.push({ id: 'ready-pickup-without-notice', area: 'operacao', priority: 'atencao', title: `${metrics.readyForPickupWithoutNotice} oculos na gaveta nao possuem aviso de retirada registrado`, detail: 'Existe telefone valido, mas nao ha envio registrado pelo botao da Gaveta. Confira antes de concluir que o cliente foi avisado.', impact: metrics.readyForPickupWithoutNotice, confidence: 'alta', href: `/dashboard/loja/${storeId}/gaveta`, records: { type: 'os', ids: pickupAttention.withoutNotice.map((item) => item.id) } })
-  if (sourceAvailable('ordens de servico') && metrics.ordersWithoutPromise > 0) alerts.push({ id: 'orders-without-promise', area: 'operacao', priority: 'atencao', title: `${metrics.ordersWithoutPromise} OS estao sem data prometida`, detail: 'Sem uma data combinada, a loja nao consegue acompanhar corretamente o prazo da lente e da entrega.', impact: metrics.ordersWithoutPromise, confidence: 'alta', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: ordersWithoutPromise.map((item) => item.id) } })
-  if (sourceAvailable('ordens de servico', 'lentes das OS') && metrics.ordersWithoutLensLink > 0) alerts.push({ id: 'orders-without-lens-link', area: 'operacao', priority: 'atencao', title: `${metrics.ordersWithoutLensLink} OS abertas sem lente vinculada`, detail: 'A OS nao possui item de lente OD ou OE relacionado a venda. Confira se a lente ainda sera escolhida ou se houve falha no cadastro.', impact: metrics.ordersWithoutLensLink, confidence: 'media', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: ordersWithoutLensLink.map((item) => item.id) } })
-  if (sourceAvailable('ordens de servico', 'lentes das OS') && metrics.ordersWithoutPrescription > 0) alerts.push({ id: 'orders-without-prescription', area: 'operacao', priority: 'atencao', title: `${metrics.ordersWithoutPrescription} OS com lente vinculada estao sem grau`, detail: 'A OS possui lente relacionada, mas nenhum campo de receita foi preenchido. Confira antes de enviar ou montar.', impact: metrics.ordersWithoutPrescription, confidence: 'media', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: ordersWithoutPrescription.map((item) => item.id) } })
-  if (sourceAvailable('ordens de servico') && metrics.cancelledSalesWithOpenOrder > 0) alerts.push({ id: 'cancelled-sales-with-open-order', area: 'operacao', priority: 'atencao', title: `${metrics.cancelledSalesWithOpenOrder} vendas canceladas ou devolvidas ainda possuem OS aberta`, detail: 'Essas OS precisam ser encerradas para nao continuarem na fila operacional.', impact: metrics.cancelledSalesWithOpenOrder, confidence: 'alta', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: cancelledSalesWithOpenOrder.map((item) => item.id) } })
-  if (sourceAvailable('ordens de servico', 'vendas de lentes') && metrics.lensSalesWithoutOrder > 0) alerts.push({ id: 'lens-sales-without-order', area: 'operacao', priority: 'atencao', title: `${metrics.lensSalesWithoutOrder} vendas de lentes oftalmicas nao possuem OS`, detail: 'Essas vendas recentes de lentes oftalmicas precisam ser conferidas para garantir que o processo de laboratorio foi aberto. Lentes de contato nao entram nesta verificacao.', impact: metrics.lensSalesWithoutOrder, confidence: 'media', href: `/dashboard/loja/${storeId}/vendas`, records: { type: 'venda', ids: lensSalesWithoutOrder } })
+  if (sourceAvailable('ordens de servico') && metrics.ordersWithoutLabRequest > 0) alerts.push({ id: 'orders-without-lab', area: 'operacao', priority: 'critico', title: `${metrics.ordersWithoutLabRequest} lentes ainda não foram pedidas ao laboratório`, detail: `Essas OS estão abertas há mais de ${settings.labRequestHours} horas sem pedido registrado.`, impact: metrics.ordersWithoutLabRequest, confidence: 'alta', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: oldWithoutLab.map((item) => item.id) } })
+  if (sourceAvailable('ordens de servico') && metrics.labArrivalOverdue > 0) alerts.push({ id: 'lenses-not-arrived', area: 'operacao', priority: 'critico', title: `${metrics.labArrivalOverdue} lentes não chegaram até a data prometida`, detail: 'O pedido foi registrado no laboratório, mas a lente ainda não chegou para a montagem.', impact: metrics.labArrivalOverdue, confidence: 'alta', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: lensNotArrivedByPromise.map((item) => item.id) } })
+  if (sourceAvailable('ordens de servico') && metrics.mountingOverdue > 0) alerts.push({ id: 'lens-mounting-overdue', area: 'operacao', priority: 'critico', title: `${metrics.mountingOverdue} óculos aguardam montagem há mais de 24 horas`, detail: 'A lente já chegou na loja, mas a data da montagem local ainda não foi preenchida.', impact: metrics.mountingOverdue, confidence: 'alta', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: mountingOverdue.map((item) => item.id) } })
+  if (sourceAvailable('ordens de servico') && metrics.mountingWaitingForFrame > 0) alerts.push({ id: 'lens-mounting-waiting-frame', area: 'operacao', priority: 'atencao', title: `${metrics.mountingWaitingForFrame} óculos aguardam a armação do cliente há mais de 7 dias`, detail: 'A lente chegou na loja, mas a montagem depende da armação que ainda está com o cliente.', impact: metrics.mountingWaitingForFrame, confidence: 'alta', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: mountingWaitingForFrame.map((item) => item.id) } })
+  if (sourceAvailable('ordens de servico') && metrics.staleReadyForPickup > 0) alerts.push({ id: 'ready-pickup-stale', area: 'operacao', priority: metrics.readyForPickupLongStay > 0 ? 'critico' : 'atencao', title: `${metrics.staleReadyForPickup} óculos prontos estão na gaveta há mais de 7 dias`, detail: metrics.readyForPickupLongStay > 0 ? `${metrics.readyForPickupLongStay} já ultrapassaram 30 dias. Confira se houve abandono do cliente ou se a entrega ficou sem baixa.` : 'Confira se o cliente foi avisado e se a entrega foi registrada corretamente.', impact: metrics.staleReadyForPickup, confidence: 'alta', href: `/dashboard/loja/${storeId}/gaveta`, records: { type: 'os', ids: pickupAttention.staleReadyForPickup.map((item) => item.id) } })
+  if (sourceAvailable('ordens de servico') && metrics.readyForPickupWithoutPhone > 0) alerts.push({ id: 'ready-pickup-without-phone', area: 'operacao', priority: 'atencao', title: `${metrics.readyForPickupWithoutPhone} óculos na gaveta estão sem telefone válido`, detail: 'Esses clientes esperam há mais de 7 dias e a loja não tem telefone válido registrado para confirmar a retirada.', impact: metrics.readyForPickupWithoutPhone, confidence: 'alta', href: `/dashboard/loja/${storeId}/gaveta`, records: { type: 'os', ids: pickupAttention.withoutPhone.map((item) => item.id) } })
+  if (sourceAvailable('ordens de servico', 'avisos de retirada') && metrics.readyForPickupWithoutNotice > 0) alerts.push({ id: 'ready-pickup-without-notice', area: 'operacao', priority: 'atencao', title: `${metrics.readyForPickupWithoutNotice} óculos na gaveta não possuem aviso de retirada registrado`, detail: 'Existe telefone válido, mas não há envio registrado pelo botão da Gaveta. Confira antes de concluir que o cliente foi avisado.', impact: metrics.readyForPickupWithoutNotice, confidence: 'alta', href: `/dashboard/loja/${storeId}/gaveta`, records: { type: 'os', ids: pickupAttention.withoutNotice.map((item) => item.id) } })
+  if (sourceAvailable('ordens de servico') && metrics.ordersWithoutPromise > 0) alerts.push({ id: 'orders-without-promise', area: 'operacao', priority: 'atencao', title: `${metrics.ordersWithoutPromise} OS estão sem data prometida`, detail: 'Sem uma data combinada, a loja não consegue acompanhar corretamente o prazo da lente e da entrega.', impact: metrics.ordersWithoutPromise, confidence: 'alta', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: ordersWithoutPromise.map((item) => item.id) } })
+  if (sourceAvailable('ordens de servico', 'lentes das OS') && metrics.ordersWithoutLensLink > 0) alerts.push({ id: 'orders-without-lens-link', area: 'operacao', priority: 'atencao', title: `${metrics.ordersWithoutLensLink} OS abertas sem lente vinculada`, detail: 'A OS não possui item de lente OD ou OE relacionado à venda. Confira se a lente ainda será escolhida ou se houve falha no cadastro.', impact: metrics.ordersWithoutLensLink, confidence: 'media', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: ordersWithoutLensLink.map((item) => item.id) } })
+  if (sourceAvailable('ordens de servico', 'lentes das OS') && metrics.ordersWithoutPrescription > 0) alerts.push({ id: 'orders-without-prescription', area: 'operacao', priority: 'atencao', title: `${metrics.ordersWithoutPrescription} OS com lente vinculada estão sem grau`, detail: 'A OS possui lente relacionada, mas nenhum campo de receita foi preenchido. Confira antes de enviar ou montar.', impact: metrics.ordersWithoutPrescription, confidence: 'media', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: ordersWithoutPrescription.map((item) => item.id) } })
+  if (sourceAvailable('ordens de servico') && metrics.cancelledSalesWithOpenOrder > 0) alerts.push({ id: 'cancelled-sales-with-open-order', area: 'operacao', priority: 'atencao', title: `${metrics.cancelledSalesWithOpenOrder} vendas canceladas ou devolvidas ainda possuem OS aberta`, detail: 'Essas OS precisam ser encerradas para não continuarem na fila operacional.', impact: metrics.cancelledSalesWithOpenOrder, confidence: 'alta', href: `/dashboard/loja/${storeId}/laboratorio`, records: { type: 'os', ids: cancelledSalesWithOpenOrder.map((item) => item.id) } })
+  if (sourceAvailable('ordens de servico', 'vendas de lentes') && metrics.lensSalesWithoutOrder > 0) alerts.push({ id: 'lens-sales-without-order', area: 'operacao', priority: 'atencao', title: `${metrics.lensSalesWithoutOrder} vendas de lentes oftálmicas não possuem OS`, detail: 'Essas vendas recentes de lentes oftálmicas precisam ser conferidas para garantir que o processo de laboratório foi aberto. Lentes de contato não entram nesta verificação.', impact: metrics.lensSalesWithoutOrder, confidence: 'media', href: `/dashboard/loja/${storeId}/vendas`, records: { type: 'venda', ids: lensSalesWithoutOrder } })
   if (sourceAvailable('clientes') && dataQualityAnalysis.duplicateCustomerIds.length > 0) {
     const groups = [
       dataQualityAnalysis.duplicateCustomerCpfGroups > 0 ? `${dataQualityAnalysis.duplicateCustomerCpfGroups} por CPF` : '',
@@ -1387,14 +1493,14 @@ export async function generateDailyStoreHealthReport(storeId = 1, reportDate = p
   }
   if (sourceAvailable('produtos') && dataQualityAnalysis.duplicateProductIds.length > 0) {
     const groups = dataQualityAnalysis.duplicateProductCompositeGroups
-    alerts.push({ id: 'duplicate-products', area: 'cadastros', priority: 'atencao', title: `${dataQualityAnalysis.duplicateProductIds.length} produtos parecem estar duplicados`, detail: `Foram encontrados ${groups} grupos com nome, marca e referencia compativeis. Confira os registros antes de alterar estoque ou preco.`, impact: dataQualityAnalysis.duplicateProductIds.length, confidence: 'alta', href: `/dashboard/loja/${storeId}/cadastros`, records: { type: 'produto', ids: dataQualityAnalysis.duplicateProductIds } })
+    alerts.push({ id: 'duplicate-products', area: 'cadastros', priority: 'atencao', title: `${dataQualityAnalysis.duplicateProductIds.length} produtos parecem estar duplicados`, detail: `Foram encontrados ${groups} grupos com nome, marca e referência compatíveis. Confira os registros antes de alterar estoque ou preço.`, impact: dataQualityAnalysis.duplicateProductIds.length, confidence: 'alta', href: `/dashboard/loja/${storeId}/cadastros`, records: { type: 'produto', ids: dataQualityAnalysis.duplicateProductIds } })
   }
-  if (sourceAvailable('produtos', 'itens de auditoria') && dataQualityAnalysis.usedProductsWithoutCostIds.length > 0) alerts.push({ id: 'used-products-without-cost', area: 'cadastros', priority: 'atencao', title: `${dataQualityAnalysis.usedProductsWithoutCostIds.length} produtos vendidos estao sem custo`, detail: 'Esses produtos tiveram venda nos ultimos 90 dias, mas ainda nao possuem custo positivo cadastrado.', impact: dataQualityAnalysis.usedProductsWithoutCostIds.length, confidence: 'alta', href: `/dashboard/loja/${storeId}/cadastros`, records: { type: 'produto', ids: dataQualityAnalysis.usedProductsWithoutCostIds } })
-  if (sourceAvailable('vendas em aberto') && dataQualityAnalysis.staleOpenSaleIds.length > 0) alerts.push({ id: 'stale-open-sales', area: 'cadastros', priority: 'atencao', title: `${dataQualityAnalysis.staleOpenSaleIds.length} vendas continuam abertas ha mais de 7 dias`, detail: 'Revise se a venda deve ser concluida, cancelada ou tratada pelo protocolo de abandono.', impact: dataQualityAnalysis.staleOpenSaleIds.length, confidence: 'alta', href: `/dashboard/loja/${storeId}/vendas?mode=pendencias`, records: { type: 'venda', ids: dataQualityAnalysis.staleOpenSaleIds } })
-  if (sourceAvailable('WhatsApp') && metrics.pendingWhatsApp > 0) alerts.push({ id: 'whatsapp-pending', area: 'relacionamento', priority: 'atencao', title: `${metrics.pendingWhatsApp} conversas de WhatsApp aguardando humano`, detail: 'Ha atendimentos transferidos que ainda precisam de continuidade.', impact: metrics.pendingWhatsApp, confidence: 'alta', href: `/dashboard/loja/${storeId}/atendimento`, records: { type: 'conversa', ids: whatsApp.map((item) => item.id) } })
+  if (sourceAvailable('produtos', 'itens de auditoria') && dataQualityAnalysis.usedProductsWithoutCostIds.length > 0) alerts.push({ id: 'used-products-without-cost', area: 'cadastros', priority: 'atencao', title: `${dataQualityAnalysis.usedProductsWithoutCostIds.length} produtos vendidos estão sem custo`, detail: 'Esses produtos tiveram venda nos últimos 90 dias, mas ainda não possuem custo positivo cadastrado.', impact: dataQualityAnalysis.usedProductsWithoutCostIds.length, confidence: 'alta', href: `/dashboard/loja/${storeId}/cadastros`, records: { type: 'produto', ids: dataQualityAnalysis.usedProductsWithoutCostIds } })
+  if (sourceAvailable('vendas em aberto') && dataQualityAnalysis.staleOpenSaleIds.length > 0) alerts.push({ id: 'stale-open-sales', area: 'cadastros', priority: 'atencao', title: `${dataQualityAnalysis.staleOpenSaleIds.length} vendas continuam abertas há mais de 7 dias`, detail: 'Revise se a venda deve ser concluída, cancelada ou tratada pelo protocolo de abandono.', impact: dataQualityAnalysis.staleOpenSaleIds.length, confidence: 'alta', href: `/dashboard/loja/${storeId}/vendas?mode=pendencias`, records: { type: 'venda', ids: dataQualityAnalysis.staleOpenSaleIds } })
+  if (sourceAvailable('WhatsApp') && metrics.pendingWhatsApp > 0) alerts.push({ id: 'whatsapp-pending', area: 'relacionamento', priority: 'atencao', title: `${metrics.pendingWhatsApp} conversas de WhatsApp aguardando humano`, detail: 'Há atendimentos transferidos que ainda precisam de continuidade.', impact: metrics.pendingWhatsApp, confidence: 'alta', href: `/dashboard/loja/${storeId}/atendimento`, records: { type: 'conversa', ids: whatsApp.map((item) => item.id) } })
   const postSalesWithDeliveryIssue = postSaleAnalysis.deliveryIssueIds.length
-  if (sourceAvailable('pos-venda', 'envios de pos-venda', 'clientes de pos-venda') && postSalesWithDeliveryIssue > 0) alerts.push({ id: 'post-sales-delivery', area: 'relacionamento', priority: 'atencao', title: `${postSalesWithDeliveryIssue} pos-vendas sem contato confiavel`, detail: `${postSaleAnalysis.messageFailed} falharam no envio, ${postSaleAnalysis.noMessageAttempt} nao possuem tentativa registrada e ${postSaleAnalysis.noPhone} nao possuem telefone valido.`, impact: postSalesWithDeliveryIssue, confidence: 'alta', href: `/dashboard/loja/${storeId}/pos-venda`, records: { type: 'pos-venda', ids: postSaleAnalysis.deliveryIssueIds } })
-  if (sourceAvailable('pos-venda', 'interacoes de pos-venda') && postSaleAnalysis.awaitingHumanReview > 0) alerts.push({ id: 'post-sales-human-review', area: 'relacionamento', priority: 'atencao', title: `${postSaleAnalysis.awaitingHumanReview} respostas de pos-venda aguardam revisao`, detail: 'Esses clientes responderam e ainda precisam de continuidade humana registrada.', impact: postSaleAnalysis.awaitingHumanReview, confidence: 'alta', href: `/dashboard/loja/${storeId}/pos-venda`, records: { type: 'pos-venda', ids: postSaleAnalysis.humanReviewIds } })
+  if (sourceAvailable('pos-venda', 'envios de pos-venda', 'clientes de pos-venda') && postSalesWithDeliveryIssue > 0) alerts.push({ id: 'post-sales-delivery', area: 'relacionamento', priority: 'atencao', title: `${postSalesWithDeliveryIssue} pós-vendas sem contato confiável`, detail: `${postSaleAnalysis.messageFailed} falharam no envio, ${postSaleAnalysis.noMessageAttempt} não possuem tentativa registrada e ${postSaleAnalysis.noPhone} não possuem telefone válido.`, impact: postSalesWithDeliveryIssue, confidence: 'alta', href: `/dashboard/loja/${storeId}/pos-venda`, records: { type: 'pos-venda', ids: postSaleAnalysis.deliveryIssueIds } })
+  if (sourceAvailable('pos-venda', 'interacoes de pos-venda') && postSaleAnalysis.awaitingHumanReview > 0) alerts.push({ id: 'post-sales-human-review', area: 'relacionamento', priority: 'atencao', title: `${postSaleAnalysis.awaitingHumanReview} respostas de pós-venda aguardam revisão`, detail: 'Esses clientes responderam e ainda precisam de continuidade humana registrada.', impact: postSaleAnalysis.awaitingHumanReview, confidence: 'alta', href: `/dashboard/loja/${storeId}/pos-venda`, records: { type: 'pos-venda', ids: postSaleAnalysis.humanReviewIds } })
   const yesterdaySatisfactionCount = postSaleAnalysis.lowRatingYesterdayCount + postSaleAnalysis.complaintOrAdaptationYesterday
   const monthlySatisfactionCount = postSaleAnalysis.lowRatingMonthCount + postSaleAnalysis.complaintOrAdaptationMonth
   const hasMonthlySatisfactionSignal = monthlySatisfactionCount >= MONTHLY_RELATIONSHIP_SIGNAL_THRESHOLD
@@ -1412,7 +1518,7 @@ export async function generateDailyStoreHealthReport(storeId = 1, reportDate = p
   }
   if (sourceAvailable('contas a pagar') && accountsPayableAnalysis?.overdueCount) alerts.push({ id: 'payable-overdue', area: 'financeiro', priority: accountsPayableAnalysis.overdueValue > settings.overdueCriticalValue ? 'critico' : 'atencao', title: `${accountsPayableAnalysis.overdueCount} contas a pagar vencidas`, detail: `${money(accountsPayableAnalysis.overdueValue)} continuam em aberto; a mais antiga está vencida há ${accountsPayableAnalysis.oldestOverdueDays} dias.`, impact: accountsPayableAnalysis.overdueValue, confidence: 'alta', href: `/dashboard/loja/${storeId}/financeiro/contas`, records: { type: 'conta a pagar', ids: accountsPayableAnalysis.overdueRecords } })
   if (sourceAvailable('contas a pagar') && accountsPayableAnalysis && accountsPayableAnalysis.dueNext7Count >= 5 && accountsPayableAnalysis.dueNext7Value > settings.overdueCriticalValue) alerts.push({ id: 'payable-next-7-days', area: 'financeiro', priority: 'atencao', title: `${accountsPayableAnalysis.dueNext7Count} contas a pagar concentram vencimento nos próximos 7 dias`, detail: `${money(accountsPayableAnalysis.dueNext7Value)} precisam ser acompanhados até ${previousDateKey(asOfDateKey, -7).split('-').reverse().join('/')}.`, impact: accountsPayableAnalysis.dueNext7Value, confidence: 'alta', href: `/dashboard/loja/${storeId}/financeiro/contas`, records: { type: 'conta a pagar', ids: accountsPayableAnalysis.dueNext7Records } })
-  if (sourceAvailable('itens vendidos') && metrics.costCoverage !== null && metrics.costCoverage < settings.minimumCostCoverage) alerts.push({ id: 'cost-coverage', area: 'financeiro', priority: 'atencao', title: 'Margem indisponivel por custo incompleto', detail: `Somente ${(metrics.costCoverage * 100).toFixed(0)}% do valor vendido possui custo positivo cadastrado; lucro e margem foram ocultados.`, impact: null, confidence: 'alta', href: `/dashboard/loja/${storeId}/reports/financeiro`, records: { type: 'produto', ids: [] } })
+  if (sourceAvailable('itens vendidos') && metrics.costCoverage !== null && metrics.costCoverage < settings.minimumCostCoverage) alerts.push({ id: 'cost-coverage', area: 'financeiro', priority: 'atencao', title: 'Margem indisponível por custo incompleto', detail: `Somente ${(metrics.costCoverage * 100).toFixed(0)}% do valor vendido possui custo positivo cadastrado; lucro e margem foram ocultados.`, impact: null, confidence: 'alta', href: `/dashboard/loja/${storeId}/reports/financeiro`, records: { type: 'produto', ids: [] } })
   for (const sourceAlert of DATA_SOURCE_ALERTS) {
     if (sourceAlert.sources.some((source) => unavailableSources.has(source))) {
       alerts.push({ id: sourceAlert.id, area: sourceAlert.area, priority: 'atencao', title: sourceAlert.title, detail: sourceAlert.detail, impact: null, confidence: 'alta', href: '', records: { type: 'fonte', ids: [] } })
@@ -1433,8 +1539,8 @@ export async function generateDailyStoreHealthReport(storeId = 1, reportDate = p
   const narratives = await createNarrative(metrics, compared.alerts)
   metrics.areaNarratives = narratives.areas
   const presentedAlerts = compared.alerts.map((alert) => ({ ...alert, presentation: narratives.cards[alert.id] || { title: alert.title, detail: alert.detail } }))
-  const report: DailyHealthReport = { reportDate, status: 'ready', metrics, alerts: presentedAlerts.sort((a, b) => ({ critico: 0, atencao: 1, informativo: 2 }[a.priority] - { critico: 0, atencao: 1, informativo: 2 }[b.priority])), narrative: narratives.narrative, sourceFailures: failures, generatedAt: new Date().toISOString() }
-  const snapshotPayload = { tenant_id: store.tenant_id, store_id: storeId, report_date: reportDate, cadence: 'daily', period_start: reportDate, period_end: reportDate, status: 'ready', metrics: report.metrics, alerts: report.alerts, narrative: report.narrative, source_failures: report.sourceFailures, generated_at: report.generatedAt, generation_started_at: report.generatedAt, updated_at: report.generatedAt }
+  const report: DailyHealthReport = { reportDate, status: 'ready', metrics, alerts: presentedAlerts.sort((a, b) => ({ critico: 0, atencao: 1, informativo: 2 }[a.priority] - { critico: 0, atencao: 1, informativo: 2 }[b.priority])), headline: narratives.headline, narrative: narratives.narrative, sourceFailures: failures, generatedAt: new Date().toISOString() }
+  const snapshotPayload = { tenant_id: store.tenant_id, store_id: storeId, report_date: reportDate, cadence: 'daily', period_start: reportDate, period_end: reportDate, status: 'ready', metrics: { ...report.metrics, headline: report.headline }, alerts: report.alerts, narrative: report.narrative, source_failures: report.sourceFailures, generated_at: report.generatedAt, generation_started_at: report.generatedAt, updated_at: report.generatedAt }
   const { data: saved, error } = force && existingReport
     ? await (admin.from('daily_store_health_reports') as any).update(snapshotPayload).eq('store_id', storeId).eq('cadence', 'daily').eq('report_date', reportDate).select('id').single()
     : await (admin.from('daily_store_health_reports') as any).insert(snapshotPayload).select('id').single()

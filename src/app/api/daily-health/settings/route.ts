@@ -28,6 +28,6 @@ export async function PUT(request: Request) {
   const settings = { ...DEFAULT_DAILY_HEALTH_SETTINGS, overdueCriticalValue: body.data.overdueCriticalValue, minimumCostCoverage: body.data.minimumCostCoverage, labRequestHours: body.data.labRequestHours }
   const admin = createAdminClient()
   const { error } = await (admin.from('daily_store_health_settings') as any).upsert({ tenant_id: context.profile.tenant_id, store_id: body.data.storeId, settings, updated_at: new Date().toISOString(), updated_by_user_id: context.user.id }, { onConflict: 'store_id' })
-  if (error) return NextResponse.json({ error: 'Nao foi possivel salvar parametros.' }, { status: 500 })
+  if (error) return NextResponse.json({ error: 'Não foi possível salvar parâmetros.' }, { status: 500 })
   return NextResponse.json({ settings })
 }

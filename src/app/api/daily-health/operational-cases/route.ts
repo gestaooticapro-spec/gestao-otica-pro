@@ -31,7 +31,7 @@ export async function GET(request: Request) {
 
   if (error) {
     console.error('[Daily health] unable to load operational cases', error)
-    return NextResponse.json({ error: 'Nao foi possivel carregar os casos.' }, { status: 500 })
+    return NextResponse.json({ error: 'Não foi possível carregar os casos.' }, { status: 500 })
   }
 
   const rows = (data || []) as any[]
@@ -44,8 +44,8 @@ export async function GET(request: Request) {
     return [{
       id: Number(item.id),
       saleId: Number(item.venda_id),
-      customerName: customer?.full_name || 'Cliente nao identificado',
-      patientName: dependent?.full_name || customer?.full_name || 'Paciente nao identificado',
+      customerName: customer?.full_name || 'Cliente não identificado',
+      patientName: dependent?.full_name || customer?.full_name || 'Paciente não identificado',
       promisedAt: item.dt_prometido_para || null,
       lensArrivedAt: item.dt_lente_chegou || null,
       mountedAt: item.dt_montado_em || null,

@@ -218,13 +218,13 @@ export async function GET(request: Request) {
       id: Number(sale.id),
       createdAt: sale.created_at,
       value: Number(sale.valor_final || sale.valor_total || 0),
-      customerName: first(sale.customers)?.full_name || 'Cliente nao identificado',
+      customerName: first(sale.customers)?.full_name || 'Cliente não identificado',
       employeeName: first(sale.employees)?.full_name || null,
     }))
     return NextResponse.json({ totalRecords: cases.length, cases }, { headers: { 'Cache-Control': 'private, no-store' } })
   } catch (error) {
     console.error('[Daily health] unable to load data quality cases', error)
-    return NextResponse.json({ error: 'Nao foi possivel carregar os casos cadastrais.' }, { status: 500 })
+    return NextResponse.json({ error: 'Não foi possível carregar os casos cadastrais.' }, { status: 500 })
   }
 }
 
@@ -317,7 +317,7 @@ export async function POST(request: Request) {
     const { data: product, error: productError } = await (admin.from('products') as any)
       .select('id,nome,preco_custo').eq('store_id', storeId).eq('id', action.productId).maybeSingle()
     if (productError) throw productError
-    if (!product) return NextResponse.json({ error: 'Produto nao encontrado.' }, { status: 404 })
+    if (!product) return NextResponse.json({ error: 'Produto não encontrado.' }, { status: 404 })
     const roundedCost = Math.round(action.cost * 100) / 100
     const { error: updateError } = await (admin.from('products') as any).update({ preco_custo: roundedCost }).eq('store_id', storeId).eq('id', action.productId)
     if (updateError) throw updateError
@@ -330,10 +330,10 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('[Daily health] unable to apply data quality action', error)
     const errorMessage = action.action === 'execute_merge'
-      ? 'Nao foi possivel concluir a mesclagem. Nenhum cadastro foi alterado parcialmente.'
+      ? 'Não foi possível concluir a mesclagem. Nenhum cadastro foi alterado parcialmente.'
       : action.action === 'undo_merge'
-        ? 'Nao foi possivel desfazer a mesclagem. Nenhum cadastro foi restaurado parcialmente.'
-        : 'Nao foi possivel salvar a decisao.'
+        ? 'Não foi possível desfazer a mesclagem. Nenhum cadastro foi restaurado parcialmente.'
+        : 'Não foi possível salvar a decisão.'
     return NextResponse.json({ error: errorMessage }, { status: 500 })
   }
 }

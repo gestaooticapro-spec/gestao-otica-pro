@@ -40,6 +40,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ report, monthlySnapshot }, { headers: { 'Cache-Control': 'private, no-store' } })
   } catch (error) {
     console.error('[Daily health] manual generation failed', error)
-    return NextResponse.json({ error: 'Nao foi possivel atualizar o resumo.' }, { status: 500 })
+    return NextResponse.json({ error: 'Não foi possível atualizar o resumo.' }, { status: 500 })
   }
 }

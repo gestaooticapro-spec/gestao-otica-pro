@@ -152,10 +152,10 @@ Pagamentos de parcelas nao podem ser somados novamente como pagamentos diretos d
 
 O rodape da Central de Operacoes exibe a versao atual e permite abrir o historico de deploys. O registro fica em `src/lib/release-history.ts`.
 
-- `PENDING_RELEASE_VERSION` e aberta na primeira alteracao apos um deploy, usando o proximo patch (por exemplo, `1.02.04`), e permanece assim ate o deploy.
-- `PENDING_RELEASE_CHANGES` e o diario das alteracoes feitas desde o ultimo deploy. A primeira alteracao abre a versao pendente; as seguintes apenas acrescentam descricoes a essa mesma versao.
-- Essa lista deve refletir somente o codigo que sera entregue: se uma implementacao for desfeita, abandonada ou substituida antes do deploy, remova ou atualize o item correspondente.
-- Correcao de implementacao que ainda nao foi publicada ou utilizada por ninguem nao abre nova versao nem altera o historico de versoes. Um deploy corretivo desse caso preserva a versao ja exibida, pois nao representa uma entrega adicional ao usuario.
+- O histórico de versões registra somente correções de funcionalidades que já estão em produção. Novas implementações, evoluções de funcionalidades e correções feitas antes da primeira publicação não abrem versão nem recebem item no histórico, salvo solicitação expressa do usuário.
+- `PENDING_RELEASE_VERSION` só é aberta para uma correção de funcionalidade em produção, usando o próximo patch (por exemplo, `1.02.04`), e permanece assim até o deploy.
+- `PENDING_RELEASE_CHANGES` reúne apenas as correções de produção que serão entregues nessa versão. A redação deve descrever o comportamento final percebido pelo usuário, nunca tentativas, erros intermediários, fallbacks técnicos ou detalhes internos de implementação.
+- Se uma correção pendente for desfeita, abandonada ou substituída antes do deploy, remova ou atualize seu item para que a lista descreva somente o que será entregue.
 - `RELEASE_HISTORY` guarda apenas deploys concluidos e preserva todas as versoes antigas.
 - Depois que o deploy for concluido, inserir a versao pendente no inicio de `RELEASE_HISTORY`, mover para ela as mudancas pendentes e limpar `PENDING_RELEASE_VERSION` e `PENDING_RELEASE_CHANGES`.
 - Alterar a linha/minor, como `1.02.xx` -> `1.03.00`, somente mediante solicitacao expressa do usuario.

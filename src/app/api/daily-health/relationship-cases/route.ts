@@ -47,7 +47,7 @@ export async function GET(request: Request) {
   ])
   if (postSalesError || interactionsError || followupsError) {
     console.error('[Daily health] unable to load relationship cases', { postSalesError, interactionsError, followupsError })
-    return NextResponse.json({ error: 'Nao foi possivel carregar os casos.' }, { status: 500 })
+    return NextResponse.json({ error: 'Não foi possível carregar os casos.' }, { status: 500 })
   }
 
   const latestInteraction = new Map<number, any>()
@@ -72,8 +72,8 @@ export async function GET(request: Request) {
     return [{
       id: Number(item.id),
       serviceOrderId: Number(item.service_order_id),
-      customerName: customer?.full_name || 'Cliente nao identificado',
-      patientName: dependent?.full_name || customer?.full_name || 'Paciente nao identificado',
+      customerName: customer?.full_name || 'Cliente não identificado',
+      patientName: dependent?.full_name || customer?.full_name || 'Paciente não identificado',
       reason,
       summary: interaction?.resumo || null,
       interactionAt: interaction?.created_at || null,
