@@ -6,7 +6,9 @@ import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigat
 import {
     ArrowLeft,
     Calendar,
+    Check,
     CheckCircle2,
+    Copy,
     Clock3,
     Grid3X3,
     GripVertical,
@@ -162,6 +164,7 @@ export default function LaboratorioPage() {
     const [gradeModalOpen, setGradeModalOpen] = useState(false)
     const [tagsModalOpen, setTagsModalOpen] = useState(false)
     const [nfcTags, setNfcTags] = useState<NfcTagResult[]>([])
+    const [tagUrlCopied, setTagUrlCopied] = useState(false)
 
     async function loadData() {
         setLoading(true)
@@ -215,6 +218,26 @@ export default function LaboratorioPage() {
             oculos_montado: [] as LabOSResult[]
         })
     }, [filteredItems])
+
+    const nextNfcTagUrl = useMemo(() => {
+        const highestTagNumber = nfcTags.reduce((highest, tag) => {
+            const match = tag.id.match(/NFC-BANDEJA-(\d+)$/i)
+            return match ? Math.max(highest, Number(match[1])) : highest
+        }, 0)
+        const nextTagId = `NFC-BANDEJA-${String(highestTagNumber + 1).padStart(5, '0')}`
+        return `https://gestao-otica-pro.vercel.app/nfc/${storeId}/bandeja/${nextTagId}`
+    }, [nfcTags, storeId])
+
+    const copyNextNfcTagUrl = async () => {
+        try {
+            await navigator.clipboard.writeText(nextNfcTagUrl)
+            setTagUrlCopied(true)
+            toast.success('URL da próxima tag copiada.')
+            window.setTimeout(() => setTagUrlCopied(false), 2000)
+        } catch {
+            toast.error('Não foi possível copiar a URL.')
+        }
+    }
 
     const handleSave = async (formData: FormData) => {
         if (!selectedOS) return
@@ -331,6 +354,28 @@ export default function LaboratorioPage() {
                     </div>
 
                     <div className="max-h-[65vh] overflow-y-auto p-4">
+                        <div className="mb-4 rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-4">
+                            <p className="text-xs font-black uppercase tracking-wider text-cyan-200">URL da próxima tag</p>
+                            <p className="mt-1 text-xs text-slate-500">Já preparada com o próximo número de bandeja disponível.</p>
+                            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                                <input
+                                    type="text"
+                                    readOnly
+                                    value={nextNfcTagUrl}
+                                    aria-label="URL da próxima tag NFC"
+                                    onFocus={(event) => event.currentTarget.select()}
+                                    className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-slate-200 outline-none"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={copyNextNfcTagUrl}
+                                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-3 py-2 text-xs font-bold text-cyan-200 transition-colors hover:bg-cyan-400/20"
+                                >
+                                    {tagUrlCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                                    {tagUrlCopied ? 'Copiada' : 'Copiar'}
+                                </button>
+                            </div>
+                        </div>
                         {nfcTags.length === 0 ? (
                             <div className="rounded-2xl border border-dashed border-white/10 px-4 py-10 text-center text-sm text-slate-500">
                                 Nenhuma tag NFC cadastrada nesta loja.

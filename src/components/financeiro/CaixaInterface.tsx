@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useTransition } from 'react'
+import { useEffect, useState, useRef, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
     ResumoCaixa,
@@ -16,7 +16,7 @@ import {
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import {
     Wallet, ArrowUpCircle, ArrowDownCircle, Lock, Unlock,
-    Save, Loader2, DollarSign, AlertTriangle, TrendingUp, TrendingDown, Package, Printer, Pencil, Trash2, HelpCircle, History, Calculator, CalendarDays, Eye, ArrowLeft, RefreshCcw
+    Save, Loader2, DollarSign, AlertTriangle, TrendingUp, TrendingDown, Package, Printer, Pencil, Trash2, HelpCircle, History, Calculator, CalendarDays, Eye, ArrowLeft, RefreshCcw, Lightbulb, X
 } from 'lucide-react'
 import RelatorioDateModal from '@/components/modals/RelatorioDateModal'
 import HistoricoCaixaModal from './HistoricoCaixaModal'
@@ -34,6 +34,37 @@ const formatDateKey = (dateInput: string | Date) => new Intl.DateTimeFormat('en-
 // --- DESIGN SYSTEM (DARK GLASSMORPHISM) ---
 const labelStyle = "block text-[10px] font-bold text-slate-400 uppercase mb-1 tracking-wider"
 const inputStyle = "block w-full rounded-lg border border-white/10 bg-black/20 shadow-inner text-slate-200 h-10 text-sm px-3 focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/50 font-bold placeholder:font-normal placeholder:text-slate-500 disabled:bg-black/10 disabled:text-slate-500 transition-all outline-none backdrop-blur-sm"
+
+const DAILY_TIPS = [
+    'Você sabia que o Saldo Inicial representa o valor disponível na gaveta antes do início do dia?',
+    'Você sabia que é possível reutilizar o saldo do último fechamento para agilizar a abertura do caixa? Na tela de abertura, clique em "Usar Saldo".',
+    'Você sabia que a Calculadora de Notas ajuda a conferir o dinheiro físico da gaveta? Clique no ícone de calculadora ao lado do campo de valor.',
+    'Você sabia que o modo Auditar dia permite consultar movimentos anteriores sem alterar os registros? Escolha uma data no campo "Auditar dia".',
+    'Você sabia que o Histórico de Fechamentos mostra os fechamentos e as diferenças dos dias anteriores? Clique em "Histórico de Fechamentos", no canto superior direito.',
+    'Você sabia que o botão Atualizar busca os lançamentos mais recentes do caixa? Clique em "Atualizar", no canto superior direito, se você suspeitar que algum lançamento está pendente.',
+    'Você sabia que um Lançamento Manual do tipo "Saída" registra retiradas de dinheiro feitas durante o expediente? Use o cartão "Lançamento Manual", selecione "Saída" e informe o motivo.',
+    'Você sabia que uma entrada eventual também pode ser registrada no caixa? No cartão "Lançamento Manual", selecione "Entrada".',
+    'Você sabia que é possível corrigir um lançamento manual? Na lista de movimentações, clique no ícone de lápis ao lado do lançamento.',
+    'Você sabia que um lançamento manual incorreto pode ser removido? Na lista de movimentações, clique no ícone de lixeira.',
+    'Você sabia que o Total Máquina reúne os recebimentos por Pix e cartão? Consulte o card "Total Máquina", na parte superior da tela.',
+    'Você sabia que o Total Diário soma os recebimentos em dinheiro, Pix, cartão e outras formas? Consulte o card "Total Diário".',
+    'Você sabia que o Extrato de Movimentação Caixa mostra as entradas e saídas em dinheiro?',
+    'Você sabia que o Extrato de Movimentação Banco concentra os recebimentos digitais?',
+    'Você sabia que é possível gerar um relatório de Pix? No painel "Extrato de Movimentação Banco", clique em "PIX".',
+    'Você sabia que também é possível gerar um relatório de cartões? No painel "Extrato de Movimentação Banco", clique em "Cartões".',
+    'Você sabia que uma forma de pagamento registrada incorretamente pode ser corrigida? Na movimentação correspondente, clique no ícone de lápis e confirme a alteração.',
+    'Você sabia que o Valor Final da Gaveta mostra o dinheiro esperado na hora do fechamento? Consulte o card "Valor Final Gaveta", na parte superior.',
+    'Você sabia que o fechamento compara o valor esperado com o dinheiro contado fisicamente? Informe a contagem no card "Fechar Caixa".',
+    'Você sabia que uma diferença entre o valor esperado e o valor contado fica registrada como Quebra de Caixa? Ela aparece no fechamento e no histórico do caixa.',
+    'Você sabia que um caixa fechado no mesmo dia pode ser reaberto? Ao abrir a página novamente, clique em "Reabrir Caixa de Hoje".',
+    'Você sabia que o caixa reúne em uma única tela os recebimentos, retiradas, entradas, conferências e fechamento do dia? Explore os cards e painéis da página "Livro Caixa".',
+    'Você sabia que você pode alterar o valor de abertura do caixa? Clique em "ALT" no card "Valor Inicial Gaveta" e informe o valor correto.',
+] as const
+
+function getDailyTip(dateKey: string) {
+    const dayNumber = Math.floor(Date.parse(`${dateKey}T12:00:00Z`) / 86_400_000)
+    return DAILY_TIPS[dayNumber % DAILY_TIPS.length]
+}
 
 export default function CaixaInterface({ initialData, storeId, ultimoFechamento }: { initialData: ResumoCaixa | null, storeId: number, ultimoFechamento?: { saldo_final: number, data_fechamento: string } | null }) {
     const router = useRouter()
@@ -53,6 +84,8 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
     const authedEmployeeForFormaRef = useRef<number | null>(null)
     const [saldoInicialInput, setSaldoInicialInput] = useState('')
     const [isCalcOpen, setIsCalcOpen] = useState(false)
+    const [isDailyTipReady, setIsDailyTipReady] = useState(false)
+    const [isDailyTipDismissed, setIsDailyTipDismissed] = useState(false)
 
     // --- AUDIT MODE ---
     const [auditMode, setAuditMode] = useState(false)
@@ -61,6 +94,37 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
     const [auditLoading, setAuditLoading] = useState(false)
     const [auditNotFound, setAuditNotFound] = useState(false)
     const isSameDayReopen = !!ultimoFechamento && formatDateKey(ultimoFechamento.data_fechamento) === formatDateKey(new Date())
+    const todayKey = formatDateKey(new Date())
+    const dailyTipStorageKey = `cash-daily-tip-dismissed-${storeId}`
+
+    useEffect(() => {
+        setIsDailyTipDismissed(window.localStorage.getItem(dailyTipStorageKey) === todayKey)
+        setIsDailyTipReady(true)
+    }, [dailyTipStorageKey, todayKey])
+
+    const dismissDailyTip = () => {
+        window.localStorage.setItem(dailyTipStorageKey, todayKey)
+        setIsDailyTipDismissed(true)
+    }
+
+    const dailyTip = isDailyTipReady && !isDailyTipDismissed ? (
+        <div className="relative flex items-start gap-3 rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 pr-11 text-amber-100 shadow-lg shadow-black/10 backdrop-blur-xl">
+            <Lightbulb className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />
+            <p className="text-sm font-semibold leading-relaxed">
+                <span className="font-black text-amber-300">Dica do dia: </span>
+                {getDailyTip(todayKey)}
+            </p>
+            <button
+                type="button"
+                onClick={dismissDailyTip}
+                className="absolute right-3 top-3 rounded-md p-1 text-amber-400 transition-colors hover:bg-amber-500/15 hover:text-amber-200"
+                title="Fechar dica até amanhã"
+                aria-label="Fechar dica até amanhã"
+            >
+                <X className="h-4 w-4" />
+            </button>
+        </div>
+    ) : null
 
     const handleAuditDateChange = async (dateStr: string) => {
         setAuditDate(dateStr)
@@ -211,6 +275,7 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
     if (!initialData && !auditData) {
         return (
             <div className="flex flex-col h-full space-y-4">
+                {dailyTip}
                 <div className="flex items-center justify-between shrink-0 gap-3">
                     <div className="flex items-center gap-2 bg-white/5 backdrop-blur-sm border border-white/10 rounded-lg px-3 py-1.5">
                         <CalendarDays className="h-4 w-4 text-amber-400" />
@@ -372,6 +437,7 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
 
     return (
         <div className="flex flex-col h-full space-y-4">
+            {dailyTip}
 
             {/* --- TOOLBAR --- */}
             <div className="flex items-center justify-between shrink-0 gap-3">
@@ -1002,6 +1068,7 @@ function TabelaMovimentos({ movimentos, emptyMessage, onEdit, onDelete, onEditFo
                     <th className="px-4 py-2">Tipo</th>
                     <th className="px-4 py-2">Descrição</th>
                     <th className="px-4 py-2 text-right">Valor</th>
+                    <th className="px-4 py-2">Alterado por</th>
                     <th className="px-2 py-2 text-right">Ações</th>
                 </tr>
             </thead>
@@ -1027,6 +1094,9 @@ function TabelaMovimentos({ movimentos, emptyMessage, onEdit, onDelete, onEditFo
                             </td>
                             <td className={`px-4 py-2 font-black text-right w-36 text-xs ${isEntrada ? 'text-emerald-400' : 'text-red-400'}`}>
                                 {isEntrada ? '+' : '-'} {formatCurrency(mov.valor)}
+                            </td>
+                            <td className="px-4 py-2 w-36 text-[10px] font-bold text-amber-300 truncate" title={mov.altered_by_employee_name || undefined}>
+                                {mov.altered_by_employee_name || '-'}
                             </td>
                             <td className="px-2 py-2 text-right w-20">
                                 {isManual && rawId ? (

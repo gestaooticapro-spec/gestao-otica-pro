@@ -747,6 +747,26 @@ export async function getExtratoDiario(storeId: number) {
     }
 }
 
+async function getPaymentChangeAuthorNames(supabaseAdmin: any, paymentIds: number[]) {
+    if (paymentIds.length === 0) return new Map<number, string>()
+
+    const { data } = await supabaseAdmin
+        .from('payment_method_change_audit')
+        .select('payment_id, changed_at, employees!payment_method_change_audit_authorized_by_employee_id_fkey(full_name)')
+        .in('payment_id', paymentIds)
+        .order('changed_at', { ascending: false })
+
+    const namesByPaymentId = new Map<number, string>()
+    for (const audit of data || []) {
+        const paymentId = Number(audit.payment_id)
+        if (!namesByPaymentId.has(paymentId) && audit.employees?.full_name) {
+            namesByPaymentId.set(paymentId, audit.employees.full_name)
+        }
+    }
+
+    return namesByPaymentId
+}
+
 // ============================================================================
 // 3. OBTER O RESUMO DO DIA (VERSÃO HÍBRIDA CORRIGIDA)
 // ============================================================================
@@ -779,6 +799,10 @@ export async function getResumoCaixa(storeId: number): Promise<ResumoCaixa | nul
         .gte('created_at', dataRef.toISOString())
 
     const listaPagamentos = pagamentosVendas || []
+    const alteredByPaymentId = await getPaymentChangeAuthorNames(
+        supabaseAdmin,
+        listaPagamentos.map((pagamento: any) => Number(pagamento.id))
+    )
 
     // 5. PARCELAS (Fonte Legado / Backup para Falhas)
     const { data: parcelasPagas } = await supabaseAdmin
@@ -839,7 +863,8 @@ export async function getResumoCaixa(storeId: number): Promise<ResumoCaixa | nul
         const origemCalculada = formaNormalizada.includes('dinheiro') ? 'Caixa' : 'Banco'
 
         historicoUnificado.push({
-            id: `pg-${pg.id}`, tipo: tipo, descricao: clienteNome, categoria: categoria, valor: Number(pg.valor_pago), horario: pg.created_at, forma_pagamento: pg.forma_pagamento, origem: origemCalculada, employee_id: pg.employee_id ?? null
+            id: `pg-${pg.id}`, tipo: tipo, descricao: clienteNome, categoria: categoria, valor: Number(pg.valor_pago), horario: pg.created_at, forma_pagamento: pg.forma_pagamento, origem: origemCalculada, employee_id: pg.employee_id ?? null,
+            altered_by_employee_name: alteredByPaymentId.get(Number(pg.id)) ?? null
         })
 
         // Marca como processado para deduplicação
@@ -1021,6 +1046,10 @@ export async function getResumoCaixaPorData(storeId: number, dataISO: string): P
         .gte('created_at', dataRef.toISOString())
         .lte('created_at', dataFim.toISOString())
     const listaPagamentos = pagamentosVendas || []
+    const alteredByPaymentId = await getPaymentChangeAuthorNames(
+        supabaseAdmin,
+        listaPagamentos.map((pagamento: any) => Number(pagamento.id))
+    )
 
     // 5. PARCELAS do dia
     const { data: parcelasPagas } = await supabaseAdmin
@@ -1086,7 +1115,8 @@ export async function getResumoCaixaPorData(storeId: number, dataISO: string): P
         const origemCalculada = formaNormalizada.includes('dinheiro') ? 'Caixa' : 'Banco'
 
         historicoUnificado.push({
-            id: `pg-${pg.id}`, tipo, descricao: clienteNome, categoria, valor: Number(pg.valor_pago), horario: pg.created_at, forma_pagamento: pg.forma_pagamento, origem: origemCalculada, employee_id: pg.employee_id ?? null
+            id: `pg-${pg.id}`, tipo, descricao: clienteNome, categoria, valor: Number(pg.valor_pago), horario: pg.created_at, forma_pagamento: pg.forma_pagamento, origem: origemCalculada, employee_id: pg.employee_id ?? null,
+            altered_by_employee_name: alteredByPaymentId.get(Number(pg.id)) ?? null
         })
 
         const installmentRef = getInstallmentPaymentRef(pg)
@@ -1175,26 +1205,16 @@ export async function alterarFormaPagamento(
 
     const supabaseAdmin = createAdminClient()
 
-    const { data: pagamento, error } = await (supabaseAdmin.from('pagamentos') as any)
-        .select('id, employee_id, store_id, forma_pagamento')
-        .eq('id', pagamentoId)
-        .eq('store_id', storeId)
-        .single()
+    const { error } = await (supabaseAdmin.rpc as any)('change_payment_method_with_audit', {
+        p_payment_id: pagamentoId,
+        p_store_id: storeId,
+        p_new_payment_method: novaForma,
+        p_installments: parcelas ?? 1,
+        p_authorized_by_employee_id: authedEmployeeId,
+        p_authorized_by_user_id: user.id,
+    })
 
-    if (error || !pagamento) return { success: false, message: 'Pagamento não encontrado.' }
-
-    if (pagamento.employee_id && Number(pagamento.employee_id) !== Number(authedEmployeeId)) {
-        return { success: false, message: 'Apenas o funcionário que realizou este pagamento pode alterá-lo.' }
-    }
-
-    const updatePayload: any = { forma_pagamento: novaForma }
-    if (parcelas && parcelas > 1) updatePayload.parcelas = parcelas
-
-    const { error: errUpdate } = await (supabaseAdmin.from('pagamentos') as any)
-        .update(updatePayload)
-        .eq('id', pagamentoId)
-
-    if (errUpdate) return { success: false, message: `Erro ao atualizar: ${errUpdate.message}` }
+    if (error) return { success: false, message: error.message }
 
     revalidatePath(`/dashboard/loja/${storeId}/financeiro/caixa`)
     return { success: true, message: 'Forma de pagamento atualizada com sucesso.' }

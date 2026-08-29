@@ -3,9 +3,13 @@
 import { useEffect, useState } from 'react'
 import { History, X } from 'lucide-react'
 
-import { RELEASE_HISTORY } from '@/lib/release-history'
+import { PENDING_RELEASE_CHANGES, PENDING_RELEASE_VERSION, RELEASE_HISTORY, type Release } from '@/lib/release-history'
 
 const RELEASES_PER_PAGE = 3
+
+const releasesForDisplay: Release[] = PENDING_RELEASE_VERSION && PENDING_RELEASE_CHANGES.length
+  ? [{ version: PENDING_RELEASE_VERSION, date: 'Em preparação', changes: [...PENDING_RELEASE_CHANGES] }, ...RELEASE_HISTORY]
+  : RELEASE_HISTORY
 
 type VersionHistoryModalProps = {
   isOpen: boolean
@@ -35,15 +39,15 @@ export default function VersionHistoryModal({ isOpen, onClose }: VersionHistoryM
     void fetch('/api/version-history-clicks', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ version: RELEASE_HISTORY[0].version }),
+      body: JSON.stringify({ version: releasesForDisplay[0].version }),
     }).catch(() => undefined)
   }, [isOpen])
 
   if (!isOpen) return null
 
-  const visibleReleases = RELEASE_HISTORY.slice(0, visibleReleaseCount)
+  const visibleReleases = releasesForDisplay.slice(0, visibleReleaseCount)
   const loadOlderReleases = () => {
-    setVisibleReleaseCount((current) => Math.min(current + RELEASES_PER_PAGE, RELEASE_HISTORY.length))
+    setVisibleReleaseCount((current) => Math.min(current + RELEASES_PER_PAGE, releasesForDisplay.length))
   }
 
   return (
@@ -82,7 +86,7 @@ export default function VersionHistoryModal({ isOpen, onClose }: VersionHistoryM
               </ul>
             </article>
           ))}
-          {visibleReleaseCount < RELEASE_HISTORY.length && (
+          {visibleReleaseCount < releasesForDisplay.length && (
             <button type="button" onClick={loadOlderReleases} className="w-full py-2 text-xs font-bold text-cyan-200 transition hover:text-white">
               Carregar versoes anteriores
             </button>

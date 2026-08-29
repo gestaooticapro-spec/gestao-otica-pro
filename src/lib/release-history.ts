@@ -4,11 +4,22 @@ export type Release = {
   changes: string[]
 }
 
-// Registre aqui somente correções de funcionalidades já em produção.
-// Novas implementações e correções anteriores à primeira publicação não recebem
-// versão nem item no histórico, salvo solicitação expressa do usuário.
+// Toda alteração aprovada para a próxima publicação entra na versão pendente.
+// Somente o comando explícito do usuário “mude a versão” move essa versão para
+// RELEASE_HISTORY e limpa as constantes pendentes, antes do deploy.
 export const PENDING_RELEASE_VERSION: string | null = null
 export const PENDING_RELEASE_CHANGES: readonly string[] = []
+
+const RELEASE_10208_CHANGES: readonly string[] = [
+  'A lista de tags NFC do laboratório passou a exibir e permitir copiar a URL da próxima bandeja numerada de cada loja.',
+  'IMPLEMENTADA A FAIXA DE DICAS DO DIA NA TELA LIVRO CAIXA, COM UMA ORIENTAÇÃO NOVA A CADA DIA E FECHAMENTO ATÉ O DIA SEGUINTE.',
+  'Alterações na forma de pagamento passaram a registrar o funcionário que as autorizou e exibir essa informação no extrato do caixa e do banco.',
+]
+
+const RELEASE_10207_CHANGES: readonly string[] = [
+  'Pontos de Atenção passou a abrir com uma frase executiva, em linguagem natural, que destaca os problemas mais importantes da varredura diária com suas quantidades e orienta a consultar os detalhes abaixo.',
+  'Na leitura NFC do celular logado na loja da tag, a tela de óculos pronto passou a oferecer aviso no WhatsApp da loja, com a mesma mensagem do laboratório para titular ou dependente.',
+]
 
 const RELEASE_10206_CHANGES: readonly string[] = [
   'IMPLEMENTADA A INTEGRAÇÃO COM O PIX SICREDI.',
@@ -74,9 +85,19 @@ const RELEASE_10205_CHANGES: readonly string[] = [
 
 // Esta lista contém somente deploys concluídos e deve preservar todo o histórico.
 // A versao 1.02.00 e o registro mais antigo atualmente disponivel neste repositorio.
-// Abra uma versão pendente somente para correções de funcionalidades já em produção.
+// Abra uma versão pendente na primeira alteração após o último fechamento.
 // Alterações de linha/minor (ex.: 1.02.xx -> 1.03.00) exigem solicitação expressa.
 export const RELEASE_HISTORY: Release[] = [
+  {
+    version: '1.02.08',
+    date: '29/08/2026',
+    changes: [...RELEASE_10208_CHANGES],
+  },
+  {
+    version: '1.02.07',
+    date: '29/08/2026',
+    changes: [...RELEASE_10207_CHANGES],
+  },
   {
     version: '1.02.06',
     date: '28/08/2026',
