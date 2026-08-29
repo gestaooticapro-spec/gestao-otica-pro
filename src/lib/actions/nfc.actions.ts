@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import type { Json } from '@/lib/database.types'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 
 const TRAY_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{15,119}$/
@@ -127,6 +128,9 @@ export type OSContext = {
   dt_montado_no_lab: string | null
   dt_recebido_na_loja: string | null
   os_enviada_ao_lab: boolean
+  customer_name?: string | null
+  customer_phone?: string | null
+  dependente_name?: string | null
 }
 
 export type NfcAction =
@@ -148,6 +152,7 @@ export type TrayContextResult = {
     | 'CRIAR_BANDEJA'
     | 'PRONTO'
   requireAuth?: boolean
+  canSendWhatsApp?: boolean
 }
 
 type ActionResult = {
@@ -167,6 +172,13 @@ type AuthenticatedStoreUserResult =
       success: true
     }
   | ActionResult
+
+const NFC_WHATSAPP_ROLES = ['admin', 'manager', 'store_operator', 'vendedor', 'tecnico']
+const READY_PICKUP_ACTIONS: Array<NonNullable<TrayContextResult['nextAction']>> = [
+  'MONTAGEM_CONCLUIDA',
+  'RECEBIMENTO_NA_LOJA',
+  'PRONTO',
+]
 
 function createNfcAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -297,6 +309,100 @@ async function requireAuthenticatedStoreUser(
   return { success: true }
 }
 
+async function canSendStoreWhatsApp(storeId: number): Promise<boolean> {
+  const supabase = createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) return false
+
+  const supabaseAdmin = createNfcAdminClient()
+  const { data: profile, error: profileError } = await supabaseAdmin
+    .from('profiles')
+    .select('role,store_id')
+    .eq('id', user.id)
+    .maybeSingle()
+
+  if (profileError) {
+    console.error('[NFC] Falha ao validar sessão para WhatsApp:', profileError)
+    return false
+  }
+
+  if (!profile) return false
+
+  const isAllowed = NFC_WHATSAPP_ROLES.includes(profile.role ?? '')
+  const hasStoreAccess = profile.role === 'admin' || Number(profile.store_id) === storeId
+  return isAllowed && hasStoreAccess
+}
+
+async function loadOsContactForWhatsApp(
+  osId: number,
+  storeId: number
+): Promise<{
+  customer_name: string | null
+  customer_phone: string | null
+  dependente_name: string | null
+} | null> {
+  const supabaseAdmin = createAdminClient()
+  const { data: osRow, error: osError } = await supabaseAdmin
+    .from('service_orders')
+    .select('customer_id, dependente_id')
+    .eq('id', osId)
+    .eq('store_id', storeId)
+    .maybeSingle() as unknown as {
+    data: { customer_id: number; dependente_id: number | null } | null
+    error: { message?: string } | null
+  }
+
+  if (osError) {
+    console.error('[NFC] Falha ao buscar contato da OS:', osError)
+    return null
+  }
+
+  if (!osRow) return null
+
+  const { data: customer, error: customerError } = await supabaseAdmin
+    .from('customers')
+    .select('full_name, fone_movel, phone')
+    .eq('id', osRow.customer_id)
+    .eq('store_id', storeId)
+    .maybeSingle() as unknown as {
+    data: { full_name: string | null; fone_movel: string | null; phone: string | null } | null
+    error: { message?: string } | null
+  }
+
+  if (customerError) {
+    console.error('[NFC] Falha ao buscar cliente da OS:', customerError)
+    return null
+  }
+
+  let dependenteName: string | null = null
+  if (osRow.dependente_id) {
+    const { data: dependente, error: dependenteError } = await supabaseAdmin
+      .from('dependentes')
+      .select('full_name')
+      .eq('id', osRow.dependente_id)
+      .eq('store_id', storeId)
+      .maybeSingle() as unknown as {
+      data: { full_name: string | null } | null
+      error: { message?: string } | null
+    }
+
+    if (dependenteError) {
+      console.error('[NFC] Falha ao buscar dependente da OS:', dependenteError)
+    } else {
+      dependenteName = dependente?.full_name || null
+    }
+  }
+
+  return {
+    customer_name: customer?.full_name || null,
+    customer_phone: customer?.fone_movel || customer?.phone || null,
+    dependente_name: dependenteName,
+  }
+}
+
 export async function getTrayContext(
   trayId: string,
   storeId: number
@@ -390,19 +496,33 @@ export async function getTrayContext(
     nextAction = 'PRONTO'
   }
 
+  const os: OSContext = {
+    id: osData.id,
+    dt_pedido_em: osData.dt_pedido_em,
+    dt_lente_chegou: osData.dt_lente_chegou,
+    dt_montado_em: osData.dt_montado_em,
+    dt_montado_no_lab: osData.dt_montado_no_lab,
+    dt_recebido_na_loja: osData.dt_recebido_na_loja,
+    os_enviada_ao_lab: osData.os_enviada_ao_lab ?? false,
+  }
+
+  const isReadyPickup = Boolean(nextAction && READY_PICKUP_ACTIONS.includes(nextAction))
+  const canSendWhatsApp = isReadyPickup ? await canSendStoreWhatsApp(storeId) : false
+  if (canSendWhatsApp) {
+    const contact = await loadOsContactForWhatsApp(osData.id, storeId)
+    if (contact) {
+      os.customer_name = contact.customer_name
+      os.customer_phone = contact.customer_phone
+      os.dependente_name = contact.dependente_name
+    }
+  }
+
   return {
     success: true,
     tray: typedTray,
-    os: {
-      id: osData.id,
-      dt_pedido_em: osData.dt_pedido_em,
-      dt_lente_chegou: osData.dt_lente_chegou,
-      dt_montado_em: osData.dt_montado_em,
-      dt_montado_no_lab: osData.dt_montado_no_lab,
-      dt_recebido_na_loja: osData.dt_recebido_na_loja,
-      os_enviada_ao_lab: osData.os_enviada_ao_lab ?? false,
-    },
+    os,
     nextAction,
+    canSendWhatsApp,
   }
 }
 

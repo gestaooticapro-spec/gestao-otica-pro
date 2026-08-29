@@ -2,13 +2,63 @@
 
 import Link from 'next/link'
 import { useState } from 'react'
-import { CheckCircle2, Loader2 } from 'lucide-react'
+import { CheckCircle2, Loader2, MessageCircle } from 'lucide-react'
 import {
+  OSContext,
   TrayContextResult,
   advanceOsStatus,
   createNfcTray,
   linkOsToTray,
 } from '@/lib/actions/nfc.actions'
+import { sendManualWhatsAppFromClient } from '@/lib/whatsapp/manual-client'
+
+function buildReadyPickupMessage(os?: OSContext) {
+  const patientName = os?.dependente_name || os?.customer_name || 'Consumidor'
+  const customerName = os?.customer_name || patientName
+  const firstName = customerName.trim().split(/\s+/)[0] || 'cliente'
+  return `Olá ${firstName}! Tudo bem? Aqui é da Ótica. Os óculos de *${patientName}* ficaram prontos! Quando puder, passe aqui para retirar e ajustar.`
+}
+
+function ReadyPickupWhatsAppButton({
+  storeId,
+  os,
+  disabled,
+}: {
+  storeId: number
+  os?: OSContext
+  disabled?: boolean
+}) {
+  const [sending, setSending] = useState(false)
+  const phone = os?.customer_phone || ''
+
+  if (!os?.id || !phone) return null
+
+  return (
+    <button
+      type="button"
+      disabled={disabled || sending}
+      onClick={() => {
+        if (sending) return
+        setSending(true)
+        void sendManualWhatsAppFromClient({
+          storeId,
+          remotePhone: phone,
+          messageText: buildReadyPickupMessage(os),
+          messageType: 'service_order',
+          source: 'nfc.ready_pickup_button',
+          metadata: {
+            osId: os.id,
+            stage: 'oculos_montado',
+          },
+        }).finally(() => setSending(false))
+      }}
+      className="w-full bg-emerald-600 text-white font-bold text-lg py-5 rounded-2xl shadow-lg active:scale-95 transition-transform disabled:opacity-50 flex items-center justify-center gap-2"
+    >
+      {sending ? <Loader2 className="animate-spin" /> : <MessageCircle className="h-5 w-5" />}
+      {sending ? 'Enviando...' : 'Avisar no WhatsApp'}
+    </button>
+  )
+}
 
 export function NfcTrayClient({
   initialResult,
@@ -22,11 +72,14 @@ export function NfcTrayClient({
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
   const [successMode, setSuccessMode] = useState<string | null>(null)
+  const [offerReadyPickupWhatsApp, setOfferReadyPickupWhatsApp] = useState(false)
   const [osInput, setOsInput] = useState('')
+  const canSendWhatsApp = Boolean(initialResult.canSendWhatsApp)
 
   const handleAction = async (
     actionFn: () => Promise<{ success: boolean; message?: string }>,
-    successText: string
+    successText: string,
+    options?: { offerReadyPickupWhatsApp?: boolean }
   ) => {
     setLoading(true)
     setErrorMsg('')
@@ -34,6 +87,7 @@ export function NfcTrayClient({
     try {
       const res = await actionFn()
       if (res.success) {
+        setOfferReadyPickupWhatsApp(Boolean(options?.offerReadyPickupWhatsApp))
         setSuccessMode(successText)
       } else {
         setErrorMsg(res.message || 'Erro desconhecido.')
@@ -60,6 +114,11 @@ export function NfcTrayClient({
         <h2 className="text-2xl font-bold text-gray-800 text-center px-4 leading-tight">
           {successMode}
         </h2>
+        {offerReadyPickupWhatsApp && canSendWhatsApp && (
+          <div className="w-full">
+            <ReadyPickupWhatsAppButton storeId={storeId} os={initialResult.os} />
+          </div>
+        )}
       </div>
     )
   }
@@ -263,7 +322,8 @@ export function NfcTrayClient({
             onClick={() =>
               handleAction(
                 () => advanceOsStatus(trayId, storeId, 'MONTAGEM_CONCLUIDA'),
-                `OS ${osContext?.id} - pronto para entrega`
+                `OS ${osContext?.id} - pronto para entrega`,
+                { offerReadyPickupWhatsApp: true }
               )
             }
             className="bg-green-600 text-white font-bold text-xl py-6 rounded-2xl shadow-lg active:scale-95 transition-transform disabled:opacity-50 flex items-center justify-center"
@@ -278,6 +338,14 @@ export function NfcTrayClient({
             NÃO
           </button>
         </div>
+
+        {canSendWhatsApp && (
+          <ReadyPickupWhatsAppButton
+            storeId={storeId}
+            os={osContext}
+            disabled={loading}
+          />
+        )}
       </div>
     )
   }
@@ -297,7 +365,8 @@ export function NfcTrayClient({
             onClick={() =>
               handleAction(
                 () => advanceOsStatus(trayId, storeId, 'MONTAGEM_CONCLUIDA'),
-                `OS ${osContext?.id} - óculos pronto`
+                `OS ${osContext?.id} - óculos pronto`,
+                { offerReadyPickupWhatsApp: true }
               )
             }
             className="bg-green-600 text-white font-bold text-xl py-6 rounded-2xl shadow-lg active:scale-95 transition-transform disabled:opacity-50 flex items-center justify-center"
@@ -312,6 +381,14 @@ export function NfcTrayClient({
             NÃO
           </button>
         </div>
+
+        {canSendWhatsApp && (
+          <ReadyPickupWhatsAppButton
+            storeId={storeId}
+            os={osContext}
+            disabled={loading}
+          />
+        )}
       </div>
     )
   }
@@ -324,6 +401,14 @@ export function NfcTrayClient({
         </h2>
 
         {errorMsg && <p className="text-red-500 font-medium text-center">{errorMsg}</p>}
+
+        {canSendWhatsApp && (
+          <ReadyPickupWhatsAppButton
+            storeId={storeId}
+            os={osContext}
+            disabled={loading}
+          />
+        )}
 
         <button
           disabled={loading}

@@ -9,8 +9,10 @@ export type Release = {
 // completam essa mesma versao ate o proximo deploy.
 // Se uma implementacao for desfeita ou substituida antes do deploy, remova ou corrija
 // o respectivo item para que a lista descreva somente o que realmente sera entregue.
-export const PENDING_RELEASE_VERSION: string | null = null
-export const PENDING_RELEASE_CHANGES: readonly string[] = []
+export const PENDING_RELEASE_VERSION: string | null = '1.02.07'
+export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'Na leitura NFC do celular logado na loja da tag, a tela de óculos pronto passou a oferecer aviso no WhatsApp da loja, com a mesma mensagem do laboratório para titular ou dependente.',
+]
 
 const RELEASE_10206_CHANGES: readonly string[] = [
   'A integração Pix Sicredi passou a usar exclusivamente as credenciais e a API oficial de produção, mantendo a liberação restrita à Ótica Ocular configurada como loja-piloto.',
