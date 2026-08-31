@@ -32,6 +32,13 @@ function formatCPF(value: string): string {
         .replace(/(\d{3})(\d{1,2})$/, '$1-$2')
 }
 
+function requiresFiscalStatusCheck(message: string | null): boolean {
+    const normalized = (message || '').toLowerCase()
+    return normalized.includes('tempo esgotado') ||
+        normalized.includes('timeout') ||
+        normalized.includes('processamento_automatico')
+}
+
 interface FiscalEmissionModalProps {
     isOpen: boolean
     onClose: () => void
@@ -82,6 +89,7 @@ export default function FiscalEmissionModal({
     const homologacaoDesabilitada = temHomologacaoEmitida || temProducaoEmitida
     const emissaoBloqueada = (environment === 'production' && producaoDesabilitada) ||
                              (environment === 'homologation' && homologacaoDesabilitada)
+    const statusCheckRequired = requiresFiscalStatusCheck(error)
 
     const valorTotal = venda.valor_final ?? venda.total_amount ?? 0
 
@@ -244,12 +252,17 @@ export default function FiscalEmissionModal({
                                 <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-red-400" />
                                 <span>{error}</span>
                             </div>
+                            {statusCheckRequired && (
+                                <p className="text-xs leading-relaxed text-red-200">
+                                    Não tente emitir novamente agora. Abra as notas fiscais emitidas e use <strong>Consultar status</strong> na nota mais recente antes de uma nova tentativa.
+                                </p>
+                            )}
                             <Link
                                 href={`/dashboard/loja/${venda.store_id}/fiscal`}
                                 className="flex items-center gap-1.5 text-xs font-bold text-red-300 hover:text-red-100 underline underline-offset-2 transition-colors"
                             >
                                 <ExternalLink className="h-3 w-3" />
-                                Ver notas fiscais emitidas
+                                {statusCheckRequired ? 'Ver notas fiscais emitidas e consultar status' : 'Ver notas fiscais emitidas'}
                             </Link>
                         </div>
                     )}
