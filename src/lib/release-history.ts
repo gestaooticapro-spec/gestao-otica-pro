@@ -7,8 +7,12 @@ export type Release = {
 // Toda alteração aprovada para a próxima publicação entra na versão pendente.
 // Somente o comando explícito do usuário “mude a versão” move essa versão para
 // RELEASE_HISTORY e limpa as constantes pendentes, antes do deploy.
-export const PENDING_RELEASE_VERSION: string | null = '1.02.09'
+export const PENDING_RELEASE_VERSION: string | null = '1.02.10'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'CORRIGIDA A EMISSAO DE NFC-E PARA OMITIR O ENDERECO DO DESTINATARIO QUANDO O CODIGO IBGE NAO ESTIVER VALIDO E PREENCHER O CODIGO AUTOMATICAMENTE PELO CEP.',
+]
+
+const RELEASE_10209_CHANGES: readonly string[] = [
   'IMPLEMENTADO O CADASTRO DE CLIENTES PJ COM RAZAO SOCIAL, NOME FANTASIA E CNPJ, COM EMISSAO DE NFC-E PARA EMPRESAS.',
 ]
 
@@ -90,6 +94,11 @@ const RELEASE_10205_CHANGES: readonly string[] = [
 // Abra uma versão pendente na primeira alteração após o último fechamento.
 // Alterações de linha/minor (ex.: 1.02.xx -> 1.03.00) exigem solicitação expressa.
 export const RELEASE_HISTORY: Release[] = [
+  {
+    version: '1.02.09',
+    date: '31/08/2026',
+    changes: [...RELEASE_10209_CHANGES],
+  },
   {
     version: '1.02.08',
     date: '29/08/2026',

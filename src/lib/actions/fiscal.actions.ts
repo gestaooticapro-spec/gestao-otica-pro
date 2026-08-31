@@ -755,7 +755,23 @@ export async function emitirNFCe(payload: EmissionPayload) {
                     if (cleanDoc.length === 14 && !isValidCnpj(cleanDoc)) throw new Error("CNPJ do destinatario invalido.");
                     if (cleanDoc.length === 11 && !isValidCpf(cleanDoc)) throw new Error("CPF do destinatario invalido.");
                     if (cleanDoc.length !== 11 && cleanDoc.length !== 14) throw new Error("CPF/CNPJ do destinatario invalido.");
-                    const inscricaoEstadual = documentDigits(payload.cliente.endereco?.inscricao_estadual);
+                    const destinationAddress = payload.cliente.endereco;
+                    const inscricaoEstadual = documentDigits(destinationAddress?.inscricao_estadual);
+                    const destinationIbge = normalizeIbgeCode(destinationAddress?.codigo_municipio);
+                    const enderDest = destinationAddress &&
+                        isValidIbgeMunicipalityCode(destinationIbge, destinationAddress.uf)
+                        ? {
+                            xLgr: normalizeText(destinationAddress.logradouro),
+                            nro: normalizeText(destinationAddress.numero) || 'S/N',
+                            xCpl: normalizeText(destinationAddress.complemento) || undefined,
+                            xBairro: normalizeText(destinationAddress.bairro),
+                            cMun: Number(destinationIbge),
+                            xMun: normalizeText(destinationAddress.cidade),
+                            UF: normalizeText(destinationAddress.uf).toUpperCase(),
+                            CEP: normalizeDocument(destinationAddress.cep) || undefined,
+                            cPais: '1058', xPais: 'BRASIL',
+                        }
+                        : undefined;
                     return {
                         CNPJ: cleanDoc.length === 14 ? cleanDoc : undefined,
                         CPF: cleanDoc.length === 11 ? cleanDoc : undefined,
@@ -763,17 +779,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
                         indIEDest: inscricaoEstadual ? 1 : 9,
                         IE: inscricaoEstadual || undefined,
                         email: payload.cliente.email || undefined,
-                        ...(payload.cliente.endereco?.uf ? { enderDest: {
-                            xLgr: normalizeText(payload.cliente.endereco.logradouro),
-                            nro: normalizeText(payload.cliente.endereco.numero) || 'S/N',
-                            xCpl: normalizeText(payload.cliente.endereco.complemento) || undefined,
-                            xBairro: normalizeText(payload.cliente.endereco.bairro),
-                            cMun: Number(normalizeIbgeCode(payload.cliente.endereco.codigo_municipio)),
-                            xMun: normalizeText(payload.cliente.endereco.cidade),
-                            UF: normalizeText(payload.cliente.endereco.uf).toUpperCase(),
-                            CEP: normalizeDocument(payload.cliente.endereco.cep) || undefined,
-                            cPais: '1058', xPais: 'BRASIL',
-                        }} : {})
+                        ...(enderDest ? { enderDest } : {})
                     };
                 })(),
                 det: payload.itens.map((item, index) => ({

@@ -87,6 +87,7 @@ type ViaCepResponse = {
     localidade?: string;
     uf?: string;
     complemento?: string;
+    ibge?: string;
 };
 
 // --- DESIGN SYSTEM DOCTAS GLASS ---
@@ -169,6 +170,7 @@ export default function StoreClientPage() {
     const [cidade, setCidade] = useState('');
     const [uf, setUf] = useState('');
     const [cep, setCep] = useState('');
+    const [codigoMunicipioIbge, setCodigoMunicipioIbge] = useState('');
     const [isCepLoading, setIsCepLoading] = useState(false);
     const [cepMessage, setCepMessage] = useState<string | null>(null);
     const [phone, setPhone] = useState('');
@@ -278,6 +280,7 @@ export default function StoreClientPage() {
         setCidade(currentCustomer?.cidade ?? '');
         setUf(currentCustomer?.uf ?? '');
         setCep(maskCep(currentCustomer?.cep ?? ''));
+        setCodigoMunicipioIbge(currentCustomer?.codigo_municipio_ibge ?? '');
         setCepMessage(null);
         setPhone(maskPhone(currentCustomer?.phone ?? ''));
         setFoneMovel(maskPhone(currentCustomer?.fone_movel ?? ''));
@@ -342,6 +345,7 @@ export default function StoreClientPage() {
             setBairro(data.bairro ?? '');
             setCidade(data.localidade ?? '');
             setUf((data.uf ?? '').toUpperCase());
+            setCodigoMunicipioIbge((data.ibge ?? '').replace(/\D/g, ''));
             if (data.complemento) setComplemento(data.complemento);
             setCepMessage('Endereco encontrado.');
         } catch (error) {
@@ -385,6 +389,7 @@ export default function StoreClientPage() {
         formData.set('cidade', cidade);
         formData.set('uf', uf);
         formData.set('cep', cep.replace(/\D/g, ''));
+        formData.set('codigo_municipio_ibge', codigoMunicipioIbge.replace(/\D/g, ''));
         formData.set('faixa_etaria', faixaEtaria);
         formData.set('notes', obsGeral);
         formData.set('obs_debito', obsGeral);
