@@ -7,8 +7,10 @@ export type Release = {
 // Toda alteração aprovada para a próxima publicação entra na versão pendente.
 // Somente o comando explícito do usuário “mude a versão” move essa versão para
 // RELEASE_HISTORY e limpa as constantes pendentes, antes do deploy.
-export const PENDING_RELEASE_VERSION: string | null = null
-export const PENDING_RELEASE_CHANGES: readonly string[] = []
+export const PENDING_RELEASE_VERSION: string | null = '1.02.09'
+export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'IMPLEMENTADO O CADASTRO DE CLIENTES PJ COM RAZAO SOCIAL, NOME FANTASIA E CNPJ, COM EMISSAO DE NFC-E PARA EMPRESAS.',
+]
 
 const RELEASE_10208_CHANGES: readonly string[] = [
   'A lista de tags NFC do laboratório passou a exibir e permitir copiar a URL da próxima bandeja numerada de cada loja.',

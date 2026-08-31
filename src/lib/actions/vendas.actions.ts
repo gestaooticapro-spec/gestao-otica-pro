@@ -21,6 +21,7 @@ import { getReceiptReversalMetadata } from '@/lib/installment-reversal.server'
 import { closeOpenServiceOrdersForVenda } from '@/lib/actions/service-order-cancellation.actions'
 import { getInstallmentOutstanding } from '@/lib/installment-balance'
 import { isSicrediPilotStoreCnpj } from '@/lib/pix/sicredi-availability'
+import { documentDigits } from '@/lib/customer-document'
 import { randomUUID, createHash } from 'node:crypto'
 import { cookies } from 'next/headers'
 import { createDailyHealthGrant, dailyHealthCookieName, dailyHealthGrantMaxAge } from '@/lib/daily-health-access'
@@ -995,7 +996,7 @@ export async function deleteServiceOrder(id: number, storeId: number, vendaId: n
 // 4. ACTIONS: BUSCAR CLIENTES (COM VERIFICAÃ‡ÃƒO DE DÃVIDA)
 // ================================================================
 
-export type CustomerSearchResult = Pick<Customer, 'id' | 'full_name' | 'cpf' | 'fone_movel' | 'obs_debito'> & {
+export type CustomerSearchResult = Pick<Customer, 'id' | 'full_name' | 'cpf' | 'fone_movel' | 'obs_debito'> & { person_type?: 'PF' | 'PJ'; cnpj?: string | null; razao_social?: string | null; nome_fantasia?: string | null
   birth_date?: string | null
   tem_pendencia?: boolean
 }
@@ -1045,7 +1046,7 @@ export async function fetchDefaultCustomers(storeId: number): Promise<SearchCust
   const supabaseAdmin = createAdminClient()
   const { data, error } = await supabaseAdmin
     .from('customers')
-    .select('id, full_name, cpf, fone_movel, obs_debito, birth_date')
+    .select('id, full_name, razao_social, nome_fantasia, person_type, cpf, cnpj, fone_movel, obs_debito, birth_date')
     .eq('store_id', storeId)
     .order('created_at', { ascending: false })
     .limit(20)
@@ -1067,12 +1068,20 @@ export async function searchCustomersByName(
 ): Promise<SearchCustomersResult> {
   const supabaseAdmin = createAdminClient()
   const termo = query.trim()
+  const documentTerm = documentDigits(termo)
+  const searchTerms = [
+    `full_name.ilike.%${termo}%`,
+    `razao_social.ilike.%${termo}%`,
+    `nome_fantasia.ilike.%${termo}%`,
+    `cpf.ilike.%${documentTerm || termo}%`,
+    `cnpj.ilike.%${documentTerm || termo}%`,
+  ]
 
   const { data, error } = await supabaseAdmin
     .from('customers')
-    .select('id, full_name, cpf, fone_movel, obs_debito')
+    .select('id, full_name, razao_social, nome_fantasia, person_type, cpf, cnpj, fone_movel, obs_debito')
     .eq('store_id', storeId)
-    .or(`full_name.ilike.%${termo}%,cpf.ilike.%${termo}%`)
+    .or(searchTerms.join(','))
     .order('full_name')
     .limit(50)
 

@@ -811,7 +811,7 @@ export default function VendaInterfaceExperimental({
         : null
 
     const closeModal = () => setActiveModal('none')
-    const hasCpf = !!customer?.cpf?.toString().replace(/\D/g, '')
+    const hasCpf = !!(customer?.person_type === 'PJ' ? customer?.cnpj : customer?.cpf)?.toString().replace(/\D/g, '')
     const hasPhone = !!(customer?.fone_movel || customer?.phone)?.toString().replace(/\D/g, '')
     const canOpenParcelamento = modules.installments && hasCpf && hasPhone
     const isSingleOSMode = storeSettings?.service_order_mode === 'single'
@@ -1358,7 +1358,8 @@ export default function VendaInterfaceExperimental({
                     }}
                     customerId={customer.id}
                     customerName={customer.full_name}
-                    currentCpf={customer.cpf || ''}
+                    currentCpf={customer.person_type === 'PJ' ? customer.cnpj || '' : customer.cpf || ''}
+                    personType={customer.person_type === 'PJ' ? 'PJ' : 'PF'}
                     currentPhone={customer.fone_movel || customer.phone || ''}
                 />
             )}

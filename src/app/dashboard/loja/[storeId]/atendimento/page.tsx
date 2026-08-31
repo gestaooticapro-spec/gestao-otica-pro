@@ -377,7 +377,7 @@ export default function AtendimentoPage() {
                                                     <p className="font-black text-white text-sm group-hover:text-cyan-400 transition-colors uppercase tracking-tight">{cust.full_name}</p>
                                                     {cust.tem_pendencia && <span className="text-[9px] bg-rose-500/20 text-rose-400 px-2 py-0.5 rounded-full font-black border border-rose-500/30 uppercase tracking-widest">Inadimplente</span>}
                                                 </div>
-                                                <p className="text-[10px] text-slate-400 font-bold mt-0.5">CPF: {cust.cpf || 'N/A'}</p>
+                                                <p className="text-[10px] text-slate-400 font-bold mt-0.5">{cust.person_type === 'PJ' ? 'CNPJ' : 'CPF'}: {cust.person_type === 'PJ' ? cust.cnpj || 'N/A' : cust.cpf || 'N/A'}</p>
                                             </div>
                                             <div className="p-2 bg-white/5 rounded-xl group-hover:bg-cyan-500 group-hover:text-white transition-all">
                                                 <PlusCircle className="h-4 w-4" />
@@ -459,7 +459,7 @@ export default function AtendimentoPage() {
                                         <div className="flex items-center gap-2 mt-2">
                                             <span className="text-[10px] font-black text-cyan-400 uppercase tracking-[0.2em] opacity-80">Pasta do Paciente</span>
                                             <div className="h-1 w-1 rounded-full bg-white/20" />
-                                            <span className="text-[10px] font-bold text-slate-400 opacity-60">CPF: {selectedCustomer.cpf || 'Não informado'}</span>
+                                            <span className="text-[10px] font-bold text-slate-400 opacity-60">{selectedCustomer.person_type === 'PJ' ? 'CNPJ' : 'CPF'}: {selectedCustomer.person_type === 'PJ' ? selectedCustomer.cnpj || 'Não informado' : selectedCustomer.cpf || 'Não informado'}</span>
                                         </div>
                                     </div>
                                 </div>

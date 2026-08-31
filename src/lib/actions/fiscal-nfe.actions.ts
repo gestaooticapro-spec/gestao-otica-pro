@@ -460,8 +460,9 @@ async function hydrateStoreFiscalDataFromNuvemLocal(
 
 function buildDest(customer: any, override?: NFeSaleInput["cliente"]) {
     const address = override?.endereco || {};
-    const doc = cleanDigits(override?.cpf_cnpj || customer?.cpf);
-    const nome = cleanText(override?.nome || customer?.full_name);
+    const customerDocument = customer?.person_type === 'PJ' ? customer?.cnpj : customer?.cpf;
+    const doc = cleanDigits(override?.cpf_cnpj || customerDocument || customer?.cnpj || customer?.cpf);
+    const nome = cleanText(override?.nome || customer?.razao_social || customer?.full_name);
     const uf = cleanText(address.uf || customer?.uf).toUpperCase();
     const codigoMunicipio = cleanDigits(address.codigo_municipio_ibge || address.codigo_municipio || customer?.codigo_municipio_ibge || customer?.codigo_municipio);
     const cep = cleanDigits(address.cep || customer?.cep);
@@ -802,8 +803,8 @@ function buildOutputSnapshot(total: number, store: NFeStoreData, customer: any, 
         valor_total: total,
         emitente_nome: store.razao_social || store.name || null,
         emitente_cnpj: cleanDigits(store.cnpj),
-        destinatario_nome: customer?.full_name || customer?.nome || null,
-        destinatario_cnpj: cleanDigits(customer?.cpf || customer?.cpf_cnpj) || null,
+        destinatario_nome: customer?.razao_social || customer?.full_name || customer?.nome || null,
+        destinatario_cnpj: cleanDigits(customer?.person_type === 'PJ' ? customer?.cnpj : (customer?.cpf || customer?.cpf_cnpj)) || null,
     };
 }
 

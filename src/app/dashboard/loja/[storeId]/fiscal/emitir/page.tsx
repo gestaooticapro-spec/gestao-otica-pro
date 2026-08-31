@@ -19,7 +19,7 @@ type PendingSale = {
     created_at: string;
     total: number;
     status: string;
-    clients: { nome: string; cpf_cnpj?: string } | null;
+    clients: { nome: string; razao_social?: string; nome_fantasia?: string; person_type?: 'PF' | 'PJ'; cpf_cnpj?: string; email?: string; rua?: string; numero?: string; complemento?: string; bairro?: string; cidade?: string; uf?: string; cep?: string; codigo_municipio_ibge?: string; inscricao_estadual?: string } | null;
 };
 
 type InvoiceItem = {
@@ -157,7 +157,24 @@ export default function EmitirNotaPage(props: { params: { storeId: string } }) {
                 organization_id: tenantId,
                 store_id: storeId, // Necessário para buscar a série NFCe da loja
                 work_order_id: selectedSale?.id, // Mapeado para work_order_id no banco, mas é venda_id
-                cliente: { nome: clienteNome || "CONSUMIDOR FINAL", cpf_cnpj: clienteDoc },
+                cliente: {
+                    nome: clienteNome || "CONSUMIDOR FINAL",
+                    razao_social: selectedSale?.clients?.razao_social,
+                    nome_fantasia: selectedSale?.clients?.nome_fantasia,
+                    cpf_cnpj: clienteDoc,
+                    email: selectedSale?.clients?.email,
+                    endereco: selectedSale?.clients ? {
+                        logradouro: selectedSale.clients.rua,
+                        numero: selectedSale.clients.numero,
+                        complemento: selectedSale.clients.complemento,
+                        bairro: selectedSale.clients.bairro,
+                        cidade: selectedSale.clients.cidade,
+                        uf: selectedSale.clients.uf,
+                        cep: selectedSale.clients.cep,
+                        codigo_municipio: selectedSale.clients.codigo_municipio_ibge,
+                        inscricao_estadual: selectedSale.clients.person_type === 'PJ' ? selectedSale.clients.inscricao_estadual : undefined,
+                    } : undefined,
+                },
                 itens: itens,
                 valor_total: totalProdutos,
                 pagamentos: [{ meio: '01', valor: totalProdutos }], // Dinheiro por padrão na emissão avulsa

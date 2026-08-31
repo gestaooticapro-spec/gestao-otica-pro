@@ -5,6 +5,7 @@ import { X, Save, AlertTriangle, User, Phone } from 'lucide-react'
 import { updateCustomerCriticalData } from '@/lib/actions/customer.actions'
 import { usePathname } from 'next/navigation'
 import { maskPhone } from '@/lib/phone-mask'
+import { maskCpfCnpj } from '@/lib/customer-document'
 
 // Helper de Máscaras
 const masks = {
@@ -26,6 +27,7 @@ interface UpdateCpfModalProps {
     customerId: number
     customerName: string
     currentCpf?: string
+    personType?: 'PF' | 'PJ'
     currentPhone?: string
 }
 
@@ -36,6 +38,7 @@ export default function UpdateCpfModal({
     customerId,
     customerName,
     currentCpf = '',
+    personType = 'PF',
     currentPhone = ''
 }: UpdateCpfModalProps) {
     const pathname = usePathname()
@@ -47,7 +50,7 @@ export default function UpdateCpfModal({
     // Reset state when modal opens
     useEffect(() => {
         if (isOpen) {
-            setCpf(currentCpf ? masks.cpf(currentCpf) : '')
+            setCpf(currentCpf ? maskCpfCnpj(currentCpf) : '')
             setPhone(currentPhone ? masks.phone(currentPhone, true) : '')
             setError('')
             setLoading(false)
@@ -93,7 +96,7 @@ export default function UpdateCpfModal({
                     <p className="text-sm text-gray-600 mb-4 leading-relaxed">
                         Para gerar um parcelamento, é obrigatório que o cliente
                         <strong className="text-gray-900"> {customerName} </strong>
-                        tenha CPF e Telefone cadastrados.
+                        tenha {personType === 'PJ' ? 'CNPJ' : 'CPF'} e Telefone cadastrados.
                     </p>
 
                     {error && (
@@ -105,7 +108,7 @@ export default function UpdateCpfModal({
 
                     <form onSubmit={handleSubmit} className="space-y-4">
                         <div>
-                            <label className="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-wide">CPF (Obrigatório)</label>
+                            <label className="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-wide">{personType === 'PJ' ? 'CNPJ' : 'CPF'} (Obrigatório)</label>
                             <div className="relative">
                                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
                                     <User className="h-4 w-4" />
@@ -113,8 +116,8 @@ export default function UpdateCpfModal({
                                 <input
                                     type="text"
                                     value={cpf}
-                                    onChange={e => setCpf(masks.cpf(e.target.value))}
-                                    placeholder="000.000.000-00"
+                                    onChange={e => setCpf(maskCpfCnpj(e.target.value))}
+                                    placeholder={personType === 'PJ' ? '00.000.000/0000-00' : '000.000.000-00'}
                                     className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 font-bold text-gray-900 placeholder:font-normal transition-all"
                                     required
                                 />
@@ -142,7 +145,7 @@ export default function UpdateCpfModal({
                         <div className="pt-2">
                             <button
                                 type="submit"
-                                disabled={loading || cpf.length < 14}
+                                disabled={loading || cpf.replace(/\D/g, '').length !== (personType === 'PJ' ? 14 : 11)}
                                 className="w-full flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 text-white font-bold py-3 rounded-lg shadow-md hover:shadow-lg transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {loading ? 'Salvando...' : (

@@ -5,7 +5,8 @@ import { createPortal } from 'react-dom'
 import { Loader2, AlertTriangle, CheckCircle2, X, FileText, Save, ExternalLink, UserX } from 'lucide-react'
 import Link from 'next/link'
 import { emitirNFCe } from '@/lib/actions/fiscal.actions'
-import { getTenantIdByStore, getProductFiscalData, updateCustomerCpf, getEmissoesByVenda } from '@/lib/actions/fiscal-db.actions'
+import { getTenantIdByStore, getProductFiscalData, updateCustomerDocument, getEmissoesByVenda } from '@/lib/actions/fiscal-db.actions'
+import { isValidCnpj, isValidCpf, maskCpfCnpj } from '@/lib/customer-document'
 
 function validaCPF(cpf: string): boolean {
     const stripped = cpf.replace(/\D/g, '')
@@ -55,14 +56,15 @@ export default function FiscalEmissionModal({
     const [mounted, setMounted] = useState(false)
     const [emissoesExistentes, setEmissoesExistentes] = useState<{ id: number; environment: string; status: string }[]>([])
 
-    const existingCpf = customer?.cpf || customer?.cpf_cnpj || ''
+    const personType: 'PF' | 'PJ' = customer?.person_type === 'PJ' ? 'PJ' : 'PF'
+    const existingCpf = personType === 'PJ' ? (customer?.cnpj || customer?.cpf_cnpj || '') : (customer?.cpf || customer?.cpf_cnpj || '')
     const [cpfInput, setCpfInput] = useState(existingCpf)
     const [cpfSaving, setCpfSaving] = useState(false)
     const [cpfSaved, setCpfSaved] = useState(false)
     const [identificarCliente, setIdentificarCliente] = useState(true)
 
     const cpfDigits = cpfInput.replace(/\D/g, '')
-    const cpfIsValid = validaCPF(cpfInput)
+    const cpfIsValid = personType === 'PJ' ? isValidCnpj(cpfInput) : isValidCpf(cpfInput)
     const cpfEditable = !existingCpf
 
     useEffect(() => {
@@ -86,7 +88,7 @@ export default function FiscalEmissionModal({
     const handleSaveCpf = async () => {
         if (!cpfIsValid || !customer?.id) return
         setCpfSaving(true)
-        const result = await updateCustomerCpf(customer.id, cpfDigits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4'))
+        const result = await updateCustomerDocument(customer.id, personType, cpfDigits)
         setCpfSaving(false)
         if (result.success) setCpfSaved(true)
         else setError('Não foi possível salvar o CPF.')
@@ -139,7 +141,7 @@ export default function FiscalEmissionModal({
             )
 
             const cpfFinal = identificarCliente
-                ? (cpfEditable ? (cpfIsValid ? cpfDigits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : '') : existingCpf)
+                ? (cpfEditable ? (cpfIsValid ? cpfDigits : '') : existingCpf)
                 : ''
 
             // Mapear TODOS os pagamentos registrados na venda
@@ -183,8 +185,15 @@ export default function FiscalEmissionModal({
                 work_order_id: venda.id,
                 cliente: {
                     cpf_cnpj: cpfFinal,
-                    nome: identificarCliente ? (customer?.full_name || customer?.nome || 'Consumidor Final') : 'Consumidor Final',
+                    nome: identificarCliente ? (personType === 'PJ' ? (customer?.razao_social || customer?.full_name || customer?.nome || 'Consumidor Final') : (customer?.full_name || customer?.nome || 'Consumidor Final')) : 'Consumidor Final',
+                    razao_social: identificarCliente && personType === 'PJ' ? (customer?.razao_social || customer?.full_name || undefined) : undefined,
+                    nome_fantasia: identificarCliente && personType === 'PJ' ? (customer?.nome_fantasia || undefined) : undefined,
                     email: identificarCliente ? customer?.email : undefined,
+                    endereco: identificarCliente ? {
+                        logradouro: customer?.rua, numero: customer?.numero?.toString(), complemento: customer?.complemento,
+                        bairro: customer?.bairro, cidade: customer?.cidade, uf: customer?.uf, cep: customer?.cep,
+                        codigo_municipio: customer?.codigo_municipio_ibge, inscricao_estadual: personType === 'PJ' ? customer?.inscricao_estadual : undefined,
+                    } : undefined,
                 },
                 itens: itensMapeados,
                 valor_total: valorTotal,
@@ -349,7 +358,7 @@ export default function FiscalEmissionModal({
                         {/* CPF */}
                         {identificarCliente && (
                             <div className="flex items-center justify-between gap-2">
-                                <span className="text-slate-400 shrink-0">CPF:</span>
+                                <span className="text-slate-400 shrink-0">{personType === 'PJ' ? 'CNPJ:' : 'CPF:'}</span>
                                 {cpfEditable ? (
                                     <div className="flex items-center gap-2 flex-1 justify-end">
                                         <div className="relative">
@@ -357,11 +366,11 @@ export default function FiscalEmissionModal({
                                                 type="text"
                                                 value={cpfInput}
                                                 onChange={e => {
-                                                    setCpfInput(formatCPF(e.target.value))
+                                                    setCpfInput(maskCpfCnpj(e.target.value))
                                                     setCpfSaved(false)
                                                 }}
-                                                placeholder="000.000.000-00"
-                                                maxLength={14}
+                                                placeholder={personType === 'PJ' ? '00.000.000/0000-00' : '000.000.000-00'}
+                                                maxLength={personType === 'PJ' ? 18 : 14}
                                                 className={`w-36 bg-slate-800 border rounded px-2 py-1 text-sm font-mono text-slate-200 outline-none transition-colors ${
                                                     cpfDigits.length === 0 ? 'border-white/20' :
                                                     cpfIsValid ? 'border-emerald-500/60' : 'border-red-500/60'

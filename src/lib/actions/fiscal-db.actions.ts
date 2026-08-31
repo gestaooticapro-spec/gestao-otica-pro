@@ -825,15 +825,19 @@ export async function searchNFeParticipantsAction(params: {
     const clean = term.replace(/\D/g, "");
     const orParts = [
         `full_name.ilike.%${term}%`,
+        `razao_social.ilike.%${term}%`,
+        `nome_fantasia.ilike.%${term}%`,
         `cpf.ilike.%${term}%`,
+        `cnpj.ilike.%${term}%`,
         `fone_movel.ilike.%${term}%`,
         `phone.ilike.%${term}%`,
         clean ? `cpf.ilike.%${clean}%` : "",
+        clean ? `cnpj.ilike.%${clean}%` : "",
         clean ? `fone_movel.ilike.%${clean}%` : "",
         clean ? `phone.ilike.%${clean}%` : "",
     ].filter(Boolean).join(",");
 
-    const baseSelect = "id, full_name, cpf, email, phone, fone_movel, rua, numero, complemento, bairro, cidade, uf, cep";
+    const baseSelect = "id, full_name, razao_social, nome_fantasia, person_type, cpf, cnpj, email, phone, fone_movel, rua, numero, complemento, bairro, cidade, uf, cep";
     const fiscalSelect = `${baseSelect}, codigo_municipio_ibge, inscricao_estadual`;
 
     let { data, error } = await supabase
@@ -896,11 +900,16 @@ export async function saveNFeCustomerParticipantAction(params: {
     if (!nome) return { success: false, error: "Informe o nome do participante antes de salvar." };
 
     const cleanDoc = params.participant.cpfCnpj.replace(/\D/g, "");
+    const personType = cleanDoc.length === 14 ? 'PJ' : 'PF';
     const payload = {
         store_id: params.storeId,
         tenant_id: tenantId,
         full_name: nome,
-        cpf: cleanDoc || null,
+        razao_social: personType === 'PJ' ? nome : null,
+        nome_fantasia: null,
+        person_type: cleanDoc.length === 14 ? 'PJ' : 'PF',
+        cpf: cleanDoc.length === 11 ? cleanDoc : null,
+        cnpj: cleanDoc.length === 14 ? cleanDoc : null,
         email: params.participant.email?.trim() || null,
         rua: params.participant.logradouro?.trim() || null,
         numero: params.participant.numero?.trim() || null,
@@ -921,7 +930,7 @@ export async function saveNFeCustomerParticipantAction(params: {
                 .from("customers")
                 .select("id")
                 .eq("store_id", params.storeId)
-                .eq("cpf", cleanDoc)
+                .eq(cleanDoc.length === 14 ? "cnpj" : "cpf", cleanDoc)
                 .maybeSingle();
             targetId = existing?.id || null;
         }
@@ -996,7 +1005,7 @@ export async function getPendingSales(
             valor_final, 
             status,
             customer_id,
-            customers (full_name, cpf)
+            customers (full_name, razao_social, nome_fantasia, person_type, cpf, cnpj, email, rua, numero, complemento, bairro, cidade, uf, cep, codigo_municipio_ibge, inscricao_estadual)
         `)
         .eq("store_id", storeId)
         .eq("status", "Fechada")
@@ -1032,8 +1041,21 @@ export async function getPendingSales(
             status: v.status,
             client_id: v.customer_id,
             clients: {
-                nome: customer?.full_name,
-                cpf_cnpj: customer?.cpf
+                nome: customer?.razao_social || customer?.full_name,
+                razao_social: customer?.razao_social,
+                nome_fantasia: customer?.nome_fantasia,
+                person_type: customer?.person_type,
+                cpf_cnpj: customer?.person_type === 'PJ' ? customer?.cnpj : customer?.cpf,
+                email: customer?.email,
+                rua: customer?.rua,
+                numero: customer?.numero,
+                complemento: customer?.complemento,
+                bairro: customer?.bairro,
+                cidade: customer?.cidade,
+                uf: customer?.uf,
+                cep: customer?.cep,
+                codigo_municipio_ibge: customer?.codigo_municipio_ibge,
+                inscricao_estadual: customer?.inscricao_estadual,
             }
         };
     });
@@ -1190,6 +1212,14 @@ export async function updateCustomerCpf(customerId: number, cpf: string) {
         console.error("Erro ao atualizar CPF:", error);
         return { success: false, error: error.message };
     }
+    return { success: true };
+}
+
+export async function updateCustomerDocument(customerId: number, personType: 'PF' | 'PJ', document: string) {
+    const supabase = createClient();
+    const field = personType === 'PJ' ? 'cnpj' : 'cpf';
+    const { error } = await supabase.from('customers').update({ [field]: document.replace(/\D/g, '') }).eq('id', customerId);
+    if (error) return { success: false, error: error.message };
     return { success: true };
 }
 

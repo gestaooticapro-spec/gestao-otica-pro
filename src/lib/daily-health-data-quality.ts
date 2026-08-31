@@ -1,5 +1,5 @@
 export type DuplicateIssueType = 'duplicate_customer' | 'duplicate_product'
-export type DuplicateReason = 'cpf' | 'telefone' | 'nome' | 'produto_composto'
+export type DuplicateReason = 'cpf' | 'cnpj' | 'telefone' | 'nome' | 'produto_composto'
 
 export type DuplicateGroup = {
   fingerprint: string
@@ -96,6 +96,7 @@ function connectedGroups(issueType: DuplicateIssueType, criteria: Array<{ ids: n
 export function customerDuplicateCandidates(customers: any[]) {
   const criteria = [
     ...criteriaGroups(customers, 'cpf', (customer) => digits(customer.cpf), 11),
+    ...criteriaGroups(customers, 'cnpj', (customer) => digits(customer.cnpj), 14),
     ...criteriaGroups(customers, 'telefone', (customer) => digits(customer.fone_movel || customer.phone), 8),
     ...criteriaGroups(customers, 'nome', (customer) => text(customer.full_name), 5),
   ]

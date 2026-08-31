@@ -158,21 +158,21 @@ export async function realizarBuscaUniversal(termo: string, storeId: number): Pr
         // CORREÇÃO: Cast as any na query base de clientes
         let queryA = (supabaseAdmin
             .from('customers') as any)
-            .select('id, full_name, cpf, fone_movel')
+            .select('id, full_name, razao_social, nome_fantasia, person_type, cpf, cnpj, fone_movel')
             .eq('store_id', storeId)
             .limit(5)
 
         if (isNumeric) {
-            queryA = queryA.or(`cpf.ilike.%${cleanTerm}%,fone_movel.ilike.%${cleanTerm}%`)
+            queryA = queryA.or(`cpf.ilike.%${cleanTerm}%,cnpj.ilike.%${cleanTerm}%,fone_movel.ilike.%${cleanTerm}%`)
         } else {
-            queryA = queryA.ilike('full_name', `%${cleanTerm}%`)
+            queryA = queryA.or(`full_name.ilike.%${cleanTerm}%,razao_social.ilike.%${cleanTerm}%,nome_fantasia.ilike.%${cleanTerm}%`)
         }
         promisesClientes.push(queryA)
 
         if (responsavelIds.length > 0) {
             promisesClientes.push(
                 (supabaseAdmin.from('customers') as any)
-                    .select('id, full_name, cpf, fone_movel')
+                    .select('id, full_name, razao_social, nome_fantasia, person_type, cpf, cnpj, fone_movel')
                     .in('id', responsavelIds)
             )
         }
@@ -187,8 +187,8 @@ export async function realizarBuscaUniversal(termo: string, storeId: number): Pr
                 const extraInfo = nomeDependente ? `(Resp. por ${nomeDependente})` : undefined
                 mapClientesUnicos.set(c.id, {
                     id: c.id,
-                    nome: c.full_name + (extraInfo ? ` ${extraInfo}` : ''),
-                    cpf: c.cpf,
+                    nome: (c.razao_social || c.full_name) + (extraInfo ? ` ${extraInfo}` : ''),
+                    cpf: c.person_type === 'PJ' ? c.cnpj : c.cpf,
                     fone: c.fone_movel
                 })
             }

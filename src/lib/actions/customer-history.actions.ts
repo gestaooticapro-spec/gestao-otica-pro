@@ -100,13 +100,14 @@ export async function searchCustomersQuick(
 
     // Limpa o termo para busca
     const termoLimpo = termo.trim().toLowerCase()
+    const documentoLimpo = termo.replace(/\D/g, '')
 
     // Busca por nome, CPF ou telefone
     const { data, error } = await (supabaseAdmin
         .from('customers') as any)
-        .select('id, full_name, cpf, fone_movel')
+        .select('id, full_name, razao_social, nome_fantasia, person_type, cpf, cnpj, fone_movel')
         .eq('store_id', storeId)
-        .or(`full_name.ilike.%${termoLimpo}%,cpf.ilike.%${termoLimpo}%,fone_movel.ilike.%${termoLimpo}%`)
+        .or(`full_name.ilike.%${termoLimpo}%,razao_social.ilike.%${termoLimpo}%,nome_fantasia.ilike.%${termoLimpo}%,cpf.ilike.%${documentoLimpo || termoLimpo}%,cnpj.ilike.%${documentoLimpo || termoLimpo}%,fone_movel.ilike.%${documentoLimpo || termoLimpo}%`)
         .order('full_name')
         .limit(10)
 
@@ -117,8 +118,8 @@ export async function searchCustomersQuick(
 
     return (data || []).map((c: any) => ({
         id: c.id,
-        nome: c.full_name,
-        cpf: c.cpf,
+        nome: c.razao_social || c.full_name,
+        cpf: c.person_type === 'PJ' ? c.cnpj : c.cpf,
         fone: c.fone_movel
     }))
 }

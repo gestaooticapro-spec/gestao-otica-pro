@@ -7,13 +7,14 @@ import { z } from 'zod'
 
 // Importamos os helpers administrativos para bypassar o RLS (leitura e escrita)
 import { getProfileByAdmin, createAdminClient } from '@/lib/supabase/admin'
+import { documentDigits, isValidCnpj, isValidCpf } from '@/lib/customer-document'
 
 type Customer = Database['public']['Tables']['customers']['Row']
 
 // --- Funções Helper do CPF ---
-function validaCPF(cpf: string | null | undefined): boolean {
+function legacyValidaCPF(cpf: string | null | undefined): boolean {
   if (!cpf) return false
-  const cpfLimpo = cpf.replace(/\D/g, '')
+  const cpfLimpo = documentDigits(cpf)
   if (cpfLimpo.length !== 11 || /^(\d)\1+$/.test(cpfLimpo)) return false
 
   let soma = 0,
@@ -35,6 +36,8 @@ function validaCPF(cpf: string | null | undefined): boolean {
   return true
 }
 
+const validaCPF = isValidCpf
+
 // --- Esquema de Validação ---
 function normalizeCpf(cpf: string | null | undefined) {
   return cpf ? cpf.replace(/\D/g, '') : ''
@@ -43,9 +46,14 @@ function normalizeCpf(cpf: string | null | undefined) {
 const CustomerSchema = z.object({
   id: z.coerce.number().optional(),
   store_id: z.coerce.number(),
+  person_type: z.enum(['PF', 'PJ']).default('PF'),
+  razao_social: z.string().optional().nullable(),
+  nome_fantasia: z.string().optional().nullable(),
   full_name: z.string().min(3, { message: 'Nome completo é obrigatório.' }),
   rg: z.string().optional().nullable(),
   cpf: z.string().optional().nullable(),
+  cnpj: z.string().optional().nullable(),
+  inscricao_estadual: z.string().optional().nullable(),
   birth_date: z.string().nullable().optional(),
   naturalidade: z.string().optional().nullable(),
   estado_civil: z.string().optional().nullable(),
@@ -92,18 +100,22 @@ async function validateCustomerNameDuplicatePolicy({
   supabaseAdmin,
   storeId,
   fullName,
+  personType,
   cpf,
+  cnpj,
   currentCustomerId,
 }: {
   supabaseAdmin: ReturnType<typeof createAdminClient>
   storeId: number
   fullName: string
+  personType: 'PF' | 'PJ'
   cpf: string | null | undefined
+  cnpj: string | null | undefined
   currentCustomerId?: FormDataEntryValue | number | null
 }): Promise<CustomerActionResult | null> {
   let queryDuplicidade = (supabaseAdmin
     .from('customers') as any)
-    .select('id, cpf')
+    .select('id, cpf, cnpj, person_type')
     .eq('store_id', storeId)
     .ilike('full_name', fullName.trim())
 
@@ -115,25 +127,29 @@ async function validateCustomerNameDuplicatePolicy({
 
   if (!duplicados || duplicados.length === 0) return null
 
-  const cpfAtual = normalizeCpf(cpf)
+  const documentAtual = personType === 'PJ' ? documentDigits(cnpj) : normalizeCpf(cpf)
+  const documentLabel = personType === 'PJ' ? 'CNPJ' : 'CPF'
+  const documentValido = personType === 'PJ' ? isValidCnpj(documentAtual) : validaCPF(documentAtual)
 
-  if (!validaCPF(cpfAtual)) {
+  if (!documentValido) {
     return {
       success: false,
-      message: `Ja existe cliente cadastrado com o nome "${fullName}". Para cadastrar homonimo, informe um CPF valido e diferente.`
+      message: `Ja existe cliente cadastrado com o nome "${fullName}". Para cadastrar homonimo, informe um ${documentLabel} valido e diferente.`
     }
   }
 
-  const conflitoCpf = duplicados.find((cliente: any) => normalizeCpf(cliente.cpf) === cpfAtual)
-  if (conflitoCpf) {
-    return { success: false, message: 'Erro: Ja existe um cliente com este CPF.' }
+  const conflitoDocumento = duplicados.find((cliente: any) => documentDigits(personType === 'PJ' ? cliente.cnpj : cliente.cpf) === documentAtual)
+  if (conflitoDocumento) {
+    return { success: false, message: `Erro: Ja existe um cliente com este ${documentLabel}.` }
   }
 
-  const duplicadoSemCpfConfiavel = duplicados.find((cliente: any) => !validaCPF(normalizeCpf(cliente.cpf)))
-  if (duplicadoSemCpfConfiavel) {
+  const duplicadoSemDocumentoConfiavel = duplicados.find((cliente: any) => cliente.person_type === 'PJ'
+    ? !isValidCnpj(cliente.cnpj)
+    : !validaCPF(normalizeCpf(cliente.cpf)))
+  if (duplicadoSemDocumentoConfiavel) {
     return {
       success: false,
-      message: `Ja existe cliente com o nome "${fullName}" sem CPF valido. Atualize o CPF do cadastro existente antes de criar um homonimo.`
+      message: `Ja existe cliente com o nome "${fullName}" sem documento valido. Atualize o cadastro existente antes de criar um homonimo.`
     }
   }
 
@@ -165,17 +181,25 @@ export async function saveCustomerDetails(
 
   // 3. Pré-processar CPF
   const emptyToNull = (value: FormDataEntryValue | null) => value === '' ? null : value
-  const cpfFromForm = emptyToNull(formData.get('cpf')) as string | null
-  const unmaskedCpf = cpfFromForm ? cpfFromForm.replace(/\D/g, '') : null
-  const cpfToSave = unmaskedCpf
+  const personType = formData.get('person_type') === 'PJ' ? 'PJ' : 'PF'
+  const razaoSocial = String(formData.get('razao_social') || '').trim()
+  const nomeFantasia = String(formData.get('nome_fantasia') || '').trim()
+  const fullName = personType === 'PJ' ? razaoSocial : String(formData.get('full_name') || '').trim()
+  const cpfToSave = personType === 'PF' ? documentDigits(formData.get('cpf') as string) || null : null
+  const cnpjToSave = personType === 'PJ' ? documentDigits(formData.get('cnpj') as string) || null : null
 
   // 4. Validar Campos
   const validatedFields = CustomerSchema.safeParse({
     id: customerId,
     store_id: store_id,
-    full_name: formData.get('full_name'),
+    person_type: personType,
+    full_name: fullName,
+    razao_social: personType === 'PJ' ? (razaoSocial || null) : null,
+    nome_fantasia: personType === 'PJ' ? (nomeFantasia || null) : null,
     rg: emptyToNull(formData.get('rg')),
     cpf: cpfToSave,
+    cnpj: cnpjToSave,
+    inscricao_estadual: emptyToNull(formData.get('inscricao_estadual')),
     birth_date: emptyToNull(formData.get('birth_date')),
     naturalidade: emptyToNull(formData.get('naturalidade')),
     estado_civil: emptyToNull(formData.get('estado_civil')),
@@ -224,21 +248,28 @@ export async function saveCustomerDetails(
   const dataToSave: any = {
     ...customerData,
     full_name: customerData.full_name.trim(),
+    razao_social: personType === 'PJ' ? razaoSocial : null,
+    nome_fantasia: personType === 'PJ' ? (nomeFantasia || null) : null,
     store_id: store_id,
     tenant_id: tenant_id,
   }
 
   const supabaseAdmin = createAdminClient();
 
-  if (cpfToSave && !validaCPF(cpfToSave)) {
+  if (personType === 'PF' && cpfToSave && !validaCPF(cpfToSave)) {
     return { success: false, message: 'CPF invalido.' }
   }
+  if (personType === 'PJ' && !cnpjToSave) return { success: false, message: 'CNPJ obrigatorio para cliente PJ.' }
+  if (personType === 'PJ' && !razaoSocial) return { success: false, message: 'Razao social obrigatoria para cliente PJ.' }
+  if (personType === 'PJ' && !isValidCnpj(cnpjToSave)) return { success: false, message: 'CNPJ invalido.' }
 
   const duplicatePolicyError = await validateCustomerNameDuplicatePolicy({
     supabaseAdmin,
     storeId: store_id,
     fullName: dataToSave.full_name,
+    personType,
     cpf: cpfToSave,
+    cnpj: cnpjToSave,
     currentCustomerId: customerId,
   })
 
@@ -288,8 +319,8 @@ export async function saveCustomerDetails(
     }
 
     if (error) {
-      if (error.message.includes('customers_cpf_key')) {
-        return { success: false, message: 'Erro: Já existe um cliente com este CPF.' }
+      if (error.message.includes('customers_cpf_key') || error.message.includes('customers_cnpj_key') || error.message.includes('customers_store_cnpj_key')) {
+        return { success: false, message: `Erro: Já existe um cliente com este ${personType === 'PJ' ? 'CNPJ' : 'CPF'} nesta loja.` }
       }
       throw new Error(error.message)
     }
@@ -401,7 +432,7 @@ export async function getCustomerProfile(storeId: number, query: string) {
 
   // Se for CPF (apenas números)
   if (/^\d+$/.test(query)) {
-    clienteQuery = clienteQuery.ilike('cpf', `%${query}%`)
+    clienteQuery = clienteQuery.or(`cpf.ilike.%${query}%,cnpj.ilike.%${query}%`)
   } else {
     clienteQuery = clienteQuery.ilike('full_name', `%${query}%`)
   }
@@ -416,7 +447,7 @@ export async function getCustomerProfile(storeId: number, query: string) {
   if (clientes.length > 1) {
     return {
       multiplos: true,
-      candidatos: clientes.map((c: any) => ({ id: c.id, nome: c.full_name, cpf: c.cpf }))
+      candidatos: clientes.map((c: any) => ({ id: c.id, nome: c.razao_social || c.full_name, nome_fantasia: c.nome_fantasia, cpf_cnpj: c.person_type === 'PJ' ? c.cnpj : c.cpf }))
     }
   }
 
@@ -441,8 +472,10 @@ export async function getCustomerProfile(storeId: number, query: string) {
     multiplos: false,
     perfil: {
       id: cliente.id,
-      nome: cliente.full_name,
-      cpf: cliente.cpf,
+      nome: cliente.razao_social || cliente.full_name,
+      razao_social: cliente.razao_social || null,
+      nome_fantasia: cliente.nome_fantasia || null,
+      cpf_cnpj: cliente.person_type === 'PJ' ? cliente.cnpj : cliente.cpf,
       telefone: cliente.fone_movel || cliente.phone,
       endereco: `${cliente.rua || ''}, ${cliente.numero || ''} - ${cliente.bairro || ''}`,
       total_gasto: totalGasto,
@@ -465,7 +498,12 @@ export async function updateCustomerQuickInfo(
   storeId: number,
   data: {
     full_name: string
+    person_type?: 'PF' | 'PJ'
     cpf: string
+    cnpj?: string
+    razao_social?: string
+    nome_fantasia?: string
+    inscricao_estadual?: string
     fone_movel: string
     rua: string
     numero: string
@@ -481,7 +519,21 @@ export async function updateCustomerQuickInfo(
     return { success: false, message: 'Nome inválido.' }
   }
 
-  const cpfLimpo = data.cpf.replace(/\D/g, '')
+  const { data: currentCustomer, error: currentCustomerError } = await (supabaseAdmin.from('customers') as any)
+    .select('person_type')
+    .eq('id', customerId)
+    .eq('store_id', storeId)
+    .single()
+
+  if (currentCustomerError || !currentCustomer) {
+    return { success: false, message: 'Cliente nao encontrado.' }
+  }
+
+  const personType = data.person_type || currentCustomer.person_type || 'PF'
+  const cpfLimpo = personType === 'PF' ? documentDigits(data.cpf) : ''
+  const cnpjLimpo = personType === 'PJ' ? documentDigits(data.cnpj) : ''
+  if (personType === 'PJ' && !isValidCnpj(cnpjLimpo)) return { success: false, message: 'CNPJ invalido.' }
+  if (personType === 'PJ' && !(data.razao_social || data.full_name).trim()) return { success: false, message: 'Razao social invalida.' }
   if (cpfLimpo && !validaCPF(cpfLimpo)) {
     return { success: false, message: 'CPF inválido.' }
   }
@@ -490,7 +542,9 @@ export async function updateCustomerQuickInfo(
     supabaseAdmin,
     storeId,
     fullName: data.full_name,
+    personType,
     cpf: cpfLimpo,
+    cnpj: cnpjLimpo,
     currentCustomerId: customerId,
   })
 
@@ -498,22 +552,27 @@ export async function updateCustomerQuickInfo(
     return { success: false, message: duplicatePolicyError.message }
   }
 
-  if (cpfLimpo) {
+  if (cpfLimpo || cnpjLimpo) {
     const { data: dup } = await (supabaseAdmin.from('customers') as any)
       .select('id')
       .eq('store_id', storeId)
-      .eq('cpf', cpfLimpo)
+      .eq(personType === 'PJ' ? 'cnpj' : 'cpf', personType === 'PJ' ? cnpjLimpo : cpfLimpo)
       .neq('id', customerId)
       .limit(1)
     if (dup && dup.length > 0) {
-      return { success: false, message: 'Este CPF já está cadastrado para outro cliente.' }
+      return { success: false, message: `Este ${personType === 'PJ' ? 'CNPJ' : 'CPF'} já está cadastrado para outro cliente.` }
     }
   }
 
   const { error } = await (supabaseAdmin.from('customers') as any)
     .update({
       full_name: data.full_name.trim(),
+      person_type: personType,
       cpf: cpfLimpo || null,
+      cnpj: cnpjLimpo || null,
+      razao_social: personType === 'PJ' ? (data.razao_social || data.full_name).trim() : null,
+      nome_fantasia: personType === 'PJ' ? (data.nome_fantasia?.trim() || null) : null,
+      inscricao_estadual: data.inscricao_estadual?.replace(/\D/g, '') || null,
       fone_movel: data.fone_movel.trim() || null,
       rua: data.rua.trim() || null,
       numero: data.numero.trim() ? parseInt(data.numero) : null,
@@ -525,7 +584,7 @@ export async function updateCustomerQuickInfo(
     .eq('id', customerId)
 
   if (error) {
-    if (error.code === '23505') return { success: false, message: 'CPF já cadastrado nesta rede.' }
+    if (error.code === '23505') return { success: false, message: `${personType === 'PJ' ? 'CNPJ' : 'CPF'} já cadastrado nesta loja.` }
     return { success: false, message: `Erro: ${error.message}` }
   }
 
@@ -545,17 +604,17 @@ export async function updateCustomerCriticalData(
   const supabaseAdmin = createAdminClient()
 
   // 1. Validar CPF
-  if (!validaCPF(cpf)) {
+  if (false && !validaCPF(cpf)) {
     return { success: false, message: 'CPF Inválido.' }
   }
 
-  const cpfLimpo = cpf.replace(/\D/g, '')
+  const cpfLimpo = documentDigits(cpf)
   const foneLimpo = fone.replace(/\D/g, '') // Remove máscara do telefone
 
   try {
     // 1.5 Buscar o store_id do cliente atual
     const { data: currentCustomer, error: fetchError } = await (supabaseAdmin.from('customers') as any)
-      .select('store_id')
+      .select('store_id, person_type')
       .eq('id', customerId)
       .single()
 
@@ -564,25 +623,29 @@ export async function updateCustomerCriticalData(
     }
 
     // 2. Verificar duplicidade de CPF na mesma LOJA (exceto o próprio)
+    if (currentCustomer.person_type === 'PJ' ? !isValidCnpj(cpfLimpo) : !validaCPF(cpfLimpo)) {
+      return { success: false, message: `${currentCustomer.person_type === 'PJ' ? 'CNPJ' : 'CPF'} invalido.` }
+    }
+
     const { data: duplicados } = await (supabaseAdmin.from('customers') as any)
       .select('id')
       .eq('store_id', currentCustomer.store_id)
-      .eq('cpf', cpfLimpo)
+      .eq(currentCustomer.person_type === 'PJ' ? 'cnpj' : 'cpf', cpfLimpo)
       .neq('id', customerId)
       .limit(1)
 
     if (duplicados && duplicados.length > 0) {
-      return { success: false, message: 'Este CPF já está em uso por outro cliente nesta loja.' }
+      return { success: false, message: `Este ${currentCustomer.person_type === 'PJ' ? 'CNPJ' : 'CPF'} já está em uso por outro cliente nesta loja.` }
     }
 
     // 3. Atualizar
     const { error } = await (supabaseAdmin.from('customers') as any)
-      .update({ cpf: cpfLimpo, fone_movel: foneLimpo })
+      .update(currentCustomer.person_type === 'PJ' ? { cnpj: cpfLimpo, fone_movel: foneLimpo } : { cpf: cpfLimpo, fone_movel: foneLimpo })
       .eq('id', customerId)
 
     if (error) {
       if (error.message.includes('unique constraint') || error.code === '23505') {
-        return { success: false, message: 'Este CPF já está cadastrado nesta rede de lojas.' }
+        return { success: false, message: `Este ${currentCustomer.person_type === 'PJ' ? 'CNPJ' : 'CPF'} já está cadastrado nesta loja.` }
       }
       throw error
     }

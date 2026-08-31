@@ -859,7 +859,8 @@ export default function FinanciamentoBox({
                                         <button
                                             type="button"
                                             onClick={() => {
-                                                if (!customer?.cpf || !customer?.fone_movel) {
+                                                const customerDocument = customer?.person_type === 'PJ' ? customer?.cnpj : customer?.cpf
+                                                if (!customerDocument || !customer?.fone_movel) {
                                                     setIsCpfModalOpen(true)
                                                     return
                                                 }
@@ -924,7 +925,8 @@ export default function FinanciamentoBox({
                         }}
                         customerId={customer.id}
                         customerName={customer.full_name}
-                        currentCpf={customer.cpf || ''}
+                        currentCpf={customer.person_type === 'PJ' ? customer.cnpj || '' : customer.cpf || ''}
+                        personType={customer.person_type === 'PJ' ? 'PJ' : 'PF'}
                         currentPhone={customer.fone_movel || customer.phone || ''}
                     />
                 )}
@@ -1034,7 +1036,8 @@ export default function FinanciamentoBox({
                     }}
                     customerId={customer.id}
                     customerName={customer.full_name}
-                    currentCpf={customer.cpf || ''}
+                    currentCpf={customer.person_type === 'PJ' ? customer.cnpj || '' : customer.cpf || ''}
+                    personType={customer.person_type === 'PJ' ? 'PJ' : 'PF'}
                     currentPhone={customer.fone_movel || customer.phone || ''}
                 />
             )}

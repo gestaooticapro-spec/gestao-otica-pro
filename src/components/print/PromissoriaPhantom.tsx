@@ -109,7 +109,7 @@ export default function PromissoriaPhantom({ financiamento }: PromissoriaPhantom
                     <div className="text-justify mb-2 leading-snug text-xs">
                         <p className="mb-2">
                             <span className="font-bold">Cliente:</span> {customer?.full_name}<br />
-                            <span className="font-bold">CPF:</span> {customer?.cpf || 'Não informado'}<br />
+                            <span className="font-bold">{customer?.person_type === 'PJ' ? 'CNPJ' : 'CPF'}:</span> {customer?.person_type === 'PJ' ? customer?.cnpj || 'Não informado' : customer?.cpf || 'Não informado'}<br />
                             <span className="font-bold">Endereço:</span> {customerAddress}
                         </p>
                         <p>

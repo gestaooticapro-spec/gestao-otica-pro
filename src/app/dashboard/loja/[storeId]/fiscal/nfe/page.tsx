@@ -48,7 +48,11 @@ type PendingSale = {
 
 type SaleCustomerData = {
     full_name?: string | null;
+    razao_social?: string | null;
+    nome_fantasia?: string | null;
+    person_type?: 'PF' | 'PJ' | null;
     cpf?: string | null;
+    cnpj?: string | null;
     email?: string | null;
     rua?: string | null;
     numero?: string | null;
@@ -94,7 +98,11 @@ type ParticipantMode = "search" | "manual";
 type ParticipantResult = {
     id: number;
     full_name: string;
+    razao_social: string | null;
+    nome_fantasia: string | null;
+    person_type: 'PF' | 'PJ';
     cpf: string | null;
+    cnpj: string | null;
     email: string | null;
     phone: string | null;
     fone_movel: string | null;
@@ -486,8 +494,8 @@ function cloneDraftItem(item: ParsedNFeItem, index: number): NFeItemForm {
 function customerFormFromSale(saleData: SaleDataForNFe, fallbackSale: PendingSale): CustomerForm {
     const customer = Array.isArray(saleData?.customers) ? saleData.customers[0] : saleData?.customers;
     return {
-        nome: customer?.full_name || fallbackSale.clients?.nome || "",
-        cpfCnpj: customer?.cpf || fallbackSale.clients?.cpf_cnpj || "",
+        nome: customer?.razao_social || customer?.full_name || fallbackSale.clients?.nome || "",
+        cpfCnpj: customer?.person_type === 'PJ' ? customer?.cnpj || fallbackSale.clients?.cpf_cnpj || "" : customer?.cpf || fallbackSale.clients?.cpf_cnpj || "",
         email: customer?.email || "",
         logradouro: customer?.rua || "",
         numero: customer?.numero || "",
@@ -503,8 +511,8 @@ function customerFormFromSale(saleData: SaleDataForNFe, fallbackSale: PendingSal
 
 function customerFormFromParticipant(participant: ParticipantResult): CustomerForm {
     return {
-        nome: participant.full_name || "",
-        cpfCnpj: participant.cpf || "",
+        nome: participant.razao_social || participant.full_name || "",
+        cpfCnpj: participant.person_type === 'PJ' ? participant.cnpj || "" : participant.cpf || "",
         email: participant.email || "",
         logradouro: participant.rua || "",
         numero: participant.numero || "",

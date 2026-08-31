@@ -5,6 +5,7 @@ import { X, Save, Loader2, User, Phone, MapPin, CreditCard, Edit3 } from 'lucide
 import { updateCustomerQuickInfo } from '@/lib/actions/customer.actions'
 import { Database } from '@/lib/database.types'
 import { maskPhone } from '@/lib/phone-mask'
+import { maskCpfCnpj } from '@/lib/customer-document'
 
 type Customer = Database['public']['Tables']['customers']['Row']
 
@@ -26,6 +27,7 @@ export default function CustomerQuickInfoModal({ isOpen, onClose, customer, stor
 
     const [name, setName] = useState('')
     const [cpf, setCpf] = useState('')
+    const [nomeFantasia, setNomeFantasia] = useState('')
     const [phone, setPhone] = useState('')
     const [rua, setRua] = useState('')
     const [numero, setNumero] = useState('')
@@ -39,8 +41,9 @@ export default function CustomerQuickInfoModal({ isOpen, onClose, customer, stor
             setEditing(false)
             setErrorMsg(null)
             setSuccessMsg(null)
-            setName(customer.full_name ?? '')
-            setCpf(formatCpf(customer.cpf ?? ''))
+            setName(customer.person_type === 'PJ' ? (customer.razao_social || customer.full_name || '') : (customer.full_name || ''))
+            setCpf(maskCpfCnpj(customer.person_type === 'PJ' ? (customer.cnpj || '') : (customer.cpf || '')))
+            setNomeFantasia(customer.nome_fantasia || '')
             setPhone(maskPhone(customer.fone_movel ?? ''))
             setRua(customer.rua ?? '')
             setNumero(customer.numero?.toString() ?? '')
@@ -75,7 +78,11 @@ export default function CustomerQuickInfoModal({ isOpen, onClose, customer, stor
         startTransition(async () => {
             const res = await updateCustomerQuickInfo(customer.id, storeId, {
                 full_name: name,
+                person_type: customer.person_type,
                 cpf,
+                cnpj: customer.person_type === 'PJ' ? cpf : undefined,
+                razao_social: customer.person_type === 'PJ' ? name : undefined,
+                nome_fantasia: customer.person_type === 'PJ' ? nomeFantasia : undefined,
                 fone_movel: phone,
                 rua,
                 numero,
@@ -130,7 +137,7 @@ export default function CustomerQuickInfoModal({ isOpen, onClose, customer, stor
                     {/* Nome */}
                     <div>
                         <label className={label}>
-                            <span className="flex items-center gap-1"><User className="h-3 w-3" /> Nome Completo</span>
+                                <span className="flex items-center gap-1"><User className="h-3 w-3" /> {customer.person_type === 'PJ' ? 'Razao social' : 'Nome completo'}</span>
                         </label>
                         <input
                             value={name}
@@ -140,17 +147,24 @@ export default function CustomerQuickInfoModal({ isOpen, onClose, customer, stor
                         />
                     </div>
 
-                    {/* CPF + Celular */}
+                    {customer.person_type === 'PJ' && (
+                        <div>
+                            <label className={label}>Nome fantasia</label>
+                            <input value={nomeFantasia} onChange={e => setNomeFantasia(e.target.value)} disabled={!editing} className={field} />
+                        </div>
+                    )}
+
+                    {/* Documento + Celular */}
                     <div className="grid grid-cols-2 gap-3">
                         <div>
                             <label className={label}>
-                                <span className="flex items-center gap-1"><CreditCard className="h-3 w-3" /> CPF</span>
+                                <span className="flex items-center gap-1"><CreditCard className="h-3 w-3" /> {customer.person_type === 'PJ' ? 'CNPJ' : 'CPF'}</span>
                             </label>
                             <input
                                 value={cpf}
-                                onChange={e => setCpf(formatCpf(e.target.value))}
+                                onChange={e => setCpf(maskCpfCnpj(e.target.value))}
                                 disabled={!editing}
-                                placeholder="000.000.000-00"
+                                placeholder={customer.person_type === 'PJ' ? '00.000.000/0000-00' : '000.000.000-00'}
                                 className={field}
                             />
                         </div>

@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getNuvemLocalToken } from "@/lib/nuvem-local";
 import { Database } from "@/lib/database.types";
 import { isStoreModuleEnabledForStore } from "@/lib/store-modules.server";
+import { documentDigits, isValidCnpj, isValidCpf } from "@/lib/customer-document";
 
 // Sanitiza xNome para atender ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â  regex do SEFAZ: ^([!-ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¹]{1}[ -ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¹]{0,}[!-ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¹]{1}|[!-ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¹]{1})$
 function sanitizeXNome(nome: string | null | undefined): string {
@@ -14,6 +15,7 @@ function sanitizeXNome(nome: string | null | undefined): string {
         .replace(/[^\x20-\xFFÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬-ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¹]/g, "") // remove fora do range vÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡lido
         .replace(/\s+/g, " ")                        // colapsa espaÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§os mÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Âºltiplos
         .trim()
+        .slice(0, 60)
         || "CONSUMIDOR";
 }
 
@@ -31,6 +33,9 @@ type ClienteEnderecoPayload = {
     codigo_municipio?: string | number;
     cep?: string;
     uf?: string;
+    cidade?: string;
+    complemento?: string;
+    inscricao_estadual?: string;
 };
 
 type EmissionPayload = {
@@ -40,6 +45,8 @@ type EmissionPayload = {
     cliente: {
         cpf_cnpj: string;
         nome: string;
+        razao_social?: string;
+        nome_fantasia?: string;
         email?: string;
         endereco?: ClienteEnderecoPayload;
     };
@@ -210,7 +217,7 @@ function buildOutputInvoiceSnapshot(
         valor_total: payload.valor_total,
         emitente_nome: company.razao_social || company.nome_fantasia || null,
         emitente_cnpj: normalizeDocument(company.cnpj || company.cpf_cnpj),
-        destinatario_nome: payload.cliente.nome || null,
+        destinatario_nome: payload.cliente.razao_social || payload.cliente.nome || null,
         destinatario_cnpj: normalizeDocument(payload.cliente.cpf_cnpj),
     };
 }
@@ -743,14 +750,30 @@ export async function emitirNFCe(payload: EmissionPayload) {
                     CRT: Number(company.regime_tributario || "1") // 1 = Simples Nacional
                 },
                 dest: (() => {
-                    const cleanDoc = payload.cliente.cpf_cnpj ? payload.cliente.cpf_cnpj.replace(/\D/g, "") : "";
+                    const cleanDoc = documentDigits(payload.cliente.cpf_cnpj);
                     if (!cleanDoc) return undefined;
+                    if (cleanDoc.length === 14 && !isValidCnpj(cleanDoc)) throw new Error("CNPJ do destinatario invalido.");
+                    if (cleanDoc.length === 11 && !isValidCpf(cleanDoc)) throw new Error("CPF do destinatario invalido.");
+                    if (cleanDoc.length !== 11 && cleanDoc.length !== 14) throw new Error("CPF/CNPJ do destinatario invalido.");
+                    const inscricaoEstadual = documentDigits(payload.cliente.endereco?.inscricao_estadual);
                     return {
-                        CNPJ: cleanDoc.length > 11 ? cleanDoc : undefined,
-                        CPF: cleanDoc.length <= 11 ? cleanDoc : undefined,
-                        xNome: sanitizeXNome(payload.cliente.nome),
-                        indIEDest: 9, // 9 = NÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o Contribuinte
-                        email: payload.cliente.email || undefined
+                        CNPJ: cleanDoc.length === 14 ? cleanDoc : undefined,
+                        CPF: cleanDoc.length === 11 ? cleanDoc : undefined,
+                        xNome: sanitizeXNome(payload.cliente.razao_social || payload.cliente.nome),
+                        indIEDest: inscricaoEstadual ? 1 : 9,
+                        IE: inscricaoEstadual || undefined,
+                        email: payload.cliente.email || undefined,
+                        ...(payload.cliente.endereco?.uf ? { enderDest: {
+                            xLgr: normalizeText(payload.cliente.endereco.logradouro),
+                            nro: normalizeText(payload.cliente.endereco.numero) || 'S/N',
+                            xCpl: normalizeText(payload.cliente.endereco.complemento) || undefined,
+                            xBairro: normalizeText(payload.cliente.endereco.bairro),
+                            cMun: Number(normalizeIbgeCode(payload.cliente.endereco.codigo_municipio)),
+                            xMun: normalizeText(payload.cliente.endereco.cidade),
+                            UF: normalizeText(payload.cliente.endereco.uf).toUpperCase(),
+                            CEP: normalizeDocument(payload.cliente.endereco.cep) || undefined,
+                            cPais: '1058', xPais: 'BRASIL',
+                        }} : {})
                     };
                 })(),
                 det: payload.itens.map((item, index) => ({
@@ -1171,7 +1194,7 @@ export async function emitirNFe(payload: EmissionPayload) {
                     return {
                         CNPJ: destinatarioDoc.length > 11 ? destinatarioDoc : undefined,
                         CPF: destinatarioDoc.length <= 11 ? destinatarioDoc : undefined,
-                        xNome: sanitizeXNome(payload.cliente.nome),
+                        xNome: sanitizeXNome(payload.cliente.razao_social || payload.cliente.nome),
                         indIEDest: 9,
                         email: payload.cliente.email || undefined
                     };
@@ -1456,7 +1479,7 @@ export async function emitirNFSe(payload: EmissionPayload) {
                 toma: {
                     CNPJ: payload.cliente.cpf_cnpj?.length > 11 ? payload.cliente.cpf_cnpj.replace(/\D/g, "") : undefined,
                     CPF: payload.cliente.cpf_cnpj?.length <= 11 ? payload.cliente.cpf_cnpj.replace(/\D/g, "") : undefined,
-                    xNome: sanitizeXNome(payload.cliente.nome),
+                    xNome: sanitizeXNome(payload.cliente.razao_social || payload.cliente.nome),
                     end: payload.cliente.endereco ? {
                         xLgr: payload.cliente.endereco.logradouro,
                         nro: payload.cliente.endereco.numero,

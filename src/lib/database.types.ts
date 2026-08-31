@@ -1018,7 +1018,11 @@ export interface Database {
           id: number
           store_id: number
           full_name: string
+          razao_social: string | null
+          nome_fantasia: string | null
+          person_type: 'PF' | 'PJ'
           cpf: string | null
+          cnpj: string | null
           rg: string | null
           birth_date: string | null
           phone: string | null
@@ -1064,7 +1068,11 @@ export interface Database {
           id?: number
           store_id: number
           full_name: string
+          razao_social?: string | null
+          nome_fantasia?: string | null
+          person_type?: 'PF' | 'PJ'
           cpf?: string | null
+          cnpj?: string | null
           codigo_municipio_ibge?: string | null
           inscricao_estadual?: string | null
           is_spc?: boolean | null
@@ -1075,6 +1083,8 @@ export interface Database {
         Update: {
           id?: number
           full_name?: string
+          razao_social?: string | null
+          nome_fantasia?: string | null
           [key: string]: any
           ranking?: string
         }

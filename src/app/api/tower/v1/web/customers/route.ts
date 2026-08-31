@@ -27,7 +27,7 @@ function getBearerToken(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const parsed = QuerySchema.safeParse(Object.fromEntries(request.nextUrl.searchParams))
   if (!parsed.success) {
-    return NextResponse.json({ success: false, message: 'Informe um nome ou CPF para buscar.' }, { status: 400 })
+    return NextResponse.json({ success: false, message: 'Informe nome, CPF ou CNPJ para buscar.' }, { status: 400 })
   }
 
   const token = getBearerToken(request)
@@ -37,14 +37,16 @@ export async function GET(request: NextRequest) {
   if (!auth.ok) return NextResponse.json({ success: false, message: auth.message }, { status: 401 })
 
   const term = parsed.data.query.replace(/[%_,]/g, '').trim()
-  if (!term) return NextResponse.json({ success: false, message: 'Informe um nome ou CPF para buscar.' }, { status: 400 })
+  if (!term) return NextResponse.json({ success: false, message: 'Informe nome, CPF ou CNPJ para buscar.' }, { status: 400 })
+
+  const documentTerm = term.replace(/\D/g, '')
 
   const { data, error } = await createAdminClient()
     .from('customers')
-    .select('id,full_name,fone_movel,cpf')
+    .select('id,full_name,razao_social,nome_fantasia,fone_movel,person_type,cpf,cnpj')
     .eq('tenant_id', auth.tenantId)
     .eq('store_id', parsed.data.storeId)
-    .or(`full_name.ilike.%${term}%,cpf.ilike.%${term}%`)
+    .or(`full_name.ilike.%${term}%,razao_social.ilike.%${term}%,nome_fantasia.ilike.%${term}%,cpf.ilike.%${documentTerm || term}%,cnpj.ilike.%${documentTerm || term}%`)
     .order('full_name')
     .limit(30)
 

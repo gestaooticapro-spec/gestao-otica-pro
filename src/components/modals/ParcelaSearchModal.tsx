@@ -474,7 +474,7 @@ export default function ParcelaSearchModal({
                                             <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-600/30 group-hover:bg-amber-500 transition-colors" />
                                             <div className="pl-2">
                                                 <p className="font-bold text-slate-200 text-lg group-hover:text-amber-400 transition-colors">{grupo.cliente.full_name}</p>
-                                                <p className="text-xs text-slate-500 font-mono mt-1">CPF: {grupo.cliente.cpf || 'Não informado'}</p>
+                                                <p className="text-xs text-slate-500 font-mono mt-1">{grupo.cliente.person_type === 'PJ' ? 'CNPJ' : 'CPF'}: {grupo.cliente.person_type === 'PJ' ? grupo.cliente.cnpj || 'Não informado' : grupo.cliente.cpf || 'Não informado'}</p>
                                             </div>
                                             <div className="text-right">
                                                 <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Pendente</span>

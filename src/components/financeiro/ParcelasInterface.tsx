@@ -28,7 +28,7 @@ type ParcelaData = {
     data_pagamento: string | null
     customer_id: number
     financiamento_loja?: { venda_id: number, vendas?: { is_historical_import?: boolean } | null }
-    customers?: { full_name: string, cpf: string }
+    customers?: { full_name: string, person_type?: 'PF' | 'PJ', cpf: string, cnpj?: string | null }
     reversible_receipt_operation?: ReversibleReceiptOperation | null
     pix_charge?: {
         status: 'CREATING' | 'PENDING' | 'PAID' | 'EXPIRED' | 'CANCELLED' | 'DIVERGENT' | 'ERROR'
@@ -378,7 +378,7 @@ export default function ParcelasInterface({ storeId, reportMode = false }: { sto
                                         <div className="bg-slate-800/50 border-b border-white/10 px-6 py-4 flex items-center justify-between">
                                             <div>
                                                 <h3 className="text-lg font-bold text-white uppercase tracking-wider">{customer?.full_name || 'Cliente Desconhecido'}</h3>
-                                                <p className="text-xs text-slate-400 font-mono mt-0.5">CPF: {customer?.cpf || 'N/A'}</p>
+                                                <p className="text-xs text-slate-400 font-mono mt-0.5">{customer?.person_type === 'PJ' ? 'CNPJ' : 'CPF'}: {customer?.person_type === 'PJ' ? customer?.cnpj || 'N/A' : customer?.cpf || 'N/A'}</p>
                                             </div>
                                         </div>
                                         

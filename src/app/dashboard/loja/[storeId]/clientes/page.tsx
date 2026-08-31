@@ -15,6 +15,7 @@ import { searchCustomersByName, getCustomerById, fetchDefaultCustomers } from '@
 import { getDependentes, deleteDependente, saveDependente } from '@/lib/actions/dependents.actions';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import CustomerPrescriptionHistoryModal from '@/components/modals/CustomerPrescriptionHistoryModal';
+import { maskCpfCnpj } from '@/lib/customer-document';
 
 type Customer = Database['public']['Tables']['customers']['Row'];
 type Dependente = Database['public']['Tables']['dependentes']['Row'];
@@ -146,6 +147,11 @@ export default function StoreClientPage() {
     const [rg, setRg] = useState('');
     const [cpf, setCpf] = useState('');
     const [isCpfValid, setIsCpfValid] = useState(true);
+    const [personType, setPersonType] = useState<'PF' | 'PJ'>('PF');
+    const [razaoSocial, setRazaoSocial] = useState('');
+    const [nomeFantasia, setNomeFantasia] = useState('');
+    const [cnpj, setCnpj] = useState('');
+    const [inscricaoEstadual, setInscricaoEstadual] = useState('');
     const [birthDate, setBirthDate] = useState('');
     const [naturalidade, setNaturalidade] = useState('');
     const [estadoCivil, setEstadoCivil] = useState('');
@@ -246,6 +252,11 @@ export default function StoreClientPage() {
         else { setDependentesList([]); }
 
         setFullName(currentCustomer?.full_name ?? '');
+        setPersonType(currentCustomer?.person_type === 'PJ' ? 'PJ' : 'PF');
+        setRazaoSocial(currentCustomer?.razao_social ?? (currentCustomer?.person_type === 'PJ' ? currentCustomer?.full_name ?? '' : ''));
+        setNomeFantasia(currentCustomer?.nome_fantasia ?? '');
+        setCnpj(maskCpfCnpj(currentCustomer?.cnpj ?? ''));
+        setInscricaoEstadual(currentCustomer?.inscricao_estadual ?? '');
         setRg(currentCustomer?.rg ?? '');
         const dbCpf = maskCPF(currentCustomer?.cpf ?? '');
         setCpf(dbCpf);
@@ -300,6 +311,7 @@ export default function StoreClientPage() {
         else if (numbersOnly.length === 11) setIsCpfValid(validaCPF(masked));
         else setIsCpfValid(false);
     };
+    const handleCnpjChange = (val: string) => setCnpj(maskCpfCnpj(val));
 
     const handleCepChange = (val: string) => {
         setCep(maskCep(val));
@@ -353,9 +365,14 @@ export default function StoreClientPage() {
 
         // Garantir que TODOS os campos do state sejam enviados,
         // independente de qual aba está ativa (renderização condicional)
-        formData.set('full_name', fullName);
+        formData.set('full_name', personType === 'PJ' ? razaoSocial : fullName);
+        formData.set('person_type', personType);
+        formData.set('razao_social', personType === 'PJ' ? razaoSocial : '');
+        formData.set('nome_fantasia', personType === 'PJ' ? nomeFantasia : '');
         formData.set('rg', rg);
         formData.set('cpf', cpf.replace(/\D/g, ''));
+        formData.set('cnpj', cnpj.replace(/\D/g, ''));
+        formData.set('inscricao_estadual', inscricaoEstadual.replace(/\D/g, ''));
         formData.set('phone', phone.replace(/\D/g, ''));
         formData.set('fone_movel', foneMovel.replace(/\D/g, ''));
         formData.set('email', email);
@@ -504,7 +521,7 @@ export default function StoreClientPage() {
                             type="text"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder="Buscar por nome, CPF..."
+                            placeholder="Buscar por nome, fantasia, CPF ou CNPJ..."
                             className="w-full h-10 pl-10 pr-3 rounded-xl border border-white/10 bg-black/40 shadow-inner text-slate-200 placeholder:text-slate-500 focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50 font-bold text-xs transition-all outline-none group-hover:border-white/20 backdrop-blur-sm"
                         />
                         <Search className="absolute left-3 top-3 h-4 w-4 text-slate-500 group-hover:text-indigo-400 transition-colors" />
@@ -534,12 +551,12 @@ export default function StoreClientPage() {
                             >
                                 <div className="min-w-0 relative z-10">
                                     <p className={`font-bold text-xs truncate ${currentIndex === idx ? 'text-indigo-200' : 'text-slate-300 group-hover:text-white'}`}>
-                                        {c.full_name}
+                                        {c.person_type === 'PJ' ? (c.razao_social || c.full_name) : c.full_name}
                                     </p>
                                     <div className="flex items-center mt-1">
                                         {getRankingBadge(c.ranking)}
                                         <p className="text-[10px] text-slate-500 ml-2 flex items-center gap-1 group-hover:text-slate-400">
-                                            {c.cpf ? `${c.cpf}` : 'Sem CPF'}
+                                            {c.person_type === 'PJ' ? (c.cnpj ? `CNPJ: ${maskCpfCnpj(c.cnpj)}` : 'Sem CNPJ') : (c.cpf ? `CPF: ${maskCpfCnpj(c.cpf)}` : 'Sem CPF')}
                                             {c.obs_debito && <AlertTriangle className="h-3 w-3 text-red-400 ml-1 dropshadow-sm" />}
                                         </p>
                                     </div>
@@ -620,8 +637,8 @@ export default function StoreClientPage() {
                                     {activeTab === 'principal' && (
                                         <div className={cardStyle}>
                                             <AbaPrincipal
-                                                state={{ fullName, cpf, rg, birthDate, faixaEtaria, estadoCivil, rua, numero, bairro, complemento, cidade, uf, cep, phone, foneMovel, email, isCpfValid, obsGeral, isCepLoading, cepMessage }}
-                                                handlers={{ setFullName, handleCpfChange, setRg, setBirthDate, setFaixaEtaria, setEstadoCivil, setRua, setNumero, setBairro, setComplemento, setCidade, setUf, handleCepChange, handleCepLookup, setPhone, setFoneMovel, setEmail, setObsGeral }}
+                                                state={{ fullName, personType, razaoSocial, nomeFantasia, cpf, cnpj, inscricaoEstadual, rg, birthDate, faixaEtaria, estadoCivil, rua, numero, bairro, complemento, cidade, uf, cep, phone, foneMovel, email, isCpfValid, obsGeral, isCepLoading, cepMessage }}
+                                                handlers={{ setFullName, setPersonType, setRazaoSocial, setNomeFantasia, handleCpfChange, handleCnpjChange, setInscricaoEstadual, setRg, setBirthDate, setFaixaEtaria, setEstadoCivil, setRua, setNumero, setBairro, setComplemento, setCidade, setUf, handleCepChange, handleCepLookup, setPhone, setFoneMovel, setEmail, setObsGeral }}
                                                 isSaving={isSaving} inputStyle={inputStyle}
                                             />
                                         </div>
@@ -719,19 +736,25 @@ function AbaPrincipal({ state, handlers, isSaving, inputStyle }: any) {
             <h3 className="col-span-full font-bold text-[10px] text-indigo-400 border-b border-white/5 pb-1 mb-1 uppercase tracking-widest flex items-center gap-2 opacity-80">
                 <div className="h-1 w-1 bg-indigo-500 rounded-full" /> Identificação
             </h3>
-            <div className="col-span-8">
-                <label className={lbl}>Nome Completo *</label>
-                <input name="full_name" type="text" required value={state.fullName} onChange={e => handlers.setFullName(e.target.value)} className={inputStyle} disabled={isSaving} />
+            <div className="col-span-12 flex gap-3 text-xs font-bold text-slate-300">
+                <label><input type="radio" checked={state.personType === 'PF'} onChange={() => handlers.setPersonType('PF')} disabled={isSaving} /> Pessoa física</label>
+                <label><input type="radio" checked={state.personType === 'PJ'} onChange={() => handlers.setPersonType('PJ')} disabled={isSaving} /> Pessoa jurídica</label>
             </div>
+            <div className="col-span-8">
+                <label className={lbl}>{state.personType === 'PJ' ? 'Razao social *' : 'Nome Completo *'}</label>
+                <input name="full_name" type="text" required value={state.personType === 'PJ' ? state.razaoSocial : state.fullName} onChange={e => state.personType === 'PJ' ? handlers.setRazaoSocial(e.target.value) : handlers.setFullName(e.target.value)} className={inputStyle} disabled={isSaving} />
+            </div>
+            {state.personType === 'PJ' && <div className="col-span-8"><label className={lbl}>Nome fantasia</label><input name="nome_fantasia" type="text" value={state.nomeFantasia} onChange={e => handlers.setNomeFantasia(e.target.value)} className={inputStyle} disabled={isSaving} /></div>}
             <div className="col-span-4">
                 <label className={lbl}>Data Nasc.</label>
                 <input name="birth_date" type="date" value={state.birthDate} onChange={e => handlers.setBirthDate(e.target.value)} className={inputStyle} disabled={isSaving} />
             </div>
             <div className="col-span-3 relative">
-                <label className={lbl}>CPF</label>
-                <input name="cpf" type="text" value={state.cpf} onChange={(e) => handlers.handleCpfChange(e.target.value)} className={cpfStyle} disabled={isSaving} />
+                <label className={lbl}>{state.personType === 'PJ' ? 'CNPJ *' : 'CPF'}</label>
+                <input name={state.personType === 'PJ' ? 'cnpj' : 'cpf'} type="text" value={state.personType === 'PJ' ? state.cnpj : state.cpf} onChange={(e) => state.personType === 'PJ' ? handlers.handleCnpjChange(e.target.value) : handlers.handleCpfChange(e.target.value)} className={cpfStyle} disabled={isSaving} />
                 {!state.isCpfValid && <span className="text-[9px] text-red-400 font-bold absolute -bottom-3 right-0 drop-shadow-md">Inválido</span>}
             </div>
+            {state.personType === 'PJ' && <div className="col-span-3"><label className={lbl}>Inscrição estadual</label><input name="inscricao_estadual" type="text" value={state.inscricaoEstadual} onChange={e => handlers.setInscricaoEstadual(e.target.value)} className={inputStyle} disabled={isSaving} /></div>}
             <div className="col-span-3">
                 <label className={lbl}>RG</label>
                 <input name="rg" type="text" value={state.rg} onChange={e => handlers.setRg(e.target.value)} className={inputStyle} disabled={isSaving} />
