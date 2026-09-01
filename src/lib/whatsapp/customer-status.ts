@@ -2612,14 +2612,19 @@ export async function resolveCustomerStatus(
   if (preAiRoute === 'explicit_human_option') {
     return applyOohTrapIfNeeded(async () => {
       await consumeForceAiOverrideIfNeeded()
-      await setCurrentConversationState('awaiting_human', AWAITING_HUMAN_CONTEXT_MS, mergeMetadata(baseMetadata, {
-        selectedOption: '2',
-        ...buildDecisionMetadata({
-          intent: 'human_agent_request',
-          action: 'human_handoff',
-          outboundType: 'human_handoff',
-        }),
-      }))
+      const toolAgentEnabled = isWhatsAppToolAgentEnabled(automationSettings)
+      await setCurrentConversationState(
+        toolAgentEnabled ? 'awaiting_human' : 'human_pause',
+        toolAgentEnabled ? AWAITING_HUMAN_CONTEXT_MS : HUMAN_HANDOFF_PAUSE_MS,
+        mergeMetadata(baseMetadata, {
+          selectedOption: '2',
+          ...buildDecisionMetadata({
+            intent: 'human_agent_request',
+            action: 'human_handoff',
+            outboundType: 'human_handoff',
+          }),
+        })
+      )
       const text = humanHandoffText()
       const outboundPayload = {
         ...buildWhatsAppCanonicalPayload({
@@ -4814,7 +4819,12 @@ export async function markStoreInitiatedConversation(
     if (outboundInsertError) throw outboundInsertError
   }
 
-  await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_ACTIVITY_PAUSE_MS, {
+  const automationSettings = await loadStoreWhatsAppSettings(channel.store_id)
+  const humanPauseMs = isWhatsAppToolAgentEnabled(automationSettings)
+    ? HUMAN_ACTIVITY_PAUSE_MS
+    : HUMAN_HANDOFF_PAUSE_MS
+
+  await setConversationState(channel, normalizedPhone, 'human_pause', humanPauseMs, {
     reason: mirrorOutbound ? 'store_initiated' : 'app_manual_send',
     providerMessageId: providerMessageId || null,
     preview: messageText.slice(0, 160) || null,
