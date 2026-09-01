@@ -1708,6 +1708,30 @@ function shouldSilenceRepeatedStatus(
   return Date.now() - lastCreatedAt < SAME_STATUS_SILENCE_WINDOW_MS
 }
 
+export function isSimpleRepeatedStatusQuestion(messageText: string | null | undefined) {
+  const normalized = normalizeMessage(messageText)
+    .replace(/[^\p{L}\p{N}\s]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!normalized) return false
+
+  const needsNewAnswer = [
+    'quando', 'que dia', 'qual dia', 'previs', 'prazo', 'demora', 'demor',
+    'atras', 'adiant', 'antecip', 'urgente', 'chega', 'retirar', 'retira',
+    'buscar', 'horario', 'endereco', 'valor', 'parcela', 'outro oculos',
+  ].some((term) => normalized.includes(term))
+  if (needsNewAnswer) return false
+
+  return [
+    'meu oculos esta pronto',
+    'meu oculos ta pronto',
+    'como esta meu oculos',
+    'como ta meu oculos',
+    'qual o status do meu oculos',
+    'status do meu oculos',
+  ].includes(normalized)
+}
+
 async function findConversationState(channelId: number, phone: string): Promise<ConversationStateRow | null> {
   const supabase = createAdminClient()
   const phoneVariants = [...getPhoneVariants(phone)]
@@ -1986,7 +2010,10 @@ async function createStatusReply(
   const status = describeOpenOs(customer.full_name, serviceOrder, automationSettings?.os_on_demand?.templates)
   const lastOutbound = await findLastOutboundStatus(channel.id, phone)
 
-  if (shouldSilenceRepeatedStatus(lastOutbound, status.statusCode)) {
+  const lastInboundText = typeof toMetadataRecord(baseMetadata).lastInboundText === 'string'
+    ? String(toMetadataRecord(baseMetadata).lastInboundText)
+    : null
+  if (shouldSilenceRepeatedStatus(lastOutbound, status.statusCode) && isSimpleRepeatedStatusQuestion(lastInboundText)) {
     await setConversationState(channel, phone, 'silent', AFTER_STATUS_SILENCE_MS, mergeMetadata(baseMetadata, {
       reason: 'repeated_status',
       ...buildDecisionMetadata({

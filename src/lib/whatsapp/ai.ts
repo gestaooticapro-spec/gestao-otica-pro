@@ -568,6 +568,7 @@ function buildToolAgentPlanPrompt(input: WhatsAppToolAgentInput) {
     'Se houver pos-venda aguardando feedback e o cliente demonstrar satisfacao, use request_post_sale_rating para iniciar o pedido de nota.',
     'Use record_post_sale_rating apenas quando existir um pos-venda aguardando nota e a mensagem indicar inequivocamente uma nota de 1 a 5. Inclua rating.',
     'Se a mensagem atual tiver CPF, nome ou numero de pedido apos voce ter pedido identificacao, use lookup_open_orders_by_identifier ou lookup_open_installments_by_identifier conforme o assunto anterior.',
+    'Perguntas sobre previsao de conclusao, prazo, atraso ou possibilidade de adiantar um pedido exigem confirmacao humana quando nao houver uma ferramenta com essa data. Use handoff_human; nao invente prazo.',
     'Para duvida ambigua, responda com uma pergunta curta em vez de encaminhar.',
     'Se precisar usar ferramenta, reply_text deve ser null. Se nao precisar, tool_calls deve ser [].',
     input.basePrompt ? `DIRETRIZ DA LOJA: ${input.basePrompt}` : null,
