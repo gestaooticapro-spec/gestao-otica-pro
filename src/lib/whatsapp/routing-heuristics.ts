@@ -28,6 +28,16 @@ export type WhatsAppPreAiRouteDecision =
   | 'ignore_silent'
   | 'continue_to_ai_or_menu'
 
+function normalizeComparableMessage(value: string | null | undefined) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 function asRecord(value: Json | null | undefined): Record<string, Json | undefined> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
   return value as Record<string, Json | undefined>
@@ -155,4 +165,20 @@ export function decidePreAiRoute(input: {
   if (input.option === '1') return 'explicit_status_option'
   if (input.state === 'silent') return 'ignore_silent'
   return 'continue_to_ai_or_menu'
+}
+
+export function continueExperimentalConversationAfterSilent(input: {
+  route: WhatsAppPreAiRouteDecision
+  messageText: string | null
+  metadata: Json | null | undefined
+  toolAgentEnabled: boolean
+}): WhatsAppPreAiRouteDecision {
+  if (!input.toolAgentEnabled || input.route !== 'ignore_silent') return input.route
+
+  const currentMessage = normalizeComparableMessage(input.messageText)
+  const previousMessage = normalizeComparableMessage(readMetadataString(input.metadata, 'lastInboundText'))
+
+  return currentMessage && currentMessage === previousMessage
+    ? 'ignore_silent'
+    : 'continue_to_ai_or_menu'
 }

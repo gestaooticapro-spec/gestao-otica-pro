@@ -4,7 +4,11 @@ import {
   formatWhatsAppPersistedConversationHistory,
   isSimpleRepeatedStatusQuestion,
 } from '../src/lib/whatsapp/customer-status'
-import { decidePreAiRoute } from '../src/lib/whatsapp/routing-heuristics'
+import { detectWhatsAppConversationLanguage } from '../src/lib/whatsapp/ai'
+import {
+  continueExperimentalConversationAfterSilent,
+  decidePreAiRoute,
+} from '../src/lib/whatsapp/routing-heuristics'
 
 test('silencia apenas uma repeticao literal de status', () => {
   assert.equal(isSimpleRepeatedStatusQuestion('Como t\u00e1 meu \u00f3culos?'), true)
@@ -42,4 +46,33 @@ test('recupera contexto da equipe e de comprovante sem confirmar a baixa', () =>
     'sistema: Uma imagem enviada pelo cliente foi identificada como possivel comprovante de pagamento. A baixa precisa ser confirmada no sistema.',
     'equipe: Esta tudo certo, vou dar baixa na parcela.',
   ])
+})
+
+test('modo experimental libera pergunta nova durante silencio de status', () => {
+  const metadata = { lastInboundText: 'Como esta meu oculos?' }
+
+  assert.equal(continueExperimentalConversationAfterSilent({
+    route: 'ignore_silent',
+    messageText: 'E minhas parcelas?',
+    metadata,
+    toolAgentEnabled: true,
+  }), 'continue_to_ai_or_menu')
+  assert.equal(continueExperimentalConversationAfterSilent({
+    route: 'ignore_silent',
+    messageText: 'Como esta meu oculos?',
+    metadata,
+    toolAgentEnabled: true,
+  }), 'ignore_silent')
+  assert.equal(continueExperimentalConversationAfterSilent({
+    route: 'ignore_silent',
+    messageText: 'E minhas parcelas?',
+    metadata,
+    toolAgentEnabled: false,
+  }), 'ignore_silent')
+})
+
+test('detecta ingles e espanhol para resposta da IAra', () => {
+  assert.equal(detectWhatsAppConversationLanguage('Hello, where are my glasses?'), 'en')
+  assert.equal(detectWhatsAppConversationLanguage('Hola, ¿dónde están mis gafas?'), 'es')
+  assert.equal(detectWhatsAppConversationLanguage('Oi, como esta meu oculos?'), 'pt-BR')
 })

@@ -307,6 +307,8 @@ type ProviderAttemptFailure = {
   error: string
 }
 
+export type WhatsAppConversationLanguage = 'pt-BR' | 'es' | 'en'
+
 type GeminiResponseWithUsage = {
   usageMetadata?: unknown
 }
@@ -318,6 +320,23 @@ function normalizeWhitespace(value: string | null | undefined) {
   return String(value || '')
     .replace(/\r/g, '')
     .trim()
+}
+
+export function detectWhatsAppConversationLanguage(
+  messageText: string | null | undefined,
+  conversationHistory: string[] = []
+): WhatsAppConversationLanguage {
+  const current = normalizeWhitespace(messageText).toLowerCase()
+  const history = conversationHistory.slice(-3).join(' ').toLowerCase()
+  const sample = current || history
+
+  if (/\b(hello|hi|thanks|thank you|please|glasses|order|installment|payment|where is|when will)\b/.test(sample)) {
+    return 'en'
+  }
+  if (/\b(hola|gracias|por favor|gafas|cuota|donde|cu[aá]ndo|todav[ií]a)\b/.test(sample)) {
+    return 'es'
+  }
+  return 'pt-BR'
 }
 
 function nextRoundRobinOrder(size: number, cursor: number) {
@@ -569,6 +588,7 @@ function buildToolAgentPlanPrompt(input: WhatsAppToolAgentInput) {
     'Quando pendingHumanHandoff for true, a solicitacao ja foi encaminhada, mas nenhum membro da equipe respondeu ainda. Reconheca uma cobranca de retorno, reforce o encaminhamento e continue respondendo duvidas que as ferramentas conseguem resolver. Nao se apresente novamente.',
     'O historico pode conter mensagens da equipe e eventos de anexos. Use essas mensagens para entender o assunto e, ao menciona-las, atribua a informacao a equipe. Nunca trate uma mensagem humana como confirmacao do estado atual de OS ou parcela: para confirmar, consulte a ferramenta correspondente.',
     'Um evento de imagem identificada como possivel comprovante indica apenas que houve analise inicial; nao confirme baixa de parcela sem consultar o sistema.',
+    'Quando responder diretamente ao cliente, use o idioma predominante da mensagem atual. Use o historico somente se a mensagem atual for curta ou ambigua. Se nao houver idioma claro, responda em portugues do Brasil.',
     'Se houver pos-venda aguardando feedback e o cliente demonstrar satisfacao, use request_post_sale_rating para iniciar o pedido de nota.',
     'Use record_post_sale_rating apenas quando existir um pos-venda aguardando nota e a mensagem indicar inequivocamente uma nota de 1 a 5. Inclua rating.',
     'Se a mensagem atual tiver CPF, nome ou numero de pedido apos voce ter pedido identificacao, use lookup_open_orders_by_identifier ou lookup_open_installments_by_identifier conforme o assunto anterior.',
@@ -605,7 +625,7 @@ function buildToolAgentPlanPrompt(input: WhatsAppToolAgentInput) {
 function buildToolAgentReplyPrompt(input: WhatsAppToolAgentInput, toolResults: unknown[]) {
   return [
     'Voce e a IA de atendimento de uma otica. Responda SOMENTE em JSON valido.',
-    'Responda ao cliente em portugues do Brasil, com naturalidade e de forma objetiva.',
+    'Responda no idioma predominante da mensagem atual do cliente. Use o historico somente se a mensagem atual for curta ou ambigua; se nao houver idioma claro, use portugues do Brasil. Seja natural e objetivo.',
     'Use exclusivamente os fatos fornecidos pelos resultados das ferramentas para afirmar o estado atual de pedidos e parcelas. Se o historico registrar uma informacao da equipe, voce pode cita-la como "a equipe informou", sem transforma-la em confirmacao atual.',
     'Quando uma ferramenta informar que nao encontrou dados ou que o assunto nao e atendido, explique isso com gentileza e, se fizer sentido, faca uma pergunta curta.',
     'Se houver handoff_human nos resultados, nao fale de limitacoes tecnicas, acesso a dados ou seguranca. A transicao sera apresentada como continuidade do atendimento da otica.',

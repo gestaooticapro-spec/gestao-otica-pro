@@ -12,6 +12,7 @@ import {
   humanizeWhatsAppReply,
   generateWhatsAppFallbackReply,
   extractReceiptWithVision,
+  detectWhatsAppConversationLanguage,
   type WhatsAppReceiptExtraction,
   type WhatsAppIntentClassification,
   type WhatsAppAiResult,
@@ -26,7 +27,11 @@ import {
   buildWhatsAppCanonicalPayload,
   extractWhatsAppCanonicalReply,
 } from './canonical'
-import { decidePreAiRoute, shouldReleaseClosedTrapPause } from './routing-heuristics'
+import {
+  continueExperimentalConversationAfterSilent,
+  decidePreAiRoute,
+  shouldReleaseClosedTrapPause,
+} from './routing-heuristics'
 import { decidePostClassificationRoute, type WhatsAppPostClassificationDecision } from './flow-decisions'
 import {
   applyWhatsAppHumanizationOutcome,
@@ -380,12 +385,29 @@ function humanHandoffText() {
   return 'Certo. Vou deixar a conversa para nossa equipe continuar o atendimento por aqui.'
 }
 
-function iaraHandoffText(storeName: string | null | undefined, introduce = true) {
+function iaraHandoffText(
+  storeName: string | null | undefined,
+  introduce = true,
+  language = detectWhatsAppConversationLanguage(null)
+) {
+  const storeLabel = normalizeDisplayText(storeName)
+
+  if (language === 'es') {
+    return introduce
+      ? `Soy IAra, la asistente virtual de ${storeLabel || 'la óptica'}. Voy a derivar tu solicitud a nuestro equipo para continuar la atención por aquí.`
+      : 'Tu solicitud sigue derivada a nuestro equipo. Voy a reforzar la atención para que puedan continuar.'
+  }
+
+  if (language === 'en') {
+    return introduce
+      ? `I am IAra, the virtual assistant for ${storeLabel || 'the optical store'}. I will forward your request to our team to continue assisting you here.`
+      : 'Your request is still with our team. I will reinforce it so they can continue assisting you.'
+  }
+
   if (!introduce) {
     return 'Sua solicitação continua encaminhada para nossa equipe. Vou reforçar o atendimento por aqui para darem continuidade.'
   }
 
-  const storeLabel = normalizeDisplayText(storeName)
   const identity = storeLabel
     ? `Eu sou a IAra, assistente virtual da ${storeLabel}.`
     : 'Eu sou a IAra, assistente virtual da ótica.'
@@ -2695,14 +2717,19 @@ export async function resolveCustomerStatus(
     })
   }
 
-  const preAiRoute = decidePreAiRoute({
-    option,
-    state: effectiveState ?? null,
-    hasAttachment: inboundPayloadMeta.hasAttachment,
+  const preAiRoute = continueExperimentalConversationAfterSilent({
+    route: decidePreAiRoute({
+      option,
+      state: effectiveState ?? null,
+      hasAttachment: inboundPayloadMeta.hasAttachment,
+      messageText: effectiveMessageText,
+      metadata: state?.metadata,
+      humanHandoffWindowMs: ATTACHMENT_HANDOFF_MS,
+      identifierWindowMs: IDENTIFIER_WAIT_MS,
+    }),
     messageText: effectiveMessageText,
     metadata: state?.metadata,
-    humanHandoffWindowMs: ATTACHMENT_HANDOFF_MS,
-    identifierWindowMs: IDENTIFIER_WAIT_MS,
+    toolAgentEnabled: isWhatsAppToolAgentEnabled(automationSettings),
   })
 
   if (preAiRoute === 'explicit_human_option') {
@@ -3020,7 +3047,13 @@ export async function resolveCustomerStatus(
     if (toolAgent.success && toolAgent.replyText) {
       await consumeForceAiOverrideIfNeeded()
       const handedOff = toolAgent.toolCalls.some((call) => call.name === 'handoff_human')
-      const replyText = handedOff ? iaraHandoffText(storeProfile.name, state?.state !== 'awaiting_human') : toolAgent.replyText
+      const replyText = handedOff
+        ? iaraHandoffText(
+          storeProfile.name,
+          state?.state !== 'awaiting_human',
+          detectWhatsAppConversationLanguage(effectiveMessageText, aiReplyContext.conversationHistory)
+        )
+        : toolAgent.replyText
       const ratingRecorded = toolAgent.toolCalls.some((call) => call.name === 'record_post_sale_rating')
         && toolAgent.toolResults.some((result) => result.tool === 'record_post_sale_rating' && result.ok)
       const ratingRequested = toolAgent.toolCalls.some((call) => call.name === 'request_post_sale_rating')
@@ -4397,15 +4430,20 @@ export async function simulateCustomerStatus(
     }
   }
 
-  const preAiRoute = decidePreAiRoute({
-    option,
-    state: effectiveState ?? null,
-    hasAttachment: inboundPayloadMeta.hasAttachment,
+  const preAiRoute = continueExperimentalConversationAfterSilent({
+    route: decidePreAiRoute({
+      option,
+      state: effectiveState ?? null,
+      hasAttachment: inboundPayloadMeta.hasAttachment,
+      messageText: effectiveMessageText,
+      metadata: routingState?.metadata,
+      isStoreOpenNow: hoursFacts?.is_open_now === true,
+      humanHandoffWindowMs: ATTACHMENT_HANDOFF_MS,
+      identifierWindowMs: IDENTIFIER_WAIT_MS,
+    }),
     messageText: effectiveMessageText,
     metadata: routingState?.metadata,
-    isStoreOpenNow: hoursFacts?.is_open_now === true,
-    humanHandoffWindowMs: ATTACHMENT_HANDOFF_MS,
-    identifierWindowMs: IDENTIFIER_WAIT_MS,
+    toolAgentEnabled: isWhatsAppToolAgentEnabled(automationSettings),
   })
 
   if (isExceptionalClosure) {
