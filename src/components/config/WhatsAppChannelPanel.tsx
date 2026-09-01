@@ -452,6 +452,7 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
         storeId,
         enabled: aiResponderSettings.enabled,
         prompt: aiResponderSettings.prompt,
+        toolsEnabled: aiResponderSettings.tools_enabled,
       })
 
       if (result.success) {
@@ -476,6 +477,7 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
         storeId,
         enabled,
         prompt: nextSettings.prompt,
+        toolsEnabled: nextSettings.tools_enabled,
       })
 
       if (result.success) {
@@ -1083,6 +1085,24 @@ export default function WhatsAppChannelPanel({ storeId }: { storeId: number }) {
                   className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm leading-relaxed text-slate-200 outline-none transition focus:border-cyan-300/40 focus:ring-2 focus:ring-cyan-300/10"
                 />
               </div>
+
+              <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-amber-300/20 bg-amber-400/[0.07] p-4">
+                <input
+                  type="checkbox"
+                  checked={aiResponderSettings.tools_enabled}
+                  onChange={(event) => {
+                    const toolsEnabled = event.target.checked
+                    setAiResponderSettings((current) => current ? { ...current, tools_enabled: toolsEnabled } : current)
+                  }}
+                  className="mt-0.5 h-5 w-5 rounded border-white/20 bg-slate-900 text-amber-400 focus:ring-amber-400"
+                />
+                <span>
+                  <span className="block text-xs font-black text-amber-100">Modo experimental: IA consulta o sistema</span>
+                  <span className="mt-1 block text-[11px] leading-relaxed text-slate-300">
+                    A IA pode consultar pedidos, parcelas e informacoes da loja para continuar a conversa quando o cliente mudar de assunto. Acoes sensiveis continuam validadas pelo sistema.
+                  </span>
+                </span>
+              </label>
 
               <div className="mt-4 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <p className="text-[11px] leading-relaxed text-slate-400">

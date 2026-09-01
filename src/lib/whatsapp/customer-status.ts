@@ -40,6 +40,11 @@ import {
 } from './post-sale-followup'
 import { concludePostSaleFromWhatsApp, recordPostSaleInteraction } from './post-sales'
 import {
+  runWhatsAppToolAgent,
+  type WhatsAppToolCall,
+  type WhatsAppToolResult,
+} from './tool-agent'
+import {
   buildWhatsAppStatusContextLine,
   findWhatsAppStatusPublication,
 } from './status-publications'
@@ -160,7 +165,7 @@ type PersistentPostSaleMemory = {
 }
 
 type WhatsAppAiDiagnostic = {
-  task: 'intent_classification' | 'post_sale_rating_resolution' | 'reply_humanization' | 'fallback_reply' | 'receipt_extraction'
+  task: 'intent_classification' | 'post_sale_rating_resolution' | 'reply_humanization' | 'fallback_reply' | 'receipt_extraction' | 'tool_agent_plan' | 'tool_agent_reply'
   success: boolean
   provider: string
   model: string
@@ -1476,6 +1481,11 @@ async function findExactInstallmentMatchByReceipt(
 }
 
 async function findLatestOpenOs(storeId: number, customerId: number): Promise<OpenOsRow | null> {
+  const orders = await findOpenOsForCustomer(storeId, customerId, 1)
+  return orders[0] ?? null
+}
+
+async function findOpenOsForCustomer(storeId: number, customerId: number, limit = 5): Promise<OpenOsRow[]> {
   const supabase = createAdminClient()
   const { data, error } = await (supabase.from('service_orders') as any)
     .select(`
@@ -1491,21 +1501,18 @@ async function findLatestOpenOs(storeId: number, customerId: number): Promise<Op
     .eq('customer_id', customerId)
     .is('dt_entregue_em', null)
     .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+    .limit(Math.max(1, Math.min(limit, 10)))
 
   if (error) throw error
-  if (!data) return null
-
-  return {
-    id: data.id,
-    created_at: data.created_at,
-    dependente_name: data.dependentes?.full_name ?? null,
-    dt_pedido_em: data.dt_pedido_em,
-    dt_lente_chegou: data.dt_lente_chegou,
-    dt_montado_em: data.dt_montado_em,
-    armacao_com_cliente: data.armacao_com_cliente ?? false,
-  }
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    created_at: row.created_at,
+    dependente_name: row.dependentes?.full_name ?? null,
+    dt_pedido_em: row.dt_pedido_em,
+    dt_lente_chegou: row.dt_lente_chegou,
+    dt_montado_em: row.dt_montado_em,
+    armacao_com_cliente: row.armacao_com_cliente ?? false,
+  }))
 }
 
 async function findOpenOsByNumber(storeId: number, value: string): Promise<{ customer: CustomerRow; serviceOrder: OpenOsRow } | null> {
@@ -1619,6 +1626,10 @@ function isWhatsAppAutomationEnabled(settings: StoreSettings['whatsapp_automatio
 
 function isWhatsAppAiResponderEnabled(settings: StoreSettings['whatsapp_automation'] | undefined) {
   return settings?.ai_responder?.enabled === true
+}
+
+function isWhatsAppToolAgentEnabled(settings: StoreSettings['whatsapp_automation'] | undefined) {
+  return settings?.ai_responder?.enabled === true && settings.ai_responder?.tools_enabled === true
 }
 
 async function findLastOutboundStatus(channelId: number, phone: string): Promise<LastOutboundStatusRow | null> {
@@ -2704,6 +2715,171 @@ export async function resolveCustomerStatus(
         }),
       })
     })
+  }
+
+  // O agente com ferramentas fica depois das protecoes obrigatorias (anexo,
+  // handoff humano e Status sem contexto), mas antes dos fluxos legados. Assim
+  // uma campanha ativa deixa de prender a conversa em um unico assunto.
+  if (isWhatsAppToolAgentEnabled(automationSettings)) {
+    const toolPostSaleContext = livePostSaleContext ?? recoveredPostSaleContext
+    const toolAgent = await runWhatsAppToolAgent({
+      assistant: {
+        messageText: effectiveMessageText || '',
+        conversationHistory: aiReplyContext.conversationHistory,
+        recentContext,
+        storeName: storeProfile.name,
+        basePrompt: automationSettings?.ai_responder?.prompt || null,
+        pendingPostSale: toolPostSaleContext?.postSalesId
+          ? { postSalesId: toolPostSaleContext.postSalesId, stage: toolPostSaleContext.stage }
+          : null,
+      },
+      executeTool: async (call: WhatsAppToolCall): Promise<WhatsAppToolResult> => {
+        if (call.name === 'lookup_open_orders') {
+          const customer = await findCustomerByPhone(channel.store_id, normalizedPhone)
+          if (!customer) return { tool: call.name, ok: false, data: { code: 'customer_not_found' } }
+
+          const orders = await findOpenOsForCustomer(channel.store_id, customer.id)
+          const settings = await loadStoreWhatsAppSettings(channel.store_id)
+          return {
+            tool: call.name,
+            ok: true,
+            data: {
+              customerName: customer.full_name,
+              orders: orders.map((order) => {
+                const status = describeOpenOs(customer.full_name, order, settings?.os_on_demand?.templates)
+                return {
+                  patientName: order.dependente_name,
+                  status: status.statusCode,
+                  statusText: status.replyText,
+                }
+              }),
+            },
+          }
+        }
+
+        if (call.name === 'lookup_open_installments') {
+          const installments = await findOpenInstallmentsByPhone(channel.store_id, normalizedPhone)
+          return {
+            tool: call.name,
+            ok: true,
+            data: {
+              installments: installments.slice(0, 6).map((installment: PaymentInstallmentMatch) => ({
+                dueDate: installment.due_date || null,
+                amount: installment.amount || null,
+                customerName: installment.customer_name || null,
+              })),
+            },
+          }
+        }
+
+        if (call.name === 'lookup_store_information') {
+          return {
+            tool: call.name,
+            ok: true,
+            data: {
+              hours: buildStoreHoursText(storeProfile),
+              address: buildStoreLocationReply(storeProfile),
+            },
+          }
+        }
+
+        if (call.name === 'get_post_sale_status') {
+          return {
+            tool: call.name,
+            ok: Boolean(toolPostSaleContext?.postSalesId),
+            data: toolPostSaleContext?.postSalesId
+              ? { status: toolPostSaleContext.stage || 'unknown', awaitingRating: toolPostSaleContext.stage === 'awaiting_rating' }
+              : { code: 'no_active_post_sale' },
+          }
+        }
+
+        if (call.name === 'request_post_sale_rating') {
+          if (!toolPostSaleContext?.postSalesId || toolPostSaleContext.stage !== 'awaiting_feedback') {
+            return { tool: call.name, ok: false, data: { code: 'no_feedback_pending' } }
+          }
+          await recordPostSaleInteractionIfPossible({
+            channel,
+            postSaleContext: toolPostSaleContext,
+            summary: 'Cliente respondeu positivamente ao acompanhamento automatico e recebeu pedido de nota.',
+            dedupe: true,
+          })
+          return {
+            tool: call.name,
+            ok: true,
+            data: { awaitingRating: true, ratingQuestion: postSaleRatingPromptText() },
+          }
+        }
+
+        if (call.name === 'record_post_sale_rating') {
+          if (!toolPostSaleContext?.postSalesId || toolPostSaleContext.stage !== 'awaiting_rating' || !call.rating) {
+            return { tool: call.name, ok: false, data: { code: 'no_rating_pending' } }
+          }
+
+          await concludePostSaleFromWhatsApp({
+            tenantId: channel.tenant_id,
+            storeId: channel.store_id,
+            postSalesId: toolPostSaleContext.postSalesId,
+            rating: call.rating,
+          })
+          return { tool: call.name, ok: true, data: { rating: call.rating, recorded: true } }
+        }
+
+        if (call.name === 'handoff_human') {
+          return { tool: call.name, ok: true, data: { handedOff: true } }
+        }
+
+        return { tool: call.name, ok: false, data: { code: 'tool_not_available' } }
+      },
+    })
+
+    for (let index = 0; index < toolAgent.aiResults.length; index += 1) {
+      await recordAiResult(index === 0 ? 'tool_agent_plan' : 'tool_agent_reply', toolAgent.aiResults[index])
+    }
+
+    if (toolAgent.success && toolAgent.replyText) {
+      await consumeForceAiOverrideIfNeeded()
+      const handedOff = toolAgent.toolCalls.some((call) => call.name === 'handoff_human')
+      const ratingRecorded = toolAgent.toolCalls.some((call) => call.name === 'record_post_sale_rating')
+        && toolAgent.toolResults.some((result) => result.tool === 'record_post_sale_rating' && result.ok)
+      const ratingRequested = toolAgent.toolCalls.some((call) => call.name === 'request_post_sale_rating')
+        && toolAgent.toolResults.some((result) => result.tool === 'request_post_sale_rating' && result.ok)
+      const nextPostSaleContext = ratingRecorded && toolPostSaleContext
+        ? { ...toolPostSaleContext, stage: 'completed' }
+        : ratingRequested && toolPostSaleContext
+          ? { ...toolPostSaleContext, stage: 'awaiting_rating', ratingPromptCount: 1 }
+          : toolPostSaleContext
+      const nextState: ConversationState = handedOff ? 'human_pause' : 'ai_session'
+      const timeout = handedOff ? HUMAN_HANDOFF_PAUSE_MS : AI_SESSION_MS
+      const action = handedOff ? 'human_handoff' : ratingRecorded ? 'post_sale_rating_recorded' : ratingRequested ? 'post_sale_rating_requested' : 'ai_tool_reply'
+      const outboundType = handedOff ? 'human_handoff' : 'ai_tool_assistant'
+      const metadata = appendAiSessionMessage(mergeMetadata(baseMetadata, {
+        reason: action,
+        postSaleContext: nextPostSaleContext as unknown as Json,
+        aiToolCalls: toolAgent.toolCalls as unknown as Json,
+        aiToolResults: toolAgent.toolResults as unknown as Json,
+        ...buildDecisionMetadata({
+          intent: handedOff ? 'human_agent_request' : 'unknown',
+          confidence: null,
+          action,
+          outboundType,
+        }),
+      }), 'assistant', toolAgent.replyText)
+      await setCurrentConversationState(nextState, timeout, metadata)
+      return withAiDiagnostics(await createOutbound(channel, inbound.id, normalizedPhone, toolAgent.replyText, outboundType, {
+        ...buildWhatsAppCanonicalPayload({
+          intent: handedOff ? 'human_agent_request' : 'unknown',
+          action,
+          outboundType,
+          canonicalReply: toolAgent.replyText,
+          facts: {
+            usedTools: toolAgent.toolCalls.map((call) => call.name).join(','),
+            ratingRecorded,
+          },
+        }),
+        aiToolCalls: toolAgent.toolCalls as unknown as Json,
+        aiToolResults: toolAgent.toolResults as unknown as Json,
+      }, inbound.id))
+    }
   }
 
   if (preAiRoute === 'retry_identifier_lookup') {

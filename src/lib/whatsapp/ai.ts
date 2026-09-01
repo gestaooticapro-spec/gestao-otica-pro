@@ -62,7 +62,7 @@ export type WhatsAppIntent = (typeof WHATSAPP_INTENTS)[number]
 export type WhatsAppReasoningTag = (typeof WHATSAPP_REASONING_TAGS)[number]
 export type WhatsAppReplyTone = (typeof WHATSAPP_TONES)[number]
 export type WhatsAppAiProvider = 'gemini' | 'openai'
-export type WhatsAppAiTask = 'intent_classification' | 'post_sale_rating_resolution' | 'reply_humanization' | 'fallback_reply' | 'receipt_extraction'
+export type WhatsAppAiTask = 'intent_classification' | 'post_sale_rating_resolution' | 'reply_humanization' | 'fallback_reply' | 'receipt_extraction' | 'tool_agent_plan' | 'tool_agent_reply'
 
 export type WhatsAppAiTokenUsage = {
   inputTokens: number | null
@@ -121,6 +121,32 @@ export const WhatsAppReceiptExtractionSchema = z.object({
   receiver_name: z.string().trim().nullable(),
 })
 
+const WhatsAppToolNameSchema = z.enum([
+  'lookup_open_orders',
+  'lookup_open_installments',
+  'lookup_store_information',
+  'get_post_sale_status',
+  'request_post_sale_rating',
+  'record_post_sale_rating',
+  'handoff_human',
+])
+
+export const WhatsAppToolAgentPlanSchema = z.object({
+  tool_calls: z.array(z.object({
+    name: WhatsAppToolNameSchema,
+    rating: z.number().int().min(1).max(5).nullable().optional(),
+  })).max(3),
+  reply_text: z.string().trim().max(800).nullable(),
+})
+
+export const WhatsAppToolAgentReplySchema = z.object({
+  reply_text: z.string().trim().min(1).max(1200),
+})
+
+export type WhatsAppToolName = z.infer<typeof WhatsAppToolNameSchema>
+export type WhatsAppToolAgentPlan = z.infer<typeof WhatsAppToolAgentPlanSchema>
+export type WhatsAppToolAgentReply = z.infer<typeof WhatsAppToolAgentReplySchema>
+
 export type WhatsAppReceiptExtraction = z.infer<typeof WhatsAppReceiptExtractionSchema>
 
 export type WhatsAppIntentClassificationInput = {
@@ -172,6 +198,18 @@ export type WhatsAppFallbackReplyInput = {
   userMessageText: string
   conversationHistory?: string[]
   storeName?: string | null
+}
+
+export type WhatsAppToolAgentInput = {
+  messageText: string
+  conversationHistory?: string[]
+  recentContext?: string[]
+  storeName?: string | null
+  basePrompt?: string | null
+  pendingPostSale?: {
+    postSalesId?: number | null
+    stage?: string | null
+  } | null
 }
 
 export type WhatsAppAiFailure = {
@@ -435,6 +473,77 @@ function buildFallbackReplyPrompt(input: WhatsAppFallbackReplyInput) {
     'MENSAGEM DO CLIENTE:',
     input.userMessageText,
   ].join('\n')
+}
+
+function toolAgentHistory(input: WhatsAppToolAgentInput) {
+  return (input.conversationHistory || [])
+    .map((line) => normalizeWhitespace(line))
+    .filter(Boolean)
+    .slice(-12)
+}
+
+function buildToolAgentPlanPrompt(input: WhatsAppToolAgentInput) {
+  const conversationHistory = toolAgentHistory(input)
+  const recentContext = (input.recentContext || [])
+    .map((line) => normalizeWhitespace(line))
+    .filter(Boolean)
+    .slice(0, 10)
+
+  return [
+    'Voce e a IA de atendimento de uma otica e decide quando consultar o sistema interno.',
+    'Responda SOMENTE em JSON valido.',
+    'Nao invente dados sobre pedidos, pagamentos, horarios, endereco, receita, produtos ou politicas.',
+    'Use ferramentas quando precisar de fatos do sistema. A ferramenta recebe o telefone e a loja de forma segura; nao inclua CPF, telefone ou IDs nos argumentos.',
+    'Se o assunto nao for atendido pela otica (por exemplo, flores), nao use ferramenta e responda de forma gentil que nao possui essa informacao, oferecendo ajuda com assuntos da otica.',
+    'Use handoff_human somente se o cliente pedir claramente uma pessoa, apresentar reclamacao/adaptacao ruim, ou se a situacao exigir analise humana.',
+    'Se houver pos-venda aguardando feedback e o cliente demonstrar satisfacao, use request_post_sale_rating para iniciar o pedido de nota.',
+    'Use record_post_sale_rating apenas quando existir um pos-venda aguardando nota e a mensagem indicar inequivocamente uma nota de 1 a 5. Inclua rating.',
+    'Para duvida ambigua, responda com uma pergunta curta em vez de encaminhar.',
+    'Se precisar usar ferramenta, reply_text deve ser null. Se nao precisar, tool_calls deve ser [].',
+    input.basePrompt ? `DIRETRIZ DA LOJA: ${input.basePrompt}` : null,
+    '',
+    'FERRAMENTAS:',
+    'lookup_open_orders: consulta os oculos/pedidos em aberto do titular.',
+    'lookup_open_installments: consulta parcelas em aberto do titular.',
+    'lookup_store_information: consulta horario e endereco da loja.',
+    'get_post_sale_status: consulta o acompanhamento de pos-venda ativo.',
+    'request_post_sale_rating: registra a resposta positiva e pede uma nota de 1 a 5.',
+    'record_post_sale_rating: registra uma nota validada de 1 a 5 no pos-venda pendente.',
+    'handoff_human: encaminha para a equipe humana.',
+    '',
+    'CONTEXTO:',
+    JSON.stringify({
+      storeName: input.storeName || null,
+      recentContext,
+      pendingPostSale: input.pendingPostSale || null,
+      conversationHistory,
+    }),
+    '',
+    'MENSAGEM ATUAL:',
+    input.messageText,
+  ].filter((line): line is string => line !== null).join('\n')
+}
+
+function buildToolAgentReplyPrompt(input: WhatsAppToolAgentInput, toolResults: unknown[]) {
+  return [
+    'Voce e a IA de atendimento de uma otica. Responda SOMENTE em JSON valido.',
+    'Responda ao cliente em portugues do Brasil, com naturalidade e de forma objetiva.',
+    'Use exclusivamente os fatos fornecidos pelos resultados das ferramentas. Nao invente informacoes.',
+    'Quando uma ferramenta informar que nao encontrou dados ou que o assunto nao e atendido, explique isso com gentileza e, se fizer sentido, faca uma pergunta curta.',
+    'Nao mencione ferramentas, banco de dados, sistema interno, IDs ou regras internas.',
+    input.basePrompt ? `DIRETRIZ DA LOJA: ${input.basePrompt}` : null,
+    '',
+    'CONTEXTO:',
+    JSON.stringify({
+      storeName: input.storeName || null,
+      pendingPostSale: input.pendingPostSale || null,
+      conversationHistory: toolAgentHistory(input),
+      toolResults,
+    }),
+    '',
+    'MENSAGEM ATUAL:',
+    input.messageText,
+  ].filter((line): line is string => line !== null).join('\n')
 }
 
 async function callGemini(task: WhatsAppAiTask, prompt: string): Promise<ProviderAttemptSuccess | ProviderAttemptFailure> {
@@ -704,6 +813,27 @@ export async function generateWhatsAppFallbackReply(
     'fallback_reply',
     buildFallbackReplyPrompt(input),
     WhatsAppReplyHumanizationSchema
+  )
+}
+
+export async function planWhatsAppToolAgent(
+  input: WhatsAppToolAgentInput
+): Promise<WhatsAppAiResult<WhatsAppToolAgentPlan>> {
+  return executeStructuredTask(
+    'tool_agent_plan',
+    buildToolAgentPlanPrompt(input),
+    WhatsAppToolAgentPlanSchema
+  )
+}
+
+export async function writeWhatsAppToolAgentReply(
+  input: WhatsAppToolAgentInput,
+  toolResults: unknown[]
+): Promise<WhatsAppAiResult<WhatsAppToolAgentReply>> {
+  return executeStructuredTask(
+    'tool_agent_reply',
+    buildToolAgentReplyPrompt(input, toolResults),
+    WhatsAppToolAgentReplySchema
   )
 }
 
