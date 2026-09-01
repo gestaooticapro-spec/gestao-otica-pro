@@ -2757,6 +2757,26 @@ export async function resolveCustomerStatus(
           }
         }
 
+        if (call.name === 'lookup_open_orders_by_identifier') {
+          const result = await findOpenOsByIdentifier(channel.store_id, effectiveMessageText || undefined)
+          if (!result) return { tool: call.name, ok: false, data: { code: 'order_not_found_for_identifier' } }
+
+          const settings = await loadStoreWhatsAppSettings(channel.store_id)
+          const status = describeOpenOs(result.customer.full_name, result.serviceOrder, settings?.os_on_demand?.templates)
+          return {
+            tool: call.name,
+            ok: true,
+            data: {
+              customerName: result.customer.full_name,
+              orders: [{
+                patientName: result.serviceOrder.dependente_name,
+                status: status.statusCode,
+                statusText: status.replyText,
+              }],
+            },
+          }
+        }
+
         if (call.name === 'lookup_open_installments') {
           const installments = await findOpenInstallmentsByPhone(channel.store_id, normalizedPhone)
           return {
@@ -2767,6 +2787,23 @@ export async function resolveCustomerStatus(
                 dueDate: installment.due_date || null,
                 amount: installment.amount || null,
                 customerName: installment.customer_name || null,
+              })),
+            },
+          }
+        }
+
+        if (call.name === 'lookup_open_installments_by_identifier') {
+          const result = await findOpenInstallmentsByIdentifier(channel.store_id, effectiveMessageText || undefined)
+          if (!result) return { tool: call.name, ok: false, data: { code: 'installments_not_found_for_identifier' } }
+
+          return {
+            tool: call.name,
+            ok: true,
+            data: {
+              installments: result.installments.slice(0, 6).map((installment: PaymentInstallmentMatch) => ({
+                dueDate: installment.due_date || null,
+                amount: installment.amount || null,
+                customerName: installment.customer_name || result.customer.full_name,
               })),
             },
           }

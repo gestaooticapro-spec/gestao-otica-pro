@@ -121,15 +121,85 @@ export const WhatsAppReceiptExtractionSchema = z.object({
   receiver_name: z.string().trim().nullable(),
 })
 
-const WhatsAppToolNameSchema = z.enum([
+const WHATSAPP_TOOL_NAMES = [
   'lookup_open_orders',
+  'lookup_open_orders_by_identifier',
   'lookup_open_installments',
+  'lookup_open_installments_by_identifier',
   'lookup_store_information',
   'get_post_sale_status',
   'request_post_sale_rating',
   'record_post_sale_rating',
   'handoff_human',
-])
+] as const
+
+export type WhatsAppToolName = (typeof WHATSAPP_TOOL_NAMES)[number]
+
+function normalizeWhatsAppToolName(value: string) {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/[\s-]+/g, '_')
+
+  const aliases: Record<string, WhatsAppToolName> = {
+    lookup_open_orders: 'lookup_open_orders',
+    lookup_order_status: 'lookup_open_orders',
+    lookup_service_orders: 'lookup_open_orders',
+    get_open_orders: 'lookup_open_orders',
+    check_open_orders: 'lookup_open_orders',
+    consultar_os: 'lookup_open_orders',
+    consultar_pedidos: 'lookup_open_orders',
+    lookup_open_orders_by_identifier: 'lookup_open_orders_by_identifier',
+    lookup_order_by_identifier: 'lookup_open_orders_by_identifier',
+    lookup_order_status_by_identifier: 'lookup_open_orders_by_identifier',
+    consultar_os_por_identificador: 'lookup_open_orders_by_identifier',
+    consultar_pedido_por_identificador: 'lookup_open_orders_by_identifier',
+    lookup_open_installments: 'lookup_open_installments',
+    lookup_installments: 'lookup_open_installments',
+    lookup_payment_info: 'lookup_open_installments',
+    get_open_installments: 'lookup_open_installments',
+    check_open_installments: 'lookup_open_installments',
+    consultar_parcelas: 'lookup_open_installments',
+    lookup_open_installments_by_identifier: 'lookup_open_installments_by_identifier',
+    lookup_installments_by_identifier: 'lookup_open_installments_by_identifier',
+    lookup_payment_info_by_identifier: 'lookup_open_installments_by_identifier',
+    consultar_parcelas_por_identificador: 'lookup_open_installments_by_identifier',
+    lookup_store_information: 'lookup_store_information',
+    lookup_store_info: 'lookup_store_information',
+    get_store_information: 'lookup_store_information',
+    consultar_loja: 'lookup_store_information',
+    get_post_sale_status: 'get_post_sale_status',
+    lookup_post_sale_status: 'get_post_sale_status',
+    request_post_sale_rating: 'request_post_sale_rating',
+    ask_post_sale_rating: 'request_post_sale_rating',
+    record_post_sale_rating: 'record_post_sale_rating',
+    save_post_sale_rating: 'record_post_sale_rating',
+    handoff_human: 'handoff_human',
+    handoff_to_human: 'handoff_human',
+    transfer_to_human: 'handoff_human',
+  }
+
+  if (aliases[normalized]) return aliases[normalized]
+
+  const asksByIdentifier = normalized.includes('identifier')
+    || normalized.includes('identificador')
+    || normalized.includes('cpf')
+  if (/(order|orders|pedido|pedidos|service_order|os)/.test(normalized)) {
+    return asksByIdentifier ? 'lookup_open_orders_by_identifier' : 'lookup_open_orders'
+  }
+  if (/(installment|installments|parcela|parcelas|payment|pagamento|financeiro)/.test(normalized)) {
+    return asksByIdentifier ? 'lookup_open_installments_by_identifier' : 'lookup_open_installments'
+  }
+
+  return value
+}
+
+const WhatsAppToolNameSchema = z.preprocess(
+  (value) => typeof value === 'string' ? normalizeWhatsAppToolName(value) : value,
+  z.enum(WHATSAPP_TOOL_NAMES)
+)
 
 export const WhatsAppToolAgentPlanSchema = z.object({
   tool_calls: z.array(z.object({
@@ -143,7 +213,6 @@ export const WhatsAppToolAgentReplySchema = z.object({
   reply_text: z.string().trim().min(1).max(1200),
 })
 
-export type WhatsAppToolName = z.infer<typeof WhatsAppToolNameSchema>
 export type WhatsAppToolAgentPlan = z.infer<typeof WhatsAppToolAgentPlanSchema>
 export type WhatsAppToolAgentReply = z.infer<typeof WhatsAppToolAgentReplySchema>
 
@@ -498,13 +567,16 @@ function buildToolAgentPlanPrompt(input: WhatsAppToolAgentInput) {
     'Use handoff_human somente se o cliente pedir claramente uma pessoa, apresentar reclamacao/adaptacao ruim, ou se a situacao exigir analise humana.',
     'Se houver pos-venda aguardando feedback e o cliente demonstrar satisfacao, use request_post_sale_rating para iniciar o pedido de nota.',
     'Use record_post_sale_rating apenas quando existir um pos-venda aguardando nota e a mensagem indicar inequivocamente uma nota de 1 a 5. Inclua rating.',
+    'Se a mensagem atual tiver CPF, nome ou numero de pedido apos voce ter pedido identificacao, use lookup_open_orders_by_identifier ou lookup_open_installments_by_identifier conforme o assunto anterior.',
     'Para duvida ambigua, responda com uma pergunta curta em vez de encaminhar.',
     'Se precisar usar ferramenta, reply_text deve ser null. Se nao precisar, tool_calls deve ser [].',
     input.basePrompt ? `DIRETRIZ DA LOJA: ${input.basePrompt}` : null,
     '',
     'FERRAMENTAS:',
     'lookup_open_orders: consulta os oculos/pedidos em aberto do titular.',
+    'lookup_open_orders_by_identifier: consulta pedido em aberto usando o identificador informado na mensagem atual.',
     'lookup_open_installments: consulta parcelas em aberto do titular.',
+    'lookup_open_installments_by_identifier: consulta parcelas em aberto usando o identificador informado na mensagem atual.',
     'lookup_store_information: consulta horario e endereco da loja.',
     'get_post_sale_status: consulta o acompanhamento de pos-venda ativo.',
     'request_post_sale_rating: registra a resposta positiva e pede uma nota de 1 a 5.',
