@@ -28,7 +28,7 @@ import {
   extractWhatsAppCanonicalReply,
 } from './canonical'
 import {
-  continueExperimentalConversationAfterSilent,
+  continueExperimentalConversationAfterAutomatedHandoff,
   decidePreAiRoute,
   shouldReleaseClosedTrapPause,
 } from './routing-heuristics'
@@ -2546,7 +2546,30 @@ export async function resolveCustomerStatus(
     ms: number,
     metadata: Json = {}
   ) {
-    return setConversationState(channel!, normalizedPhone, nextState, ms, metadata, inbound.id)
+    const metadataRecord = toMetadataRecord(metadata)
+    const isAutomatedHandoff = metadataRecord.lastAction === 'human_handoff'
+      || metadataRecord.lastAction === 'silent_handoff'
+    const preserveConversation = toolAgentEnabled
+      && isAutomatedHandoff
+      && (nextState === 'human_pause' || nextState === 'waiting_human_after_attachment')
+
+    return setConversationState(
+      channel!,
+      normalizedPhone,
+      preserveConversation ? 'awaiting_human' : nextState,
+      preserveConversation ? AWAITING_HUMAN_CONTEXT_MS : ms,
+      metadata,
+      inbound.id
+    )
+  }
+
+  const toolAgentEnabled = isWhatsAppToolAgentEnabled(automationSettings)
+  async function setCurrentAutomatedHandoff(metadata: Json = {}) {
+    return setCurrentConversationState(
+      toolAgentEnabled ? 'awaiting_human' : 'human_pause',
+      toolAgentEnabled ? AWAITING_HUMAN_CONTEXT_MS : HUMAN_HANDOFF_PAUSE_MS,
+      metadata
+    )
   }
 
   async function createCurrentOutbound(
@@ -2717,7 +2740,7 @@ export async function resolveCustomerStatus(
     })
   }
 
-  const preAiRoute = continueExperimentalConversationAfterSilent({
+  const preAiRoute = continueExperimentalConversationAfterAutomatedHandoff({
     route: decidePreAiRoute({
       option,
       state: effectiveState ?? null,
@@ -2729,13 +2752,12 @@ export async function resolveCustomerStatus(
     }),
     messageText: effectiveMessageText,
     metadata: state?.metadata,
-    toolAgentEnabled: isWhatsAppToolAgentEnabled(automationSettings),
+    toolAgentEnabled,
   })
 
   if (preAiRoute === 'explicit_human_option') {
     return applyOohTrapIfNeeded(async () => {
       await consumeForceAiOverrideIfNeeded()
-      const toolAgentEnabled = isWhatsAppToolAgentEnabled(automationSettings)
       await setCurrentConversationState(
         toolAgentEnabled ? 'awaiting_human' : 'human_pause',
         toolAgentEnabled ? AWAITING_HUMAN_CONTEXT_MS : HUMAN_HANDOFF_PAUSE_MS,
@@ -2890,7 +2912,7 @@ export async function resolveCustomerStatus(
   // O agente com ferramentas fica depois das protecoes obrigatorias (anexo,
   // handoff humano e Status sem contexto), mas antes dos fluxos legados. Assim
   // uma campanha ativa deixa de prender a conversa em um unico assunto.
-  if (isWhatsAppToolAgentEnabled(automationSettings)) {
+  if (toolAgentEnabled) {
     const toolPostSaleContext = livePostSaleContext ?? recoveredPostSaleContext
     const toolAgent = await runWhatsAppToolAgent({
       assistant: {
@@ -3102,7 +3124,7 @@ export async function resolveCustomerStatus(
     if (paymentLookup) {
       await consumeForceAiOverrideIfNeeded()
       const text = formatPaymentFollowupText(paymentLookup.customer.full_name, paymentLookup.installments)
-      await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
+      await setCurrentAutomatedHandoff(mergeMetadata(baseMetadata, {
         selectedOption: 'ai_payment_identifier_resolved',
         aiConfidence: null,
         lastKnownCustomerId: paymentLookup.customer.id,
@@ -3136,7 +3158,7 @@ export async function resolveCustomerStatus(
     if (paymentLookup) {
       await consumeForceAiOverrideIfNeeded()
       const text = formatPaymentFollowupText(paymentLookup.customer.full_name, paymentLookup.installments)
-      await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
+      await setCurrentAutomatedHandoff(mergeMetadata(baseMetadata, {
         selectedOption: 'ai_payment_identifier_resolved',
         aiConfidence: null,
         lastKnownCustomerId: paymentLookup.customer.id,
@@ -3229,7 +3251,7 @@ export async function resolveCustomerStatus(
 
   if (reminderFinancialHandoff && paymentReminderContext) {
     await consumeForceAiOverrideIfNeeded()
-    await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
+    await setCurrentAutomatedHandoff(appendAiSessionMessage(mergeMetadata(baseMetadata, {
       reason: 'payment_context_handoff',
       lastKnownCustomerId: paymentReminderContext.customerId ?? null,
       ...buildPaymentInstallmentMetadataFromReminderContext(paymentReminderContext, normalizedPhone),
@@ -3996,7 +4018,7 @@ export async function resolveCustomerStatus(
           complaint_or_adaptation: 'Entendi a situação. Vou chamar um especialista da nossa equipe para dar prioridade ao seu caso.',
         }
         const text = textMap[postClassificationRoute] || humanHandoffText()
-        await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
+        await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
           selectedOption: 'ai_specific_handoff',
           aiConfidence: classification.data.confidence,
           ...buildDecisionMetadata({
@@ -4033,7 +4055,7 @@ export async function resolveCustomerStatus(
           await consumeForceAiOverrideIfNeeded()
           const paymentInstallmentMetadata = buildPaymentInstallmentMetadata(installments, normalizedPhone)
           const text = paymentMatchedHandoffText()
-          await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
+          await setCurrentAutomatedHandoff(mergeMetadata(baseMetadata, {
             reason: 'payment_match_handoff',
             selectedOption: 'ai_specific_handoff',
             aiConfidence: classification.data.confidence,
@@ -4430,7 +4452,7 @@ export async function simulateCustomerStatus(
     }
   }
 
-  const preAiRoute = continueExperimentalConversationAfterSilent({
+  const preAiRoute = continueExperimentalConversationAfterAutomatedHandoff({
     route: decidePreAiRoute({
       option,
       state: effectiveState ?? null,

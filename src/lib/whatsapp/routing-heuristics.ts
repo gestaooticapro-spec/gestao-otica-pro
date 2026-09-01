@@ -167,13 +167,17 @@ export function decidePreAiRoute(input: {
   return 'continue_to_ai_or_menu'
 }
 
-export function continueExperimentalConversationAfterSilent(input: {
+export function continueExperimentalConversationAfterAutomatedHandoff(input: {
   route: WhatsAppPreAiRouteDecision
   messageText: string | null
   metadata: Json | null | undefined
   toolAgentEnabled: boolean
 }): WhatsAppPreAiRouteDecision {
-  if (!input.toolAgentEnabled || input.route !== 'ignore_silent') return input.route
+  if (!input.toolAgentEnabled) return input.route
+  if (input.route === 'preserve_human_handoff' || input.route === 'attachment_followup_handoff') {
+    return 'continue_to_ai_or_menu'
+  }
+  if (input.route !== 'ignore_silent') return input.route
 
   const currentMessage = normalizeComparableMessage(input.messageText)
   const previousMessage = normalizeComparableMessage(readMetadataString(input.metadata, 'lastInboundText'))

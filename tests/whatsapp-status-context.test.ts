@@ -6,7 +6,7 @@ import {
 } from '../src/lib/whatsapp/customer-status'
 import { detectWhatsAppConversationLanguage } from '../src/lib/whatsapp/ai'
 import {
-  continueExperimentalConversationAfterSilent,
+  continueExperimentalConversationAfterAutomatedHandoff,
   decidePreAiRoute,
 } from '../src/lib/whatsapp/routing-heuristics'
 
@@ -48,27 +48,33 @@ test('recupera contexto da equipe e de comprovante sem confirmar a baixa', () =>
   ])
 })
 
-test('modo experimental libera pergunta nova durante silencio de status', () => {
+test('modo experimental libera pergunta nova apos silencio ou handoff automatico', () => {
   const metadata = { lastInboundText: 'Como esta meu oculos?' }
 
-  assert.equal(continueExperimentalConversationAfterSilent({
+  assert.equal(continueExperimentalConversationAfterAutomatedHandoff({
     route: 'ignore_silent',
     messageText: 'E minhas parcelas?',
     metadata,
     toolAgentEnabled: true,
   }), 'continue_to_ai_or_menu')
-  assert.equal(continueExperimentalConversationAfterSilent({
+  assert.equal(continueExperimentalConversationAfterAutomatedHandoff({
     route: 'ignore_silent',
     messageText: 'Como esta meu oculos?',
     metadata,
     toolAgentEnabled: true,
   }), 'ignore_silent')
-  assert.equal(continueExperimentalConversationAfterSilent({
+  assert.equal(continueExperimentalConversationAfterAutomatedHandoff({
     route: 'ignore_silent',
     messageText: 'E minhas parcelas?',
     metadata,
     toolAgentEnabled: false,
   }), 'ignore_silent')
+  assert.equal(continueExperimentalConversationAfterAutomatedHandoff({
+    route: 'preserve_human_handoff',
+    messageText: 'E meu oculos em producao?',
+    metadata,
+    toolAgentEnabled: true,
+  }), 'continue_to_ai_or_menu')
 })
 
 test('detecta ingles e espanhol para resposta da IAra', () => {
