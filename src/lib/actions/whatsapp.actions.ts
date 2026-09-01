@@ -158,6 +158,7 @@ const AiResponderSettingsSchema = z.object({
   storeId: z.coerce.number().int().positive(),
   enabled: z.boolean(),
   prompt: z.string().trim().min(20, 'Informe um texto base para a IA.').max(1200),
+  toolsEnabled: z.boolean().optional().default(false),
 })
 
 async function getAuthorizedProfile(storeId: number) {
@@ -287,6 +288,7 @@ function buildAiResponderSettings(saved: WhatsAppAiResponderSettings | undefined
   return {
     enabled: saved?.enabled === true,
     prompt: saved?.prompt?.trim() || DEFAULT_AI_RESPONDER_PROMPT,
+    tools_enabled: saved?.tools_enabled === true,
   }
 }
 
@@ -617,6 +619,7 @@ export async function saveWhatsAppAiResponderSettings(input: {
   storeId: number
   enabled: boolean
   prompt: string
+  toolsEnabled?: boolean
 }): Promise<WhatsAppAiResponderSettingsResult> {
   const parsed = AiResponderSettingsSchema.safeParse(input)
   if (!parsed.success) {
@@ -634,6 +637,7 @@ export async function saveWhatsAppAiResponderSettings(input: {
         ai_responder: {
           enabled: parsed.data.enabled,
           prompt: parsed.data.prompt || DEFAULT_AI_RESPONDER_PROMPT,
+          tools_enabled: parsed.data.toolsEnabled,
         },
       },
     }

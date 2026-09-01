@@ -23,7 +23,7 @@
     "test:sicredi-pix-auth": "tsx scripts/test_sicredi_pix_auth.ts",
     "test:sicredi-pix-contracts": "node --test tests/sicredi-pix-contracts.test.mjs",
     "test:sale-financial-boundary": "node --test tests/sale-financial-boundary.test.mjs",
-    "test": "tsx --test tests/evaluation-recommendation-v2.test.ts tests/tower-contracts.test.ts tests/monthly-accountant-closing.test.ts tests/billing-status.test.ts tests/daily-store-health.test.ts && node --test tests/electron-security.test.mjs tests/tower-local-database.test.mjs tests/tower-migration.test.mjs tests/tower-web-api-contracts.test.mjs"
+    "test": "tsx --test tests/evaluation-recommendation-v2.test.ts tests/tower-contracts.test.ts tests/monthly-accountant-closing.test.ts tests/billing-status.test.ts tests/daily-store-health.test.ts tests/whatsapp-tool-agent-contract.test.ts && node --test tests/electron-security.test.mjs tests/tower-local-database.test.mjs tests/tower-migration.test.mjs tests/tower-web-api-contracts.test.mjs"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

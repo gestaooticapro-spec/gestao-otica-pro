@@ -64,6 +64,8 @@ export type WhatsAppPostSaleFollowupSettings = {
 export type WhatsAppAiResponderSettings = {
   enabled?: boolean
   prompt?: string
+  /** Permite que a IA consulte as capacidades internas da loja. */
+  tools_enabled?: boolean
 }
 
 export type WhatsAppAutomationSettings = {
