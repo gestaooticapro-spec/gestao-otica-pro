@@ -9,6 +9,7 @@ export type WhatsAppConversationStateName =
   | 'ai_session'
   | 'waiting_menu'
   | 'waiting_identifier'
+  | 'awaiting_human'
   | 'human_pause'
   | 'silent'
   | 'waiting_human_after_attachment'

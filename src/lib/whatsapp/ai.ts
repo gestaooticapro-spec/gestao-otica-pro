@@ -279,6 +279,7 @@ export type WhatsAppToolAgentInput = {
     postSalesId?: number | null
     stage?: string | null
   } | null
+  pendingHumanHandoff?: boolean
 }
 
 export type WhatsAppAiFailure = {
@@ -565,6 +566,7 @@ function buildToolAgentPlanPrompt(input: WhatsAppToolAgentInput) {
     'Use ferramentas quando precisar de fatos do sistema. A ferramenta recebe o telefone e a loja de forma segura; nao inclua CPF, telefone ou IDs nos argumentos.',
     'Se o assunto nao for atendido pela otica (por exemplo, flores), nao use ferramenta e responda de forma gentil que nao possui essa informacao, oferecendo ajuda com assuntos da otica.',
     'Use handoff_human se o cliente pedir claramente uma pessoa, apresentar reclamacao/adaptacao ruim, ou precisar de confirmacao humana para uma informacao que as ferramentas nao cobrem, como receita ou grau. Nao explique limitacoes tecnicas ao cliente.',
+    'Quando pendingHumanHandoff for true, a solicitacao ja foi encaminhada, mas nenhum membro da equipe respondeu ainda. Reconheca uma cobranca de retorno, reforce o encaminhamento e continue respondendo duvidas que as ferramentas conseguem resolver. Nao se apresente novamente.',
     'Se houver pos-venda aguardando feedback e o cliente demonstrar satisfacao, use request_post_sale_rating para iniciar o pedido de nota.',
     'Use record_post_sale_rating apenas quando existir um pos-venda aguardando nota e a mensagem indicar inequivocamente uma nota de 1 a 5. Inclua rating.',
     'Se a mensagem atual tiver CPF, nome ou numero de pedido apos voce ter pedido identificacao, use lookup_open_orders_by_identifier ou lookup_open_installments_by_identifier conforme o assunto anterior.',
@@ -589,6 +591,7 @@ function buildToolAgentPlanPrompt(input: WhatsAppToolAgentInput) {
       storeName: input.storeName || null,
       recentContext,
       pendingPostSale: input.pendingPostSale || null,
+      pendingHumanHandoff: input.pendingHumanHandoff === true,
       conversationHistory,
     }),
     '',
@@ -611,6 +614,7 @@ function buildToolAgentReplyPrompt(input: WhatsAppToolAgentInput, toolResults: u
     JSON.stringify({
       storeName: input.storeName || null,
       pendingPostSale: input.pendingPostSale || null,
+      pendingHumanHandoff: input.pendingHumanHandoff === true,
       conversationHistory: toolAgentHistory(input),
       toolResults,
     }),

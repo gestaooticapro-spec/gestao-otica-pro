@@ -52,6 +52,8 @@ import {
 const SAME_STATUS_SILENCE_WINDOW_MS = 2 * 60 * 60 * 1000
 const HUMAN_PAUSE_MS = 60 * 60 * 1000
 const HUMAN_HANDOFF_PAUSE_MS = 12 * 60 * 60 * 1000
+const HUMAN_ACTIVITY_PAUSE_MS = 60 * 60 * 1000
+const AWAITING_HUMAN_CONTEXT_MS = 48 * 60 * 60 * 1000
 const AI_SESSION_MS = 2 * 60 * 60 * 1000
 const MENU_WAIT_MS = 30 * 60 * 1000
 const IDENTIFIER_WAIT_MS = 20 * 60 * 1000
@@ -64,7 +66,7 @@ const POST_SALE_PERSISTENT_MEMORY_MS = 7 * 24 * 60 * 60 * 1000
 const AI_SESSION_HISTORY_MAX = 8
 const AI_SESSION_TEXT_MAX = 280
 
-type ConversationState = 'ai_session' | 'waiting_menu' | 'waiting_identifier' | 'human_pause' | 'silent' | 'waiting_human_after_attachment'
+type ConversationState = 'ai_session' | 'waiting_menu' | 'waiting_identifier' | 'awaiting_human' | 'human_pause' | 'silent' | 'waiting_human_after_attachment'
 type AiSessionMessageRole = 'customer' | 'assistant'
 type AiSessionMessage = {
   role: AiSessionMessageRole
@@ -370,7 +372,11 @@ function humanHandoffText() {
   return 'Certo. Vou deixar a conversa para nossa equipe continuar o atendimento por aqui.'
 }
 
-function iaraHandoffText(storeName: string | null | undefined) {
+function iaraHandoffText(storeName: string | null | undefined, introduce = true) {
+  if (!introduce) {
+    return 'Sua solicitação continua encaminhada para nossa equipe. Vou reforçar o atendimento por aqui para darem continuidade.'
+  }
+
   const storeLabel = normalizeDisplayText(storeName)
   const identity = storeLabel
     ? `Eu sou a IAra, assistente virtual da ${storeLabel}.`
@@ -2606,7 +2612,7 @@ export async function resolveCustomerStatus(
   if (preAiRoute === 'explicit_human_option') {
     return applyOohTrapIfNeeded(async () => {
       await consumeForceAiOverrideIfNeeded()
-      await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
+      await setCurrentConversationState('awaiting_human', AWAITING_HUMAN_CONTEXT_MS, mergeMetadata(baseMetadata, {
         selectedOption: '2',
         ...buildDecisionMetadata({
           intent: 'human_agent_request',
@@ -2768,6 +2774,7 @@ export async function resolveCustomerStatus(
         pendingPostSale: toolPostSaleContext?.postSalesId
           ? { postSalesId: toolPostSaleContext.postSalesId, stage: toolPostSaleContext.stage }
           : null,
+        pendingHumanHandoff: state?.state === 'awaiting_human',
       },
       executeTool: async (call: WhatsAppToolCall): Promise<WhatsAppToolResult> => {
         if (call.name === 'lookup_open_orders') {
@@ -2912,7 +2919,7 @@ export async function resolveCustomerStatus(
     if (toolAgent.success && toolAgent.replyText) {
       await consumeForceAiOverrideIfNeeded()
       const handedOff = toolAgent.toolCalls.some((call) => call.name === 'handoff_human')
-      const replyText = handedOff ? iaraHandoffText(storeProfile.name) : toolAgent.replyText
+      const replyText = handedOff ? iaraHandoffText(storeProfile.name, state?.state !== 'awaiting_human') : toolAgent.replyText
       const ratingRecorded = toolAgent.toolCalls.some((call) => call.name === 'record_post_sale_rating')
         && toolAgent.toolResults.some((result) => result.tool === 'record_post_sale_rating' && result.ok)
       const ratingRequested = toolAgent.toolCalls.some((call) => call.name === 'request_post_sale_rating')
@@ -2922,8 +2929,8 @@ export async function resolveCustomerStatus(
         : ratingRequested && toolPostSaleContext
           ? { ...toolPostSaleContext, stage: 'awaiting_rating', ratingPromptCount: 1 }
           : toolPostSaleContext
-      const nextState: ConversationState = handedOff ? 'human_pause' : 'ai_session'
-      const timeout = handedOff ? HUMAN_HANDOFF_PAUSE_MS : AI_SESSION_MS
+      const nextState: ConversationState = handedOff ? 'awaiting_human' : 'ai_session'
+      const timeout = handedOff ? AWAITING_HUMAN_CONTEXT_MS : AI_SESSION_MS
       const action = handedOff ? 'human_handoff' : ratingRecorded ? 'post_sale_rating_recorded' : ratingRequested ? 'post_sale_rating_requested' : 'ai_tool_reply'
       const outboundType = handedOff ? 'human_handoff' : 'ai_tool_assistant'
       const metadata = appendAiSessionMessage(mergeMetadata(baseMetadata, {
@@ -4807,7 +4814,7 @@ export async function markStoreInitiatedConversation(
     if (outboundInsertError) throw outboundInsertError
   }
 
-  await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_HANDOFF_PAUSE_MS, {
+  await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_ACTIVITY_PAUSE_MS, {
     reason: mirrorOutbound ? 'store_initiated' : 'app_manual_send',
     providerMessageId: providerMessageId || null,
     preview: messageText.slice(0, 160) || null,
