@@ -370,6 +370,15 @@ function humanHandoffText() {
   return 'Certo. Vou deixar a conversa para nossa equipe continuar o atendimento por aqui.'
 }
 
+function iaraHandoffText(storeName: string | null | undefined) {
+  const storeLabel = normalizeDisplayText(storeName)
+  const identity = storeLabel
+    ? `Eu sou a IAra, assistente virtual da ${storeLabel}.`
+    : 'Eu sou a IAra, assistente virtual da ótica.'
+
+  return `${identity} Vou encaminhar sua solicitação para nossa equipe continuar o atendimento por aqui.`
+}
+
 function notFoundHandoffText() {
   return [
     'Não consegui encontrar um pedido em aberto com essas informações.',
@@ -2876,6 +2885,7 @@ export async function resolveCustomerStatus(
     if (toolAgent.success && toolAgent.replyText) {
       await consumeForceAiOverrideIfNeeded()
       const handedOff = toolAgent.toolCalls.some((call) => call.name === 'handoff_human')
+      const replyText = handedOff ? iaraHandoffText(storeProfile.name) : toolAgent.replyText
       const ratingRecorded = toolAgent.toolCalls.some((call) => call.name === 'record_post_sale_rating')
         && toolAgent.toolResults.some((result) => result.tool === 'record_post_sale_rating' && result.ok)
       const ratingRequested = toolAgent.toolCalls.some((call) => call.name === 'request_post_sale_rating')
@@ -2900,14 +2910,14 @@ export async function resolveCustomerStatus(
           action,
           outboundType,
         }),
-      }), 'assistant', toolAgent.replyText)
+      }), 'assistant', replyText)
       await setCurrentConversationState(nextState, timeout, metadata)
-      return withAiDiagnostics(await createOutbound(channel, inbound.id, normalizedPhone, toolAgent.replyText, outboundType, {
+      return withAiDiagnostics(await createOutbound(channel, inbound.id, normalizedPhone, replyText, outboundType, {
         ...buildWhatsAppCanonicalPayload({
           intent: handedOff ? 'human_agent_request' : 'unknown',
           action,
           outboundType,
-          canonicalReply: toolAgent.replyText,
+          canonicalReply: replyText,
           facts: {
             usedTools: toolAgent.toolCalls.map((call) => call.name).join(','),
             ratingRecorded,
