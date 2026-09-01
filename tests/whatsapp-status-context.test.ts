@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { isSimpleRepeatedStatusQuestion } from '../src/lib/whatsapp/customer-status'
+import {
+  formatWhatsAppPersistedConversationHistory,
+  isSimpleRepeatedStatusQuestion,
+} from '../src/lib/whatsapp/customer-status'
 import { decidePreAiRoute } from '../src/lib/whatsapp/routing-heuristics'
 
 test('silencia apenas uma repeticao literal de status', () => {
@@ -25,4 +28,18 @@ test('mantem o contexto disponivel enquanto aguarda a primeira resposta humana',
 
   assert.equal(decidePreAiRoute({ ...baseInput, state: 'awaiting_human' }), 'continue_to_ai_or_menu')
   assert.equal(decidePreAiRoute({ ...baseInput, state: 'human_pause' }), 'ignore_human_pause')
+})
+
+test('recupera contexto da equipe e de comprovante sem confirmar a baixa', () => {
+  const history = formatWhatsAppPersistedConversationHistory([
+    { role: 'customer', text: 'Enviei o comprovante.', at: '2026-09-01T12:00:00.000Z' },
+    { role: 'system', text: 'Uma imagem enviada pelo cliente foi identificada como possivel comprovante de pagamento. A baixa precisa ser confirmada no sistema.', at: '2026-09-01T12:01:00.000Z' },
+    { role: 'human', text: 'Esta tudo certo, vou dar baixa na parcela.', at: '2026-09-01T12:02:00.000Z' },
+  ])
+
+  assert.deepEqual(history, [
+    'cliente: Enviei o comprovante.',
+    'sistema: Uma imagem enviada pelo cliente foi identificada como possivel comprovante de pagamento. A baixa precisa ser confirmada no sistema.',
+    'equipe: Esta tudo certo, vou dar baixa na parcela.',
+  ])
 })

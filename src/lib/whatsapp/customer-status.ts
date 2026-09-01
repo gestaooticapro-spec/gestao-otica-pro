@@ -65,9 +65,11 @@ const POST_SALE_PERSISTENT_MEMORY_MS = 7 * 24 * 60 * 60 * 1000
 
 const AI_SESSION_HISTORY_MAX = 8
 const AI_SESSION_TEXT_MAX = 280
+const AI_PERSISTED_HISTORY_MAX = 12
+const AI_PERSISTED_HISTORY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
 
 type ConversationState = 'ai_session' | 'waiting_menu' | 'waiting_identifier' | 'awaiting_human' | 'human_pause' | 'silent' | 'waiting_human_after_attachment'
-type AiSessionMessageRole = 'customer' | 'assistant'
+type AiSessionMessageRole = 'customer' | 'assistant' | 'human'
 type AiSessionMessage = {
   role: AiSessionMessageRole
   text: string
@@ -127,6 +129,12 @@ type StoreProfileRow = Pick<
 type ConversationMetadataRecord = Record<string, Json | undefined>
 type CustomerControlMode = 'auto' | 'force_ai' | 'force_human'
 type CustomerLinkSource = 'phone_match' | 'status_lookup' | 'identifier_lookup' | 'manual'
+type PersistedConversationRole = 'customer' | 'assistant' | 'human' | 'system'
+type PersistedConversationEntry = {
+  role: PersistedConversationRole
+  text: string
+  at: string
+}
 
 type PaymentInstallmentMatch = {
   installment_id?: number | null
@@ -939,7 +947,9 @@ function readAiSessionMessages(metadata: Json | null | undefined): AiSessionMess
     .map((entry) => {
       if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null
       const row = entry as Record<string, unknown>
-      const role = row.role === 'customer' || row.role === 'assistant' ? row.role : null
+      const role = row.role === 'customer' || row.role === 'assistant' || row.role === 'human'
+        ? row.role
+        : null
       const text = typeof row.text === 'string' ? normalizeAiSessionText(row.text) : null
       const at = typeof row.at === 'string' && row.at.trim() ? row.at.trim() : null
       if (!role || !text || !at) return null
@@ -986,7 +996,23 @@ function clearAiSessionMessages(metadata: Json | null | undefined): Json {
 function buildAiConversationHistoryFromMetadata(metadata: Json | null | undefined) {
   return readAiSessionMessages(metadata)
     .slice(-AI_SESSION_HISTORY_MAX)
-    .map((entry) => `${entry.role === 'customer' ? 'cliente' : 'ia'}: ${entry.text}`)
+    .map((entry) => `${entry.role === 'customer' ? 'cliente' : entry.role === 'human' ? 'equipe' : 'ia'}: ${entry.text}`)
+}
+
+function conversationHistoryRoleLabel(role: PersistedConversationRole) {
+  if (role === 'customer') return 'cliente'
+  if (role === 'human') return 'equipe'
+  if (role === 'system') return 'sistema'
+  return 'ia'
+}
+
+export function formatWhatsAppPersistedConversationHistory(entries: PersistedConversationEntry[]) {
+  return entries
+    .filter((entry) => entry.text.trim() && entry.at.trim())
+    .sort((left, right) => new Date(left.at).getTime() - new Date(right.at).getTime())
+    .slice(-AI_PERSISTED_HISTORY_MAX)
+    .map((entry) => `${conversationHistoryRoleLabel(entry.role)}: ${normalizeAiSessionText(entry.text)}`)
+    .filter((entry): entry is string => Boolean(entry))
 }
 
 function mergeMetadata(
@@ -1767,6 +1793,71 @@ async function findConversationState(channelId: number, phone: string): Promise<
   return matching
 }
 
+async function loadPersistedConversationHistory(
+  channel: ChannelRow,
+  phone: string,
+  currentInboundMessageId?: number | null
+) {
+  const supabase = createAdminClient()
+  const phoneVariants = [...getPhoneVariants(phone)]
+  if (!phoneVariants.length) return []
+
+  const since = new Date(Date.now() - AI_PERSISTED_HISTORY_WINDOW_MS).toISOString()
+  const [inboundResult, outboundResult] = await Promise.all([
+    (supabase.from('whatsapp_inbound_messages') as any)
+      .select('id, message_text, created_at')
+      .eq('channel_id', channel.id)
+      .in('remote_phone', phoneVariants)
+      .gte('created_at', since)
+      .order('created_at', { ascending: false })
+      .limit(AI_PERSISTED_HISTORY_MAX),
+    (supabase.from('whatsapp_outbound_messages') as any)
+      .select('message_text, message_type, payload, created_at, sent_at')
+      .eq('channel_id', channel.id)
+      .in('remote_phone', phoneVariants)
+      .gte('created_at', since)
+      .order('created_at', { ascending: false })
+      .limit(AI_PERSISTED_HISTORY_MAX),
+  ])
+
+  if (inboundResult.error) throw inboundResult.error
+  if (outboundResult.error) throw outboundResult.error
+
+  const entries: PersistedConversationEntry[] = []
+  for (const row of inboundResult.data ?? []) {
+    if (currentInboundMessageId && Number(row.id) === currentInboundMessageId) continue
+    const text = normalizeAiSessionText(row.message_text)
+    if (!text || typeof row.created_at !== 'string') continue
+    entries.push({ role: 'customer', text, at: row.created_at })
+  }
+
+  for (const row of outboundResult.data ?? []) {
+    const at = typeof row.sent_at === 'string' ? row.sent_at : row.created_at
+    if (typeof at !== 'string') continue
+
+    const text = normalizeAiSessionText(row.message_text)
+    if (text) {
+      entries.push({
+        role: row.message_type === 'operator_store_initiated' ? 'human' : 'assistant',
+        text,
+        at,
+      })
+    }
+
+    const payload = toMetadataRecord(row.payload as Json | null)
+    const receipt = toMetadataRecord(payload.ai_extracted_receipt as Json | null)
+    if (receipt.is_receipt === true) {
+      entries.push({
+        role: 'system',
+        text: 'Uma imagem enviada pelo cliente foi identificada como possivel comprovante de pagamento. A baixa precisa ser confirmada no sistema.',
+        at,
+      })
+    }
+  }
+
+  return formatWhatsAppPersistedConversationHistory(entries)
+}
+
 async function clearConversationStateById(id: number) {
   const supabase = createAdminClient()
   const { error } = await (supabase.from('whatsapp_conversation_states') as any)
@@ -2391,6 +2482,9 @@ export async function resolveCustomerStatus(
     ? persistentPostSaleMemory.context
     : null
   const postSaleContextWasRecovered = !livePostSaleContext && Boolean(recoveredPostSaleContext)
+  const persistedConversationHistory = isWhatsAppToolAgentEnabled(automationSettings)
+    ? await loadPersistedConversationHistory(channel, normalizedPhone, inbound.id)
+    : []
   const recentContext = [
     ...(statusContextLine ? [statusContextLine] : []),
     ...buildRecentContextFromMetadata(state?.metadata, effectiveMessageText),
@@ -2401,8 +2495,10 @@ export async function resolveCustomerStatus(
     userMessageText: effectiveMessageText,
     conversationHistory: [
       ...(statusContextLine ? [statusContextLine] : []),
-      ...buildAiConversationHistoryFromMetadata(baseMetadata),
-    ].slice(-8),
+      ...(persistedConversationHistory.length > 0
+        ? persistedConversationHistory
+        : buildAiConversationHistoryFromMetadata(baseMetadata)),
+    ].slice(-AI_PERSISTED_HISTORY_MAX),
   }
   const aiDiagnostics: WhatsAppAiDiagnostic[] = []
 
