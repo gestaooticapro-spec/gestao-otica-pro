@@ -4,13 +4,11 @@ export type Release = {
   changes: string[]
 }
 
-// Toda alteração aprovada para a próxima publicação entra na versão pendente.
-// Somente o comando explícito do usuário “mude a versão” move essa versão para
-// RELEASE_HISTORY e limpa as constantes pendentes, antes do deploy.
-export const PENDING_RELEASE_VERSION: string | null = '1.02.11'
-export const PENDING_RELEASE_CHANGES: readonly string[] = [
-  'Histórico de versões passou a exibir somente deploys concluídos e a apresentar correções e melhorias em escrita normal.',
-]
+// A versão visível é sempre a primeira de RELEASE_HISTORY. Uma pendência só
+// abre o próximo patch depois da publicação efetiva da versão atual e nunca
+// altera o Dashboard ou o modal de histórico.
+export const PENDING_RELEASE_VERSION: string | null = null
+export const PENDING_RELEASE_CHANGES: readonly string[] = []
 
 const RELEASE_10209_CHANGES: readonly string[] = [
   'IMPLEMENTADO O CADASTRO DE CLIENTES PJ COM RAZAO SOCIAL, NOME FANTASIA E CNPJ, COM EMISSAO DE NFC-E PARA EMPRESAS.',
@@ -102,6 +100,7 @@ export const RELEASE_HISTORY: Release[] = [
       'Em caso de confirmação incerta da NFC-e, a emissão passou a orientar a consulta do status da nota antes de uma nova tentativa.',
       'A tela de WhatsApp Operacional passou a carregar a conversa somente quando uma thread é selecionada, com atualização local dos modos Automático, IA próxima e Humano.',
       'O status de handoff do WhatsApp passou a ser gravado na conversa, deixando a lista operacional mais rápida para exibir pendências humanas.',
+      'Histórico de versões passou a exibir somente deploys concluídos e a apresentar correções e melhorias em escrita normal.',
     ],
   },
   {
@@ -181,4 +180,6 @@ export const RELEASE_HISTORY: Release[] = [
   },
 ]
 
-export const CURRENT_VERSION = PENDING_RELEASE_VERSION ?? RELEASE_HISTORY[0].version
+// A versão exibida no Dashboard identifica sempre o último deploy fechado.
+// Uma pendência pertence à próxima entrega e não pode antecipar o rodapé.
+export const CURRENT_VERSION = RELEASE_HISTORY[0].version
