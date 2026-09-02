@@ -17,6 +17,7 @@ import {
   type WhatsAppIntentClassification,
   type WhatsAppAiResult,
   type WhatsAppAiTokenUsage,
+  type WhatsAppConversationLanguage,
 } from './ai'
 import {
   extractWhatsAppInboundPayloadMeta,
@@ -879,7 +880,35 @@ function buildGenericPixReply(store: StoreProfileRow) {
   return `${pixBase} Se for sobre uma parcela especifica, me envie o nome completo ou CPF do titular que eu tento localizar o valor certinho.`
 }
 
-function paymentMatchedHandoffText() {
+function paymentMatchedHandoffText(input?: {
+  storeName: string | null | undefined
+  introduce: boolean
+  language: WhatsAppConversationLanguage
+}) {
+  if (input) {
+    const storeLabel = normalizeDisplayText(input.storeName)
+
+    if (input.language === 'es') {
+      return input.introduce
+        ? `Soy IAra, la asistente virtual de ${storeLabel || 'la óptica'}. Encontré una consulta financiera relacionada con este número y voy a derivar esta parte a nuestro equipo. Mientras tanto, también puedo ayudarte con dudas sobre pedidos y gafas.`
+        : 'La consulta financiera sigue derivada a nuestro equipo. Mientras tanto, también puedo ayudarte con dudas sobre pedidos y gafas.'
+    }
+
+    if (input.language === 'en') {
+      return input.introduce
+        ? `I am IAra, the virtual assistant for ${storeLabel || 'the optical store'}. I found a financial request related to this number and will forward that part to our team. In the meantime, I can still help with questions about orders and glasses.`
+        : 'The financial request is still with our team. In the meantime, I can still help with questions about orders and glasses.'
+    }
+
+    const identity = storeLabel
+      ? `Eu sou a IAra, assistente virtual da ${storeLabel}.`
+      : 'Eu sou a IAra, assistente virtual da ótica.'
+
+    return input.introduce
+      ? `${identity} Encontrei uma solicitação financeira relacionada a este número e vou encaminhar essa parte para nossa equipe continuar o atendimento por aqui. Enquanto isso, também posso ajudar com dúvidas sobre pedidos e óculos.`
+      : 'A solicitação financeira continua encaminhada para nossa equipe. Enquanto isso, também posso ajudar com dúvidas sobre pedidos e óculos.'
+  }
+
   return 'Encontrei o financeiro relacionado a esse numero e vou chamar nossa equipe para continuar o atendimento por aqui.'
 }
 
@@ -3218,7 +3247,11 @@ export async function resolveCustomerStatus(
   const paymentReminderContext = readPaymentReminderContext(state?.metadata)
   const paymentReminderAcknowledgement = paymentReminderContext && isPaymentReminderAcknowledgement(effectiveMessageText)
   const reminderFinancialHandoff = paymentReminderContext && (looksLikePixRequest(effectiveMessageText) || looksLikeAmountRequest(effectiveMessageText))
-    ? paymentMatchedHandoffText()
+    ? paymentMatchedHandoffText(toolAgentEnabled ? {
+      storeName: storeProfile.name,
+      introduce: state?.state !== 'awaiting_human',
+      language: detectWhatsAppConversationLanguage(effectiveMessageText, aiReplyContext.conversationHistory),
+    } : undefined)
     : null
 
   if (paymentReminderAcknowledgement && paymentReminderContext) {
@@ -4054,7 +4087,11 @@ export async function resolveCustomerStatus(
         if (installments && installments.length > 0) {
           await consumeForceAiOverrideIfNeeded()
           const paymentInstallmentMetadata = buildPaymentInstallmentMetadata(installments, normalizedPhone)
-          const text = paymentMatchedHandoffText()
+          const text = paymentMatchedHandoffText(toolAgentEnabled ? {
+            storeName: storeProfile.name,
+            introduce: state?.state !== 'awaiting_human',
+            language: detectWhatsAppConversationLanguage(effectiveMessageText, aiReplyContext.conversationHistory),
+          } : undefined)
           await setCurrentAutomatedHandoff(mergeMetadata(baseMetadata, {
             reason: 'payment_match_handoff',
             selectedOption: 'ai_specific_handoff',
@@ -4789,7 +4826,11 @@ export async function simulateCustomerStatus(
     if (classification.success && postClassificationRoute === 'payment_info') {
       const installments = await findOpenInstallmentsByPhone(channel.store_id, normalizedPhone)
       if (installments && installments.length > 0) {
-        const text = paymentMatchedHandoffText()
+        const text = paymentMatchedHandoffText(isWhatsAppToolAgentEnabled(automationSettings) ? {
+          storeName: storeProfile.name,
+          introduce: state?.state !== 'awaiting_human',
+          language: detectWhatsAppConversationLanguage(effectiveMessageText, conversationHistory),
+        } : undefined)
         return buildResult({ shouldReply: true, phone: normalizedPhone, replyText: text }, {
           overrideMode: controlMode,
           preAiRoute,
