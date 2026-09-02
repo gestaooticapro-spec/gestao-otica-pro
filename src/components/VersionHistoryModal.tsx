@@ -3,13 +3,13 @@
 import { useEffect, useState } from 'react'
 import { History, X } from 'lucide-react'
 
-import { PENDING_RELEASE_CHANGES, PENDING_RELEASE_VERSION, RELEASE_HISTORY, type Release } from '@/lib/release-history'
+import { RELEASE_HISTORY, type Release } from '@/lib/release-history'
 
 const RELEASES_PER_PAGE = 3
 
-const releasesForDisplay: Release[] = PENDING_RELEASE_VERSION && PENDING_RELEASE_CHANGES.length
-  ? [{ version: PENDING_RELEASE_VERSION, date: 'Em preparação', changes: [...PENDING_RELEASE_CHANGES] }, ...RELEASE_HISTORY]
-  : RELEASE_HISTORY
+// O histórico exibido ao operador contém somente deploys concluídos. A versão
+// pendente é um registro interno de preparação e nunca aparece no programa.
+const releasesForDisplay: Release[] = RELEASE_HISTORY
 
 type VersionHistoryModalProps = {
   isOpen: boolean

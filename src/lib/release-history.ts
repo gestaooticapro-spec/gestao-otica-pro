@@ -7,8 +7,10 @@ export type Release = {
 // Toda alteração aprovada para a próxima publicação entra na versão pendente.
 // Somente o comando explícito do usuário “mude a versão” move essa versão para
 // RELEASE_HISTORY e limpa as constantes pendentes, antes do deploy.
-export const PENDING_RELEASE_VERSION: string | null = null
-export const PENDING_RELEASE_CHANGES: readonly string[] = []
+export const PENDING_RELEASE_VERSION: string | null = '1.02.11'
+export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'Histórico de versões passou a exibir somente deploys concluídos e a apresentar correções e melhorias em escrita normal.',
+]
 
 const RELEASE_10209_CHANGES: readonly string[] = [
   'IMPLEMENTADO O CADASTRO DE CLIENTES PJ COM RAZAO SOCIAL, NOME FANTASIA E CNPJ, COM EMISSAO DE NFC-E PARA EMPRESAS.',
@@ -96,10 +98,10 @@ export const RELEASE_HISTORY: Release[] = [
     version: '1.02.10',
     date: '02/09/2026',
     changes: [
-      'CORRIGIDA A EMISSAO DE NFC-E PARA OMITIR O ENDERECO DO DESTINATARIO QUANDO O CODIGO IBGE NAO ESTIVER VALIDO E PREENCHER O CODIGO AUTOMATICAMENTE PELO CEP.',
-      'EM CASO DE CONFIRMACAO INCERTA DA NFC-E, A EMISSAO PASSOU A ORIENTAR A CONSULTA DO STATUS DA NOTA ANTES DE UMA NOVA TENTATIVA.',
-      'A TELA DE WHATSAPP OPERACIONAL PASSOU A CARREGAR A THREAD SOMENTE QUANDO UMA CONVERSA E SELECIONADA, COM ATUALIZACAO LOCAL DOS MODOS AUTOMATICO, IA PROXIMA E HUMANO.',
-      'O STATUS DE HANDOFF DO WHATSAPP PASSOU A SER GRAVADO NA CONVERSA, DEIXANDO A LISTA OPERACIONAL MAIS RAPIDA PARA EXIBIR PENDENCIAS HUMANAS.',
+      'Corrigida a emissão de NFC-e para omitir o endereço do destinatário quando o código IBGE não estiver válido e preencher o código automaticamente pelo CEP.',
+      'Em caso de confirmação incerta da NFC-e, a emissão passou a orientar a consulta do status da nota antes de uma nova tentativa.',
+      'A tela de WhatsApp Operacional passou a carregar a conversa somente quando uma thread é selecionada, com atualização local dos modos Automático, IA próxima e Humano.',
+      'O status de handoff do WhatsApp passou a ser gravado na conversa, deixando a lista operacional mais rápida para exibir pendências humanas.',
     ],
   },
   {

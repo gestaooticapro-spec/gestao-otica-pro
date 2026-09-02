@@ -153,12 +153,12 @@ Pagamentos de parcelas nao podem ser somados novamente como pagamentos diretos d
 O rodape da Central de Operacoes exibe a versao atual e permite abrir o historico de deploys. O registro fica em `src/lib/release-history.ts`.
 
 - Toda alteração aprovada para a próxima publicação — implementação, evolução ou correção — deve ser acrescentada em `PENDING_RELEASE_CHANGES`. A primeira abre `PENDING_RELEASE_VERSION` com o próximo patch; as demais completam a mesma versão.
-- Sempre que houver uma implementação nova, seu item deve ser registrado em CAIXA ALTA no histórico de versões.
+- Itens de implementações novas podem usar caixa alta no histórico. Correções e melhorias devem usar escrita normal, em frase clara para o usuário.
 - A redação pendente deve descrever o comportamento final percebido pelo usuário, nunca tentativas, erros intermediários, fallbacks técnicos ou detalhes internos de implementação.
 - Se uma alteração pendente for desfeita, abandonada ou substituída antes da publicação, remova ou atualize seu item para que a lista descreva somente o que será entregue.
 - A frase **“mude a versão”** é o comando explícito de fechamento. Quando o usuário a disser, mover `PENDING_RELEASE_VERSION` e `PENDING_RELEASE_CHANGES` para o início de `RELEASE_HISTORY`, usando a data atual, limpar as constantes pendentes e deixar o código pronto para o deploy.
 - Antes dessa frase, nenhuma alteração pendente deve ser movida para `RELEASE_HISTORY`, mesmo que já tenha sido validada ou esteja pronta para publicar.
-- `RELEASE_HISTORY` guarda apenas deploys concluídos e preserva todas as versões antigas.
+- `RELEASE_HISTORY` guarda apenas deploys concluídos e preserva todas as versões antigas. O modal do programa nunca exibe versões pendentes.
 - Alterar a linha/minor, como `1.02.xx` -> `1.03.00`, somente mediante solicitacao expressa do usuario.
 - O modal mostra inicialmente os tres deploys mais recentes e carrega versoes mais antigas conforme a rolagem; o arquivo nao deve descartar historico antigo.
 
