@@ -628,6 +628,8 @@ function buildToolAgentPlanPrompt(input: WhatsAppToolAgentInput) {
 function buildToolAgentReplyPrompt(input: WhatsAppToolAgentInput, toolResults: unknown[]) {
   return [
     'Voce e a IA de atendimento de uma otica. Responda SOMENTE em JSON valido.',
+    'Retorne EXATAMENTE um objeto JSON com este formato: {"reply_text":"mensagem para o cliente"}.',
+    'reply_text e obrigatorio, deve ser uma string nao vazia e nunca pode ser null. Nao inclua outros campos, markdown ou explicacoes.',
     'Responda no idioma predominante da mensagem atual do cliente. Use o historico somente se a mensagem atual for curta ou ambigua; se nao houver idioma claro, use portugues do Brasil. Seja natural e objetivo.',
     'Use exclusivamente os fatos fornecidos pelos resultados das ferramentas para afirmar o estado atual de pedidos e parcelas. Se o historico registrar uma informacao da equipe, voce pode cita-la como "a equipe informou", sem transforma-la em confirmacao atual.',
     'Quando uma ferramenta informar que nao encontrou dados ou que o assunto nao e atendido, explique isso com gentileza e, se fizer sentido, faca uma pergunta curta.',
@@ -809,6 +811,22 @@ function parseStructuredJson<T>(rawText: string, schema: z.ZodSchema<T>) {
   return schema.parse(parsed)
 }
 
+function buildStructuredRepairPrompt(
+  prompt: string,
+  invalidResponse: string,
+  validationError: string
+) {
+  return [
+    prompt,
+    '',
+    'CORRECAO OBRIGATORIA DE FORMATO:',
+    'A resposta anterior nao passou na validacao do sistema. Corrija apenas o formato, preservando os fatos e instrucoes do pedido original.',
+    `ERRO DE VALIDACAO: ${validationError}`,
+    `RESPOSTA ANTERIOR: ${invalidResponse}`,
+    'Responda novamente SOMENTE com um JSON valido que obedeça exatamente ao schema solicitado no pedido original. Nao inclua markdown, explicacoes ou campos extras.',
+  ].join('\n')
+}
+
 async function executeStructuredTask<T>(
   task: WhatsAppAiTask,
   prompt: string,
@@ -816,7 +834,6 @@ async function executeStructuredTask<T>(
 ): Promise<WhatsAppAiResult<T>> {
   const t0 = Date.now()
   const outcome = await runWithFallback(task, prompt)
-  const latencyMs = Date.now() - t0
 
   if (!outcome.success) {
     return {
@@ -824,7 +841,7 @@ async function executeStructuredTask<T>(
       error: `Todos os providers falharam em ${task}.`,
       attempts: outcome.providerErrors.length,
       providerErrors: outcome.providerErrors,
-      latencyMs,
+      latencyMs: Date.now() - t0,
       promptText: prompt,
     }
   }
@@ -839,22 +856,60 @@ async function executeStructuredTask<T>(
       data,
       attempts: outcome.providerErrors.length + 1,
       rawText: outcome.result.rawText,
-      latencyMs,
+      latencyMs: Date.now() - t0,
       promptText: prompt,
       tokenUsage: outcome.result.tokenUsage,
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
+    const repairPrompt = buildStructuredRepairPrompt(prompt, outcome.result.rawText, message)
+    const repairOutcome = await runWithFallback(task, repairPrompt)
+    const firstAttempts = outcome.providerErrors.length + 1
+
+    if (repairOutcome.success) {
+      try {
+        const data = parseStructuredJson(repairOutcome.result.rawText, schema)
+        return {
+          success: true,
+          provider: repairOutcome.result.provider,
+          model: repairOutcome.result.model,
+          keyIndex: repairOutcome.result.keyIndex,
+          data,
+          attempts: firstAttempts + repairOutcome.providerErrors.length + 1,
+          rawText: repairOutcome.result.rawText,
+          latencyMs: Date.now() - t0,
+          promptText: repairPrompt,
+          tokenUsage: repairOutcome.result.tokenUsage,
+        }
+      } catch (repairError) {
+        const repairMessage = repairError instanceof Error ? repairError.message : String(repairError)
+        return {
+          success: false,
+          error: `JSON invalido em ${task} apos tentativa de correcao: ${repairMessage}`,
+          attempts: firstAttempts + repairOutcome.providerErrors.length + 1,
+          providerErrors: [
+            ...outcome.providerErrors,
+            `${outcome.result.provider}:json_invalido:${message}`,
+            ...repairOutcome.providerErrors,
+            `${repairOutcome.result.provider}:json_invalido_reparo:${repairMessage}`,
+          ],
+          latencyMs: Date.now() - t0,
+          promptText: repairPrompt,
+        }
+      }
+    }
+
     return {
       success: false,
-      error: `JSON invalido em ${task}: ${message}`,
-      attempts: outcome.providerErrors.length + 1,
+      error: `JSON invalido em ${task}; a tentativa de correcao tambem falhou.`,
+      attempts: firstAttempts + repairOutcome.providerErrors.length,
       providerErrors: [
         ...outcome.providerErrors,
         `${outcome.result.provider}:json_invalido:${message}`,
+        ...repairOutcome.providerErrors,
       ],
-      latencyMs,
-      promptText: prompt,
+      latencyMs: Date.now() - t0,
+      promptText: repairPrompt,
     }
   }
 }
