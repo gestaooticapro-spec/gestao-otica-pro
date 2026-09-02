@@ -8,7 +8,7 @@ import type { Json } from '@/lib/database.types'
 import { digitsOnly, phonesMatch, phonesMatchLast8, toEvolutionNumber } from '@/lib/whatsapp/phone'
 import {
   findPendingHandoffResolution,
-  loadPendingHandoffResolutions,
+  resolvePersistedPendingHandoffs,
   type PendingHandoffOrigin,
 } from '@/lib/whatsapp/pending-handoff'
 import { markStoreInitiatedConversation } from '@/lib/whatsapp/customer-status'
@@ -16,7 +16,7 @@ import { simulateCustomerStatus, type CustomerStatusSimulationResponse } from '@
 
 const ALLOWED_ROLES = ['admin', 'manager', 'store_operator', 'vendedor', 'tecnico']
 const DEFAULT_THREAD_LIST_LIMIT = 40
-const DEFAULT_THREAD_DETAIL_LIMIT = 200
+const DEFAULT_THREAD_DETAIL_LIMIT = 80
 const DEFAULT_RECENT_SCAN_LIMIT = 400
 const WHATSAPP_RETENTION_AI_LOG_DAYS = 30
 const WHATSAPP_RETENTION_MESSAGE_DAYS = 90
@@ -46,6 +46,10 @@ type ConversationStateRow = {
   metadata: Json | null
   expires_at: string
   updated_at: string
+  handoff_pending: boolean
+  handoff_origin: PendingHandoffOrigin | null
+  handoff_at: string | null
+  operator_answered_at: string | null
 }
 
 type InboundRow = {
@@ -852,6 +856,11 @@ async function loadCustomerControlMap(storeId: number, phones?: string[]) {
     .select('remote_phone, mode')
     .eq('store_id', storeId)
 
+  if (phones?.length === 1) {
+    const suffix = digitsOnly(phones[0]).slice(-8)
+    if (suffix) query.ilike('remote_phone', `%${suffix}%`)
+  }
+
   const { data, error } = await query
   if (error) throw error
 
@@ -869,6 +878,11 @@ async function loadCustomerLinkMap(storeId: number, phones?: string[]) {
   const query = (supabaseAdmin.from('whatsapp_customer_links') as any)
     .select('remote_phone, customer_id')
     .eq('store_id', storeId)
+
+  if (phones?.length === 1) {
+    const suffix = digitsOnly(phones[0]).slice(-8)
+    if (suffix) query.ilike('remote_phone', `%${suffix}%`)
+  }
 
   const { data, error } = await query
   if (error) throw error
@@ -899,7 +913,10 @@ export async function getWhatsAppOperatorThreads(input: {
     const numericQuery = digitsOnly(query)
     const limit = Math.max(1, Math.min(Number(input.limit || DEFAULT_THREAD_LIST_LIMIT), 100))
     const scanLimit = query ? Math.max(limit * 4, 120) : DEFAULT_RECENT_SCAN_LIMIT
-    const customers = await loadStoreCustomers(storeId)
+    // Sem busca por nome, os clientes são resolvidos apenas pelos telefones
+    // encontrados nas mensagens/vínculos. A carga completa fica restrita à
+    // pesquisa textual, que realmente precisa consultar o nome.
+    const customers = query ? await loadStoreCustomers(storeId) : []
 
     const matchedCustomers = query
       ? customers.filter((customer) => {
@@ -937,7 +954,7 @@ export async function getWhatsAppOperatorThreads(input: {
       .limit(scanLimit)
 
     const stateQuery = (supabaseAdmin.from('whatsapp_conversation_states') as any)
-      .select('id, channel_id, remote_phone, state, metadata, expires_at, updated_at')
+      .select('id, channel_id, remote_phone, state, metadata, expires_at, updated_at, handoff_pending, handoff_origin, handoff_at, operator_answered_at')
       .eq('store_id', storeId)
       .order('updated_at', { ascending: false })
       .limit(scanLimit)
@@ -964,11 +981,7 @@ export async function getWhatsAppOperatorThreads(input: {
     if (stateError) throw stateError
 
     const typedStateRows = (stateRows || []) as ConversationStateRow[]
-    const pendingHandoffResolutions = await loadPendingHandoffResolutions(
-      supabaseAdmin,
-      storeId,
-      typedStateRows
-    )
+    const pendingHandoffResolutions = resolvePersistedPendingHandoffs(typedStateRows)
 
     const threadMap = new Map<string, ReturnType<typeof createThreadAccumulator>>()
     const ensureThread = (remotePhone: string) => {
@@ -1126,7 +1139,7 @@ export async function getWhatsAppOperatorThreadDetail(input: {
     }
 
     const { supabaseAdmin } = await getViewContext(storeId)
-    const customers = await loadStoreCustomers(storeId)
+    const customers: StoreCustomerRow[] = []
     const [controlMap, customerLinkMap] = await Promise.all([
       loadCustomerControlMap(storeId, [remotePhone]),
       loadCustomerLinkMap(storeId, [remotePhone]),
@@ -1144,7 +1157,7 @@ export async function getWhatsAppOperatorThreadDetail(input: {
       .order('created_at', { ascending: false })
       .limit(Math.max(limit * 3, limit))
     const stateBaseQuery = (supabaseAdmin.from('whatsapp_conversation_states') as any)
-      .select('id, channel_id, remote_phone, state, metadata, expires_at, updated_at')
+      .select('id, channel_id, remote_phone, state, metadata, expires_at, updated_at, handoff_pending, handoff_origin, handoff_at, operator_answered_at')
       .eq('store_id', storeId)
 
     if (phoneLast8) {
@@ -1171,11 +1184,7 @@ export async function getWhatsAppOperatorThreadDetail(input: {
       .slice(0, limit)
     const matchedStateRow = ((stateRow || []) as ConversationStateRow[])
       .find((row) => phonesBelongToSameThread(row.remote_phone, remotePhone)) || null
-    const pendingHandoffResolutions = await loadPendingHandoffResolutions(
-      supabaseAdmin,
-      storeId,
-      matchedStateRow ? [matchedStateRow] : []
-    )
+    const pendingHandoffResolutions = resolvePersistedPendingHandoffs(matchedStateRow ? [matchedStateRow] : [])
     const pendingHandoff = findPendingHandoffResolution(pendingHandoffResolutions, remotePhone)
 
     const inboundIds = filteredInboundRows.map((row) => row.id)

@@ -6,7 +6,7 @@ import { getInstallmentOutstanding } from '@/lib/installment-balance'
 import { phonesMatch } from '@/lib/whatsapp/phone'
 import {
     findPendingHandoffResolution,
-    loadPendingHandoffResolutions,
+    resolvePersistedPendingHandoffs,
     type PendingHandoffOrigin,
     type PendingHandoffStateRow,
 } from '@/lib/whatsapp/pending-handoff'
@@ -463,16 +463,17 @@ export async function getWhatsAppPendencias(storeId: number): Promise<WhatsAppPe
 
     try {
         const { data, error } = await (supabaseAdmin.from('whatsapp_conversation_states') as any)
-            .select('id, remote_phone, state, expires_at, updated_at, metadata')
+            .select('id, remote_phone, state, expires_at, updated_at, metadata, handoff_pending, handoff_origin, handoff_at, operator_answered_at')
             .eq('store_id', storeId)
             .in('state', ['human_pause', 'waiting_human_after_attachment'])
+            .eq('handoff_pending', true)
             .gt('expires_at', now)
             .order('updated_at', { ascending: false })
 
         if (error) throw error
 
         const stateRows = (data || []) as Array<PendingHandoffStateRow & { id: number }>
-        const resolutions = await loadPendingHandoffResolutions(supabaseAdmin, storeId, stateRows)
+        const resolutions = resolvePersistedPendingHandoffs(stateRows)
 
         return stateRows.flatMap((item) => {
             const resolution = findPendingHandoffResolution(resolutions, item.remote_phone)

@@ -412,8 +412,14 @@ export default function WhatsAppOperatorModal({
   const conversationViewportRef = useRef<HTMLDivElement | null>(null)
   const conversationBottomRef = useRef<HTMLDivElement | null>(null)
   const composerRef = useRef<HTMLTextAreaElement | null>(null)
+  const skipNextQueryLoadRef = useRef(false)
 
-  const loadThreads = (search = query, preserveSelection = true, preferredPhone: string | null = null) => {
+  const loadThreads = (
+    search = query,
+    preserveSelection = true,
+    preferredPhone: string | null = null,
+    autoSelectFirst = false
+  ) => {
     setLoadError(null)
 
     startTransition(async () => {
@@ -434,7 +440,7 @@ export default function WhatsAppOperatorModal({
       const nextSelectedPhone = preferredPhone
         || (preserveSelection && selectedPhone && result.threads.some((thread) => thread.remotePhone === selectedPhone)
           ? selectedPhone
-          : result.threads[0]?.remotePhone || null)
+          : autoSelectFirst ? result.threads[0]?.remotePhone || null : null)
 
       setSelectedPhone(nextSelectedPhone)
     })
@@ -447,6 +453,7 @@ export default function WhatsAppOperatorModal({
       const result = await getWhatsAppOperatorThreadDetail({
         storeId,
         remotePhone,
+        limit: 80,
       })
 
       if (!result.success || !result.data) {
@@ -514,8 +521,8 @@ export default function WhatsAppOperatorModal({
   useEffect(() => {
     if (!isOpen) return
     const initialSearch = initialPhone || ''
-    loadThreads(initialSearch, false, initialPhone)
-    loadRetentionPreview()
+    skipNextQueryLoadRef.current = true
+    loadThreads(initialSearch, false, initialPhone, false)
     setQuery(initialSearch)
     setSelectedDetail(null)
     setSelectedPhone(initialPhone)
@@ -530,8 +537,12 @@ export default function WhatsAppOperatorModal({
 
   useEffect(() => {
     if (!isOpen) return
+    if (skipNextQueryLoadRef.current) {
+      skipNextQueryLoadRef.current = false
+      return
+    }
     const timer = window.setTimeout(() => {
-      loadThreads(query, false, query === initialPhone ? initialPhone : null)
+      loadThreads(query, false, query === initialPhone ? initialPhone : null, false)
     }, 250)
 
     return () => window.clearTimeout(timer)
@@ -539,6 +550,7 @@ export default function WhatsAppOperatorModal({
 
   useEffect(() => {
     if (!isOpen || !selectedPhone) return
+    setSelectedDetail(null)
     loadThreadDetail(selectedPhone)
     setSendError(null)
     setSendSuccess(null)
@@ -620,8 +632,26 @@ export default function WhatsAppOperatorModal({
       setControlMessage(result.message)
 
       if (result.success) {
-        loadThreads(query)
-        loadThreadDetail(selectedThread.remotePhone)
+        const nextMode = result.mode || mode
+        setThreads((current) => current.map((thread) =>
+          thread.remotePhone === selectedThread.remotePhone
+            ? { ...thread, overrideMode: nextMode }
+            : thread
+        ))
+        setSelectedDetail((current) => {
+          if (!current || current.thread.remotePhone !== selectedThread.remotePhone) return current
+          return {
+            ...current,
+            thread: {
+              ...current.thread,
+              overrideMode: nextMode,
+            },
+            technicalSummary: {
+              ...current.technicalSummary,
+              overrideMode: nextMode,
+            },
+          }
+        })
       }
     })
   }
@@ -1128,7 +1158,7 @@ export default function WhatsAppOperatorModal({
                   </button>
                 </div>
               ) : !retentionError ? (
-                <p className="mt-3 text-sm text-slate-400">Carregando prévia de retenção...</p>
+                <p className="mt-3 text-sm text-slate-400">Clique em atualizar para consultar a prévia.</p>
               ) : null}
             </div>
 

@@ -2029,6 +2029,25 @@ async function setConversationState(
   const preparedMetadata = state === 'human_pause' || state === 'waiting_human_after_attachment'
     ? clearAiSessionMessages(metadata)
     : metadata
+  const metadataRecord = toMetadataRecord(preparedMetadata)
+  const now = new Date().toISOString()
+  const isNewHandoff = metadataRecord.lastAction === 'human_handoff'
+    || metadataRecord.action === 'human_handoff'
+    || state === 'waiting_human_after_attachment'
+  const resolvesHandoff = metadataRecord.handoffResolvedByOperator === true
+  const handoffValues = isNewHandoff
+    ? {
+        handoff_pending: true,
+        handoff_origin: state === 'waiting_human_after_attachment' ? 'attachment' : 'general',
+        handoff_at: now,
+        operator_answered_at: null,
+      }
+    : resolvesHandoff
+      ? {
+          handoff_pending: false,
+          operator_answered_at: now,
+        }
+      : {}
   const values = {
     tenant_id: channel.tenant_id,
     store_id: channel.store_id,
@@ -2037,7 +2056,8 @@ async function setConversationState(
     state,
     metadata: preparedMetadata,
     expires_at: expiresIn(ms),
-    updated_at: new Date().toISOString(),
+    updated_at: now,
+    ...handoffValues,
   }
 
   // A Evolution pode alternar entre os formatos brasileiro com e sem o nono
@@ -5025,6 +5045,7 @@ export async function markStoreInitiatedConversation(
     reason: mirrorOutbound ? 'store_initiated' : 'app_manual_send',
     providerMessageId: providerMessageId || null,
     preview: messageText.slice(0, 160) || null,
+    handoffResolvedByOperator: true,
     ...buildDecisionMetadata({
       intent: null,
       action: mirrorOutbound ? 'human_pause_store_initiated' : 'human_pause_app_manual_send',
