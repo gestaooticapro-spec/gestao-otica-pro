@@ -16,6 +16,9 @@ const OPENAI_KEYS = [
 
 const GEMINI_MODEL = process.env.WHATSAPP_AI_GEMINI_MODEL || 'gemini-2.5-flash'
 const OPENAI_MODEL = process.env.WHATSAPP_AI_OPENAI_MODEL || process.env.OPENAI_TEXT_MODEL || 'gpt-4.1-nano'
+// Provedor temporariamente fixado no OpenAI para comparar a aderência do plano
+// de ferramentas enquanto investigamos as respostas inválidas do Gemini.
+const WHATSAPP_AI_PROVIDER = (process.env.WHATSAPP_AI_PROVIDER || 'openai').trim().toLowerCase()
 const REQUEST_TIMEOUT_MS = Number(process.env.WHATSAPP_AI_TIMEOUT_MS || 20000)
 
 const WHATSAPP_INTENTS = [
@@ -783,10 +786,11 @@ async function callOpenAI(task: WhatsAppAiTask, prompt: string): Promise<Provide
 
 async function runWithFallback(task: WhatsAppAiTask, prompt: string) {
   const providerErrors: string[] = []
-  const attempts: Array<Promise<ProviderAttemptSuccess | ProviderAttemptFailure>> = [
-    callGemini(task, prompt),
-    callOpenAI(task, prompt),
-  ]
+  const attempts: Array<Promise<ProviderAttemptSuccess | ProviderAttemptFailure>> = WHATSAPP_AI_PROVIDER === 'gemini'
+    ? [callGemini(task, prompt)]
+    : WHATSAPP_AI_PROVIDER === 'openai'
+      ? [callOpenAI(task, prompt)]
+      : [callGemini(task, prompt), callOpenAI(task, prompt)]
 
   for (const attempt of attempts) {
     const result = await attempt
