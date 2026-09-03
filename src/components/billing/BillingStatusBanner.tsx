@@ -1,10 +1,12 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, CheckCircle2, Copy, QrCode, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { AlertTriangle, CheckCircle2, Copy, Move, QrCode, X } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { getBillingBannerPresentation, getBillingNoticePeriod } from '@/lib/billing/billing-status-ui'
 import type { BillingStoreStatus } from '@/lib/billing/integracao-asaas'
+
+type FloatingButtonPosition = { left: number; top: number }
 
 export default function BillingStatusBanner({ storeId }: { storeId: number }) {
   const pathname = usePathname()
@@ -12,6 +14,12 @@ export default function BillingStatusBanner({ storeId }: { storeId: number }) {
   const [dismissed, setDismissed] = useState(false)
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [floatingButtonPosition, setFloatingButtonPosition] = useState<FloatingButtonPosition | null>(null)
+  const floatingButtonRef = useRef<HTMLButtonElement>(null)
+  const dragRef = useRef<{ pointerId: number; offsetX: number; offsetY: number; moved: boolean } | null>(null)
+  const suppressClickRef = useRef(false)
+
+  const floatingButtonStorageKey = `billing-payment-button-position:${storeId}`
 
   useEffect(() => {
     let active = true
@@ -31,6 +39,41 @@ export default function BillingStatusBanner({ storeId }: { storeId: number }) {
   useEffect(() => {
     setDismissed(Boolean(noticeKey && window.localStorage.getItem(noticeKey)))
   }, [noticeKey])
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(floatingButtonStorageKey)
+      if (!stored) return
+      const parsed = JSON.parse(stored) as Partial<FloatingButtonPosition>
+      if (typeof parsed.left === 'number' && typeof parsed.top === 'number') {
+        setFloatingButtonPosition({ left: parsed.left, top: parsed.top })
+      }
+    } catch {
+      // Uma posição inválida não deve impedir a exibição do botão de pagamento.
+    }
+  }, [floatingButtonStorageKey])
+
+  useEffect(() => {
+    if (!floatingButtonPosition || !floatingButtonRef.current) return
+
+    const margin = 12
+    const button = floatingButtonRef.current
+    const nextPosition = {
+      left: Math.min(Math.max(margin, floatingButtonPosition.left), Math.max(margin, window.innerWidth - button.offsetWidth - margin)),
+      top: Math.min(Math.max(margin, floatingButtonPosition.top), Math.max(margin, window.innerHeight - button.offsetHeight - margin)),
+    }
+
+    if (nextPosition.left !== floatingButtonPosition.left || nextPosition.top !== floatingButtonPosition.top) {
+      setFloatingButtonPosition(nextPosition)
+      window.localStorage.setItem(floatingButtonStorageKey, JSON.stringify(nextPosition))
+    }
+  }, [floatingButtonPosition, floatingButtonStorageKey])
+
+  useEffect(() => {
+    if (floatingButtonPosition) {
+      window.localStorage.setItem(floatingButtonStorageKey, JSON.stringify(floatingButtonPosition))
+    }
+  }, [floatingButtonPosition, floatingButtonStorageKey])
 
   if (!status || !presentation) return null
 
@@ -60,6 +103,50 @@ export default function BillingStatusBanner({ storeId }: { storeId: number }) {
     window.setTimeout(() => setCopied(false), 1800)
   }
 
+  const handleFloatingButtonPointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const button = event.currentTarget
+    const rect = button.getBoundingClientRect()
+    dragRef.current = {
+      pointerId: event.pointerId,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+      moved: false,
+    }
+    button.setPointerCapture(event.pointerId)
+  }
+
+  const handleFloatingButtonPointerMove = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current
+    const button = event.currentTarget
+    if (!drag || drag.pointerId !== event.pointerId || !button.hasPointerCapture(event.pointerId)) return
+
+    if (Math.abs(event.movementX) + Math.abs(event.movementY) > 1) drag.moved = true
+
+    const margin = 12
+    const left = Math.min(Math.max(margin, event.clientX - drag.offsetX), Math.max(margin, window.innerWidth - button.offsetWidth - margin))
+    const top = Math.min(Math.max(margin, event.clientY - drag.offsetY), Math.max(margin, window.innerHeight - button.offsetHeight - margin))
+    setFloatingButtonPosition({ left, top })
+  }
+
+  const handleFloatingButtonPointerUp = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current
+    const button = event.currentTarget
+    if (!drag || drag.pointerId !== event.pointerId) return
+
+    if (button.hasPointerCapture(event.pointerId)) button.releasePointerCapture(event.pointerId)
+    if (drag.moved) {
+      suppressClickRef.current = true
+      if (floatingButtonPosition) window.localStorage.setItem(floatingButtonStorageKey, JSON.stringify(floatingButtonPosition))
+      window.setTimeout(() => { suppressClickRef.current = false }, 0)
+    }
+    dragRef.current = null
+  }
+
+  const openPaymentFromFloatingButton = () => {
+    if (suppressClickRef.current) return
+    setPaymentOpen(true)
+  }
+
   return (
     <>
       {presentation.showBanner && !dismissed && (
@@ -75,7 +162,19 @@ export default function BillingStatusBanner({ storeId }: { storeId: number }) {
         </section>
       )}
 
-      {presentation.canPay && (!presentation.showBanner || dismissed) && <button type="button" onClick={() => setPaymentOpen(true)} className="fixed bottom-5 right-5 z-[100] inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-3 text-sm font-black text-white shadow-2xl transition hover:-translate-y-0.5 hover:bg-black"><QrCode className="h-4 w-4" /> Pagar</button>}
+      {presentation.canPay && (!presentation.showBanner || dismissed) && <button
+        ref={floatingButtonRef}
+        type="button"
+        onClick={openPaymentFromFloatingButton}
+        onPointerDown={handleFloatingButtonPointerDown}
+        onPointerMove={handleFloatingButtonPointerMove}
+        onPointerUp={handleFloatingButtonPointerUp}
+        onPointerCancel={handleFloatingButtonPointerUp}
+        style={floatingButtonPosition ? { left: floatingButtonPosition.left, top: floatingButtonPosition.top } : undefined}
+        className={`group fixed z-[100] inline-flex touch-none cursor-grab items-center gap-2 rounded-full bg-slate-950 px-3 py-2.5 text-sm font-black text-white shadow-2xl transition hover:-translate-y-0.5 hover:bg-black active:cursor-grabbing ${floatingButtonPosition ? '' : 'bottom-5 right-5'}`}
+        aria-label="Pagar mensalidade"
+        title="Clique para pagar ou arraste para reposicionar"
+      ><QrCode className="ml-1 h-4 w-4" /> Pagar <span className="ml-1 inline-flex rounded-full border border-white/15 bg-white/10 p-1 text-slate-300 transition group-hover:scale-110 group-hover:text-white" aria-hidden="true"><Move className="h-3.5 w-3.5" /></span><span className="sr-only">Arrastável</span></button>}
 
       {paymentOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">

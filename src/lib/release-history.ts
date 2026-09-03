@@ -93,6 +93,14 @@ const RELEASE_10205_CHANGES: readonly string[] = [
 // Alterações de linha/minor (ex.: 1.02.xx -> 1.03.00) exigem solicitação expressa.
 export const RELEASE_HISTORY: Release[] = [
   {
+    version: '1.02.11',
+    date: '03/09/2026',
+    changes: [
+      'O botão flutuante de pagamento da mensalidade pode ser arrastado e mantém sua posição por loja quando a faixa de cobrança está fechada.',
+      'A revisão de clientes parecidos passou a manter as mesclagens recentes fechadas por padrão e exibir inicialmente somente os cinco registros mais recentes, com opção de expandir o histórico.',
+    ],
+  },
+  {
     version: '1.02.10',
     date: '02/09/2026',
     changes: [
@@ -100,7 +108,6 @@ export const RELEASE_HISTORY: Release[] = [
       'Em caso de confirmação incerta da NFC-e, a emissão passou a orientar a consulta do status da nota antes de uma nova tentativa.',
       'A tela de WhatsApp Operacional passou a carregar a conversa somente quando uma thread é selecionada, com atualização local dos modos Automático, IA próxima e Humano.',
       'O status de handoff do WhatsApp passou a ser gravado na conversa, deixando a lista operacional mais rápida para exibir pendências humanas.',
-      'Histórico de versões passou a exibir somente deploys concluídos e a apresentar correções e melhorias em escrita normal.',
     ],
   },
   {
