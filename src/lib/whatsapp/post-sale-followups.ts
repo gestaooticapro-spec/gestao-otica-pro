@@ -3,7 +3,7 @@
 import { Json } from '@/lib/database.types'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getStoreModules, StoreSettings } from '@/lib/store-modules'
-import { toEvolutionNumber } from '@/lib/whatsapp/phone'
+import { phonesMatch, toEvolutionNumber } from '@/lib/whatsapp/phone'
 import { buildWhatsAppCanonicalPayload } from '@/lib/whatsapp/canonical'
 import { evaluateStoreHours } from '@/lib/whatsapp/store-hours-logic'
 import {
@@ -377,6 +377,16 @@ async function hasActiveHumanBlock(channelId: number, phone: string) {
   return Boolean(stateResult.data?.id || controlResult.data?.id)
 }
 
+async function isPostSaleFollowupOptedOut(storeId: number, phone: string) {
+  const supabase = createAdminClient()
+  const { data, error } = await (supabase.from('whatsapp_message_preferences') as any)
+    .select('remote_phone')
+    .eq('store_id', storeId)
+    .eq('post_sale_followups_enabled', false)
+  if (error) throw error
+  return (data || []).some((row: { remote_phone?: string | null }) => phonesMatch(row.remote_phone, phone))
+}
+
 async function closeExpiredPostSaleFollowups(now: Date) {
   const supabase = createAdminClient()
   const deadlineIso = new Date(now.getTime() - POST_SALE_CONTEXT_MS).toISOString()
@@ -547,6 +557,7 @@ async function scheduleFollowups(now: Date) {
       const customerName = serviceOrder.customers?.full_name || 'Cliente'
       const phone = toEvolutionNumber(serviceOrder.customers?.fone_movel || serviceOrder.customers?.phone)
       if (!phone) continue
+      if (await isPostSaleFollowupOptedOut(channel.store_id, phone)) continue
 
       const deliveredAt = String(serviceOrder.dt_entregue_em || '').slice(0, 10)
       if (!deliveredAt) continue
@@ -977,6 +988,11 @@ async function dispatchScheduledFollowups(now: Date, limit = DEFAULT_DISPATCH_LI
 
       if (await hasActiveHumanBlock(followup.channel_id, followup.remote_phone)) {
         await markCancelled(followup.id, 'Fluxo cancelado por handoff humano ou override manual ativo.')
+        continue
+      }
+
+      if (await isPostSaleFollowupOptedOut(followup.store_id, followup.remote_phone)) {
+        await markCancelled(followup.id, 'Cliente não recebe acompanhamentos automáticos de pós-venda por WhatsApp.')
         continue
       }
 

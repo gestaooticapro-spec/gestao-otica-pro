@@ -8,6 +8,8 @@ import { z } from 'zod'
 // Importamos os helpers administrativos para bypassar o RLS (leitura e escrita)
 import { getProfileByAdmin, createAdminClient } from '@/lib/supabase/admin'
 import { documentDigits, isValidCnpj, isValidCpf } from '@/lib/customer-document'
+import { getStoreModules, StoreSettings } from '@/lib/store-modules'
+import { getPhoneVariants, phonesMatch, toEvolutionNumber } from '@/lib/whatsapp/phone'
 
 type Customer = Database['public']['Tables']['customers']['Row']
 
@@ -95,6 +97,142 @@ export type CustomerActionResult = {
   message: string
   data?: Customer
   errors?: Record<string, string[]>
+}
+
+export type CustomerWhatsAppMessagePreferences = {
+  available: boolean
+  installmentRemindersAvailable: boolean
+  postSaleFollowupsAvailable: boolean
+  remotePhone: string | null
+  installmentRemindersEnabled: boolean
+  postSaleFollowupsEnabled: boolean
+  updatedAt: string | null
+}
+
+function readCheckboxValue(formData: FormData, key: string) {
+  return formData.get(key) === 'true'
+}
+
+async function upsertCustomerWhatsAppPreferences(input: {
+  tenantId: string
+  storeId: number
+  phone: string | null | undefined
+  installmentRemindersAvailable: boolean
+  postSaleFollowupsAvailable: boolean
+  installmentRemindersEnabled: boolean
+  postSaleFollowupsEnabled: boolean
+}) {
+  const remotePhone = toEvolutionNumber(input.phone)
+  if (!remotePhone) return
+
+  const supabaseAdmin = createAdminClient()
+  const phoneVariants = [...getPhoneVariants(remotePhone)]
+  const { data: rows, error: loadError } = await (supabaseAdmin.from('whatsapp_message_preferences') as any)
+    .select('id, remote_phone')
+    .eq('store_id', input.storeId)
+    .in('remote_phone', phoneVariants)
+  if (loadError) throw loadError
+
+  const now = new Date().toISOString()
+  const values: Record<string, unknown> = {
+    updated_at: now,
+  }
+  if (input.installmentRemindersAvailable) {
+    values.installment_reminders_enabled = input.installmentRemindersEnabled
+    values.installment_reminders_changed_at = now
+  }
+  if (input.postSaleFollowupsAvailable) {
+    values.post_sale_followups_enabled = input.postSaleFollowupsEnabled
+    values.post_sale_followups_changed_at = now
+  }
+  const matching = (rows || []).filter((row: { remote_phone?: string | null }) => phonesMatch(row.remote_phone, remotePhone))
+  if (matching.length) {
+    for (const row of matching as Array<{ id: number }>) {
+      const { error } = await (supabaseAdmin.from('whatsapp_message_preferences') as any)
+        .update(values)
+        .eq('id', row.id)
+      if (error) throw error
+    }
+    return
+  }
+
+  const { error } = await (supabaseAdmin.from('whatsapp_message_preferences') as any)
+    .insert({
+      tenant_id: input.tenantId,
+      store_id: input.storeId,
+      remote_phone: remotePhone,
+      installment_reminders_enabled: input.installmentRemindersAvailable ? input.installmentRemindersEnabled : true,
+      installment_reminders_changed_at: now,
+      post_sale_followups_enabled: input.postSaleFollowupsAvailable ? input.postSaleFollowupsEnabled : true,
+      post_sale_followups_changed_at: now,
+      updated_at: now,
+    })
+  if (error) throw error
+}
+
+export async function getCustomerWhatsAppMessagePreferences(
+  storeId: number,
+  customerId: number | null,
+  phoneOverride?: string | null
+): Promise<CustomerWhatsAppMessagePreferences> {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Usuário não autenticado.')
+
+  const profile = await getProfileByAdmin(user.id) as any
+  if (!profile?.store_id || Number(profile.store_id) !== Number(storeId)) throw new Error('Sem permissão para esta loja.')
+
+  const supabaseAdmin = createAdminClient()
+  const [{ data: store, error: storeError }, { data: channels, error: channelError }, customerResult] = await Promise.all([
+    (supabaseAdmin.from('stores') as any).select('settings').eq('id', storeId).single(),
+    (supabaseAdmin.from('whatsapp_store_channels') as any).select('id').eq('store_id', storeId).eq('provider', 'evolution').eq('is_active', true).eq('connection_status', 'connected').limit(1),
+    customerId
+      ? (supabaseAdmin.from('customers') as any).select('fone_movel, phone').eq('id', customerId).eq('store_id', storeId).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+  ])
+  if (storeError) throw storeError
+  if (channelError) throw channelError
+  if (customerResult.error) throw customerResult.error
+
+  const settings = ((store?.settings || {}) as StoreSettings) || {}
+  const modules = getStoreModules(settings)
+  const automationAvailable = Boolean(channels?.length) && settings.whatsapp_automation?.enabled !== false
+  const installmentRemindersAvailable = automationAvailable
+    && modules.installments
+    && settings.whatsapp_automation?.installment_due_reminder?.enabled === true
+  const postSaleFollowupsAvailable = automationAvailable
+    && modules.postSales
+    && settings.whatsapp_automation?.post_sale_followup?.enabled === true
+  const remotePhone = toEvolutionNumber(phoneOverride || customerResult.data?.fone_movel || customerResult.data?.phone)
+
+  if (!remotePhone || (!installmentRemindersAvailable && !postSaleFollowupsAvailable)) {
+    return {
+      available: installmentRemindersAvailable || postSaleFollowupsAvailable,
+      installmentRemindersAvailable,
+      postSaleFollowupsAvailable,
+      remotePhone: remotePhone || null,
+      installmentRemindersEnabled: true,
+      postSaleFollowupsEnabled: true,
+      updatedAt: null,
+    }
+  }
+
+  const { data: rows, error } = await (supabaseAdmin.from('whatsapp_message_preferences') as any)
+    .select('remote_phone, installment_reminders_enabled, post_sale_followups_enabled, updated_at')
+    .eq('store_id', storeId)
+    .in('remote_phone', [...getPhoneVariants(remotePhone)])
+  if (error) throw error
+  const preference = (rows || []).find((row: { remote_phone?: string | null }) => phonesMatch(row.remote_phone, remotePhone))
+
+  return {
+    available: true,
+    installmentRemindersAvailable,
+    postSaleFollowupsAvailable,
+    remotePhone,
+    installmentRemindersEnabled: preference?.installment_reminders_enabled !== false,
+    postSaleFollowupsEnabled: preference?.post_sale_followups_enabled !== false,
+    updatedAt: preference?.updated_at || null,
+  }
 }
 
 async function validateCustomerNameDuplicatePolicy({
@@ -325,6 +463,18 @@ export async function saveCustomerDetails(
         return { success: false, message: `Erro: Já existe um cliente com este ${personType === 'PJ' ? 'CNPJ' : 'CPF'} nesta loja.` }
       }
       throw new Error(error.message)
+    }
+
+    if (formData.get('whatsapp_preferences_enabled') === 'true') {
+      await upsertCustomerWhatsAppPreferences({
+        tenantId: tenant_id,
+        storeId: store_id,
+        phone: dataToSave.fone_movel || dataToSave.phone,
+        installmentRemindersAvailable: formData.get('installment_reminders_available') === 'true',
+        postSaleFollowupsAvailable: formData.get('post_sale_followups_available') === 'true',
+        installmentRemindersEnabled: readCheckboxValue(formData, 'installment_reminders_enabled'),
+        postSaleFollowupsEnabled: readCheckboxValue(formData, 'post_sale_followups_enabled'),
+      })
     }
 
     revalidatePath(`/dashboard/loja/${store_id}/clientes`);

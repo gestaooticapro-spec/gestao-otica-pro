@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   formatWhatsAppPersistedConversationHistory,
+  isInstallmentReminderPreferenceCandidate,
   isSimpleRepeatedStatusQuestion,
 } from '../src/lib/whatsapp/customer-status'
 import { detectWhatsAppConversationLanguage } from '../src/lib/whatsapp/ai'
@@ -81,4 +82,11 @@ test('detecta ingles e espanhol para resposta da IAra', () => {
   assert.equal(detectWhatsAppConversationLanguage('Hello, where are my glasses?'), 'en')
   assert.equal(detectWhatsAppConversationLanguage('Hola, ¿dónde están mis gafas?'), 'es')
   assert.equal(detectWhatsAppConversationLanguage('Oi, como esta meu oculos?'), 'pt-BR')
+})
+
+test('encaminha para a decisao contextual apenas respostas que podem pedir bloqueio de lembretes', () => {
+  assert.equal(isInstallmentReminderPreferenceCandidate('Boa tarde, pode parar. Eu sei a data do vencimento.'), true)
+  assert.equal(isInstallmentReminderPreferenceCandidate('Nao quero mais receber lembretes por aqui.'), true)
+  assert.equal(isInstallmentReminderPreferenceCandidate('Ja paguei a parcela.'), false)
+  assert.equal(isInstallmentReminderPreferenceCandidate('Obrigada pelo aviso.'), false)
 })

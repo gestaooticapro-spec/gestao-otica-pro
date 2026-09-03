@@ -62,7 +62,7 @@ export type WhatsAppIntent = (typeof WHATSAPP_INTENTS)[number]
 export type WhatsAppReasoningTag = (typeof WHATSAPP_REASONING_TAGS)[number]
 export type WhatsAppReplyTone = (typeof WHATSAPP_TONES)[number]
 export type WhatsAppAiProvider = 'gemini' | 'openai'
-export type WhatsAppAiTask = 'intent_classification' | 'post_sale_rating_resolution' | 'reply_humanization' | 'fallback_reply' | 'receipt_extraction' | 'tool_agent_plan' | 'tool_agent_reply'
+export type WhatsAppAiTask = 'intent_classification' | 'installment_reminder_preference_resolution' | 'post_sale_rating_resolution' | 'reply_humanization' | 'fallback_reply' | 'receipt_extraction' | 'tool_agent_plan' | 'tool_agent_reply'
 
 export type WhatsAppAiTokenUsage = {
   inputTokens: number | null
@@ -87,6 +87,13 @@ export const WhatsAppIntentClassificationSchema = z.object({
 })
 
 export type WhatsAppIntentClassification = z.infer<typeof WhatsAppIntentClassificationSchema>
+
+export const WhatsAppInstallmentReminderPreferenceResolutionSchema = z.object({
+  action: z.enum(['opt_out', 'continue_flow']),
+  confidence: z.number().min(0).max(1),
+})
+
+export type WhatsAppInstallmentReminderPreferenceResolution = z.infer<typeof WhatsAppInstallmentReminderPreferenceResolutionSchema>
 
 export const WhatsAppPostSaleRatingResolutionSchema = z.discriminatedUnion('action', [
   z.object({
@@ -305,6 +312,15 @@ type ProviderAttemptFailure = {
   provider: WhatsAppAiProvider
   keyIndex: number
   error: string
+}
+
+export type WhatsAppInstallmentReminderPreferenceResolutionInput = {
+  messageText: string
+  reminderContext: {
+    dueDate?: string | null
+    installmentNumber?: number | null
+    totalInstallments?: number | null
+  }
 }
 
 export type WhatsAppConversationLanguage = 'pt-BR' | 'es' | 'en'
@@ -805,6 +821,29 @@ function parseStructuredJson<T>(rawText: string, schema: z.ZodSchema<T>) {
   return schema.parse(parsed)
 }
 
+function buildInstallmentReminderPreferenceResolutionPrompt(
+  input: WhatsAppInstallmentReminderPreferenceResolutionInput
+) {
+  return [
+    'Voce decide se uma mensagem de WhatsApp deve cancelar lembretes automaticos de vencimento de parcelas de uma otica.',
+    'Responda SOMENTE em JSON valido, sem markdown ou explicacoes extras.',
+    'O sistema confirmou que a mensagem atual foi recebida no contexto de um lembrete recente que dizia: "Para nao receber mais lembretes de vencimento por WhatsApp, responda PARAR."',
+    'Escolha opt_out somente quando o cliente pedir claramente para parar, cancelar ou deixar de receber esses lembretes de vencimento.',
+    'Nao escolha opt_out se o cliente apenas informar que ja pagou, disser que sabe a data, fizer uma pergunta, pedir outro assunto, ou se a intencao de parar os lembretes nao estiver clara.',
+    'Quando nao for um pedido claro de cancelamento dos lembretes, escolha continue_flow. A conversa seguira o fluxo normal da otica.',
+    'O cancelamento vale exclusivamente para lembretes automaticos de parcelas; nunca para pos-venda, mensagens manuais ou outros contatos.',
+    '',
+    'SCHEMA:',
+    JSON.stringify({ action: 'opt_out', confidence: 0.98 }, null, 2),
+    '',
+    'CONTEXTO DO LEMBRETE:',
+    JSON.stringify(input.reminderContext, null, 2),
+    '',
+    'MENSAGEM ATUAL DO CLIENTE:',
+    input.messageText,
+  ].join('\n')
+}
+
 async function executeStructuredTask<T>(
   task: WhatsAppAiTask,
   prompt: string,
@@ -862,6 +901,16 @@ export async function classifyWhatsAppIntent(
     'intent_classification',
     buildIntentPrompt(input),
     WhatsAppIntentClassificationSchema
+  )
+}
+
+export async function resolveWhatsAppInstallmentReminderPreference(
+  input: WhatsAppInstallmentReminderPreferenceResolutionInput
+): Promise<WhatsAppAiResult<WhatsAppInstallmentReminderPreferenceResolution>> {
+  return executeStructuredTask(
+    'installment_reminder_preference_resolution',
+    buildInstallmentReminderPreferenceResolutionPrompt(input),
+    WhatsAppInstallmentReminderPreferenceResolutionSchema
   )
 }
 

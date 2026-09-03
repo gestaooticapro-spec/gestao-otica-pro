@@ -10,7 +10,7 @@ import {
     AlertTriangle, Gem, Trophy, Medal, ArrowLeft
 } from 'lucide-react';
 import { Database } from '@/lib/database.types';
-import { saveCustomerDetails, deleteCustomer } from '@/lib/actions/customer.actions';
+import { CustomerWhatsAppMessagePreferences, getCustomerWhatsAppMessagePreferences, saveCustomerDetails, deleteCustomer } from '@/lib/actions/customer.actions';
 import { searchCustomersByName, getCustomerById, fetchDefaultCustomers } from '@/lib/actions/vendas.actions';
 import { getDependentes, deleteDependente, saveDependente } from '@/lib/actions/dependents.actions';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
@@ -19,7 +19,7 @@ import { maskCpfCnpj } from '@/lib/customer-document';
 
 type Customer = Database['public']['Tables']['customers']['Row'];
 type Dependente = Database['public']['Tables']['dependentes']['Row'];
-type ActiveTab = 'principal' | 'detalhes' | 'referencias' | 'dependentes';
+type ActiveTab = 'principal' | 'detalhes' | 'referencias' | 'mensagens' | 'dependentes';
 type EditorMode = 'empty' | 'create' | 'edit';
 
 // --- HELPERS ---
@@ -189,6 +189,9 @@ export default function StoreClientPage() {
     const [obsGeral, setObsGeral] = useState('');
     const [faixaEtaria, setFaixaEtaria] = useState('');
     const [createdAt, setCreatedAt] = useState(new Date().toLocaleDateString('pt-BR'));
+    const [whatsAppPreferences, setWhatsAppPreferences] = useState<CustomerWhatsAppMessagePreferences | null>(null);
+    const [installmentRemindersEnabled, setInstallmentRemindersEnabled] = useState(true);
+    const [postSaleFollowupsEnabled, setPostSaleFollowupsEnabled] = useState(true);
 
     const currentCustomer = (currentIndex >= 0 && currentIndex < customers.length) ? customers[currentIndex] : undefined;
     const isDepTab = activeTab === 'dependentes';
@@ -300,6 +303,22 @@ export default function StoreClientPage() {
     }, [currentCustomer, currentIndex]);
 
     useEffect(() => {
+        let active = true;
+        getCustomerWhatsAppMessagePreferences(storeId, currentCustomer?.id ?? null, currentCustomer?.fone_movel || currentCustomer?.phone || null)
+            .then((preferences) => {
+                if (!active) return;
+                setWhatsAppPreferences(preferences);
+                setInstallmentRemindersEnabled(preferences.installmentRemindersEnabled);
+                setPostSaleFollowupsEnabled(preferences.postSaleFollowupsEnabled);
+            })
+            .catch((error) => {
+                console.error('Não foi possível carregar as preferências de WhatsApp:', error);
+                if (active) setWhatsAppPreferences(null);
+            });
+        return () => { active = false; };
+    }, [storeId, currentCustomer?.id]);
+
+    useEffect(() => {
         if (!loading && currentIndex === -1 && !currentCustomer && editorMode !== 'create') {
             setEditorMode('empty');
         }
@@ -393,6 +412,11 @@ export default function StoreClientPage() {
         formData.set('faixa_etaria', faixaEtaria);
         formData.set('notes', obsGeral);
         formData.set('obs_debito', obsGeral);
+        formData.set('whatsapp_preferences_enabled', String(Boolean(whatsAppPreferences?.available)));
+        formData.set('installment_reminders_available', String(Boolean(whatsAppPreferences?.installmentRemindersAvailable)));
+        formData.set('post_sale_followups_available', String(Boolean(whatsAppPreferences?.postSaleFollowupsAvailable)));
+        formData.set('installment_reminders_enabled', String(installmentRemindersEnabled));
+        formData.set('post_sale_followups_enabled', String(postSaleFollowupsEnabled));
 
         // Aba Detalhes
         formData.set('pai', pai);
@@ -596,6 +620,9 @@ export default function StoreClientPage() {
                                 <TabButton label="Dados Pessoais" icon={User} isActive={activeTab === 'principal'} onClick={() => setActiveTab('principal')} />
                                 <TabButton label="Detalhes" icon={ClipboardList} isActive={activeTab === 'detalhes'} onClick={() => setActiveTab('detalhes')} />
                                 <TabButton label="Ref. / Obs" icon={ScrollText} isActive={activeTab === 'referencias'} onClick={() => setActiveTab('referencias')} />
+                                {whatsAppPreferences?.available && (
+                                    <TabButton label="Mensagens" icon={ScrollText} isActive={activeTab === 'mensagens'} onClick={() => setActiveTab('mensagens')} />
+                                )}
                                 {currentCustomer?.id && (
                                     <TabButton label={`Dependentes (${dependentesList.length})`} icon={Users2} isActive={activeTab === 'dependentes'} onClick={() => setActiveTab('dependentes')} />
                                 )}
@@ -663,6 +690,18 @@ export default function StoreClientPage() {
                                                 state={{ refPessoal1, refPessoal2, refComercio1, refComercio2 }}
                                                 handlers={{ setRefPessoal1, setRefPessoal2, setRefComercio1, setRefComercio2 }}
                                                 isSaving={isSaving} inputStyle={inputStyle}
+                                            />
+                                        </div>
+                                    )}
+                                    {activeTab === 'mensagens' && whatsAppPreferences?.available && (
+                                        <div className={cardStyle}>
+                                            <AbaMensagens
+                                                preferences={whatsAppPreferences}
+                                                installmentRemindersEnabled={installmentRemindersEnabled}
+                                                postSaleFollowupsEnabled={postSaleFollowupsEnabled}
+                                                onInstallmentRemindersChange={setInstallmentRemindersEnabled}
+                                                onPostSaleFollowupsChange={setPostSaleFollowupsEnabled}
+                                                isSaving={isSaving}
                                             />
                                         </div>
                                     )}
@@ -951,6 +990,54 @@ function AbaReferencias({ state, handlers, isSaving, inputStyle }: any) {
                 <input name="ref_comercio_2" type="text" value={state.refComercio2} onChange={e => handlers.setRefComercio2(e.target.value)} className={inputStyle} disabled={isSaving} placeholder="Empresa e Telefone" />
             </div>
         </div>
+    );
+}
+
+function AbaMensagens({
+    preferences,
+    installmentRemindersEnabled,
+    postSaleFollowupsEnabled,
+    onInstallmentRemindersChange,
+    onPostSaleFollowupsChange,
+    isSaving,
+}: {
+    preferences: CustomerWhatsAppMessagePreferences;
+    installmentRemindersEnabled: boolean;
+    postSaleFollowupsEnabled: boolean;
+    onInstallmentRemindersChange: (enabled: boolean) => void;
+    onPostSaleFollowupsChange: (enabled: boolean) => void;
+    isSaving: boolean;
+}) {
+    const lastChanged = preferences.updatedAt
+        ? new Date(preferences.updatedAt).toLocaleString('pt-BR')
+        : 'Padrão da loja';
+
+    return (
+        <section className="space-y-4">
+            <div>
+                <h3 className="text-sm font-black text-slate-100">Mensagens automáticas de WhatsApp</h3>
+                <p className="mt-1 text-xs leading-5 text-slate-400">
+                    Escolha somente os contatos automáticos permitidos para este cliente. Mensagens enviadas manualmente pela equipe não são bloqueadas.
+                </p>
+                {preferences.remotePhone ? (
+                    <p className="mt-2 text-[10px] font-bold uppercase tracking-wider text-indigo-300">Número aplicado: {preferences.remotePhone}</p>
+                ) : (
+                    <p className="mt-2 text-[10px] font-bold uppercase tracking-wider text-amber-300">Informe o celular e salve o cadastro para aplicar estas preferências.</p>
+                )}
+            </div>
+
+            <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors ${preferences.installmentRemindersAvailable ? 'border-white/10 bg-white/5 hover:bg-white/10' : 'cursor-not-allowed border-white/5 bg-black/10 opacity-50'}`}>
+                <input type="checkbox" checked={installmentRemindersEnabled} onChange={(event) => onInstallmentRemindersChange(event.target.checked)} disabled={isSaving || !preferences.installmentRemindersAvailable} className="mt-0.5 h-4 w-4 rounded border-white/30 bg-slate-950 text-indigo-500" />
+                <span><span className="block text-xs font-bold text-slate-200">Lembretes de parcelas e vencimentos</span><span className="mt-1 block text-[11px] leading-4 text-slate-400">Avisos automáticos de parcelas a vencer. Desmarque quando o cliente solicitar não receber cobranças pelo WhatsApp.</span></span>
+            </label>
+
+            <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors ${preferences.postSaleFollowupsAvailable ? 'border-white/10 bg-white/5 hover:bg-white/10' : 'cursor-not-allowed border-white/5 bg-black/10 opacity-50'}`}>
+                <input type="checkbox" checked={postSaleFollowupsEnabled} onChange={(event) => onPostSaleFollowupsChange(event.target.checked)} disabled={isSaving || !preferences.postSaleFollowupsAvailable} className="mt-0.5 h-4 w-4 rounded border-white/30 bg-slate-950 text-indigo-500" />
+                <span><span className="block text-xs font-bold text-slate-200">Acompanhamento pós-venda</span><span className="mt-1 block text-[11px] leading-4 text-slate-400">Mensagens automáticas para saber como está a adaptação após a retirada dos óculos.</span></span>
+            </label>
+
+            <p className="text-[10px] text-slate-500">Última preferência registrada: {lastChanged}.</p>
+        </section>
     );
 }
 

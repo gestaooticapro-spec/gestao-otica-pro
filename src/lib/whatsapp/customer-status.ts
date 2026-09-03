@@ -8,6 +8,7 @@ import type { StoreSettings } from '@/lib/store-modules'
 import { evaluateStoreHours } from './store-hours-logic'
 import {
   classifyWhatsAppIntent,
+  resolveWhatsAppInstallmentReminderPreference,
   resolveWhatsAppPostSaleRating,
   humanizeWhatsAppReply,
   generateWhatsAppFallbackReply,
@@ -181,7 +182,7 @@ type PersistentPostSaleMemory = {
 }
 
 type WhatsAppAiDiagnostic = {
-  task: 'intent_classification' | 'post_sale_rating_resolution' | 'reply_humanization' | 'fallback_reply' | 'receipt_extraction' | 'tool_agent_plan' | 'tool_agent_reply'
+  task: 'intent_classification' | 'installment_reminder_preference_resolution' | 'post_sale_rating_resolution' | 'reply_humanization' | 'fallback_reply' | 'receipt_extraction' | 'tool_agent_plan' | 'tool_agent_reply'
   success: boolean
   provider: string
   model: string
@@ -259,13 +260,33 @@ function installmentReminderPreferenceCommand(value: string | null | undefined):
     .replace(/\s+/g, ' ')
     .trim()
 
-  if (normalized === 'parar') return { action: 'opt_out', requiresReminderContext: false }
+  if (normalized === 'parar') return { action: 'opt_out', requiresReminderContext: true }
   if (['voltar', 'reativar'].includes(normalized)) return { action: 'opt_in', requiresReminderContext: false }
   if (['sair', 'cancelar', 'nao receber', 'nao quero receber'].includes(normalized)) {
     return { action: 'opt_out', requiresReminderContext: true }
   }
 
   return null
+}
+
+export function isInstallmentReminderPreferenceCandidate(value: string | null | undefined) {
+  const normalized = normalizeMessage(value)
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!normalized) return false
+
+  return [
+    /\bparar\b/,
+    /\bparem\b/,
+    /\bcancel(?:ar|e|em|a)?\b/,
+    /\bnao quero (?:mais )?receber\b/,
+    /\bnao quero mais lembretes?\b/,
+    /\bnao receber\b/,
+    /\bdeixar de receber\b/,
+    /\bsuspender\b/,
+  ].some((pattern) => pattern.test(normalized))
 }
 
 async function setInstallmentReminderPreference(input: {
@@ -2491,10 +2512,9 @@ export async function resolveCustomerStatus(
   if (!inbound) throw new Error('Inbound do WhatsApp nao foi criado nem recuperado.')
 
   const preferenceCommand = installmentReminderPreferenceCommand(effectiveMessageText)
-  const preferenceState = preferenceCommand?.requiresReminderContext
-    ? await findConversationState(channel.id, normalizedPhone)
-    : null
-  const hasReminderContext = Boolean(readPaymentReminderContext(preferenceState?.metadata))
+  const preferenceState = await findConversationState(channel.id, normalizedPhone)
+  const preferenceReminderContext = readPaymentReminderContext(preferenceState?.metadata)
+  const hasReminderContext = Boolean(preferenceReminderContext)
   if (preferenceCommand && (!preferenceCommand.requiresReminderContext || hasReminderContext)) {
     const enabled = preferenceCommand.action === 'opt_in'
     await setInstallmentReminderPreference({
@@ -2511,6 +2531,38 @@ export async function resolveCustomerStatus(
     return createOutbound(channel, inbound.id, normalizedPhone, text, enabled ? 'installment_reminder_opt_in' : 'installment_reminder_opt_out', {
       installmentRemindersEnabled: enabled,
     }, inbound.id)
+  }
+
+  if (!preferenceCommand && hasReminderContext && isInstallmentReminderPreferenceCandidate(effectiveMessageText)) {
+    const resolution = await resolveWhatsAppInstallmentReminderPreference({
+      messageText: effectiveMessageText || '',
+      reminderContext: {
+        dueDate: preferenceReminderContext?.dueDate ?? null,
+        installmentNumber: preferenceReminderContext?.installmentNumber ?? null,
+        totalInstallments: preferenceReminderContext?.totalInstallments ?? null,
+      },
+    })
+    const diagnostic = await logAiResult(channel, inbound.id, 'installment_reminder_preference_resolution', resolution)
+
+    if (resolution.success && resolution.data.action === 'opt_out' && resolution.data.confidence >= AI_AUTOMATION_MIN_CONFIDENCE) {
+      await setInstallmentReminderPreference({
+        channel,
+        remotePhone: normalizedPhone,
+        enabled: false,
+        changedAt: preferenceChangedAt(input.providerCreatedAt),
+      })
+
+      const response = await createOutbound(
+        channel,
+        inbound.id,
+        normalizedPhone,
+        'Tudo certo. VocÃª nÃ£o receberÃ¡ mais lembretes automÃ¡ticos de vencimento por WhatsApp. Se quiser voltar a receber no futuro, envie VOLTAR a qualquer momento.',
+        'installment_reminder_opt_out',
+        { installmentRemindersEnabled: false, resolvedBy: 'contextual_ai' },
+        inbound.id
+      )
+      return { ...response, aiDiagnostics: [diagnostic] }
+    }
   }
 
   const automationSettings = await loadStoreWhatsAppSettings(channel.store_id)

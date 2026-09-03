@@ -8,6 +8,10 @@ export type Release = {
 // abre o próximo patch depois da publicação efetiva da versão atual e nunca
 // altera o Dashboard ou o modal de histórico.
 export const PENDING_RELEASE_VERSION: string | null = null
+/* export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'Respostas claras a lembretes de parcelas, como "pode parar", agora cancelam somente os proximos lembretes de vencimento por WhatsApp.',
+  'O cadastro do cliente passou a permitir escolher quais mensagens automáticas de WhatsApp pode receber, incluindo lembretes de parcelas e pós-venda.',
+] */
 export const PENDING_RELEASE_CHANGES: readonly string[] = []
 
 const RELEASE_10209_CHANGES: readonly string[] = [
@@ -92,6 +96,14 @@ const RELEASE_10205_CHANGES: readonly string[] = [
 // Abra uma versão pendente na primeira alteração após o último fechamento.
 // Alterações de linha/minor (ex.: 1.02.xx -> 1.03.00) exigem solicitação expressa.
 export const RELEASE_HISTORY: Release[] = [
+  {
+    version: '1.02.13',
+    date: '03/09/2026',
+    changes: [
+      'Respostas claras a lembretes de parcelas, como "pode parar", agora cancelam somente os próximos lembretes de vencimento por WhatsApp.',
+      'O cadastro do cliente passou a permitir escolher quais mensagens automáticas de WhatsApp pode receber, incluindo lembretes de parcelas e pós-venda.',
+    ],
+  },
   {
     version: '1.02.12',
     date: '03/09/2026',
