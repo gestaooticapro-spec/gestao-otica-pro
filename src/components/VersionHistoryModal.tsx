@@ -14,9 +14,10 @@ const releasesForDisplay: Release[] = RELEASE_HISTORY
 type VersionHistoryModalProps = {
   isOpen: boolean
   onClose: () => void
+  storeId: number
 }
 
-export default function VersionHistoryModal({ isOpen, onClose }: VersionHistoryModalProps) {
+export default function VersionHistoryModal({ isOpen, onClose, storeId }: VersionHistoryModalProps) {
   const [visibleReleaseCount, setVisibleReleaseCount] = useState(RELEASES_PER_PAGE)
 
   useEffect(() => {
@@ -39,9 +40,9 @@ export default function VersionHistoryModal({ isOpen, onClose }: VersionHistoryM
     void fetch('/api/version-history-clicks', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ version: releasesForDisplay[0].version }),
+      body: JSON.stringify({ version: releasesForDisplay[0].version, storeId }),
     }).catch(() => undefined)
-  }, [isOpen])
+  }, [isOpen, storeId])
 
   if (!isOpen) return null
 

@@ -195,7 +195,7 @@ export default function OperatorMenuHome({
                     <span className="text-xs font-bold uppercase tracking-wider">{backLabel}</span>
                 </button>
             )}
-            <VersionHistoryModal isOpen={isVersionHistoryOpen} onClose={() => setIsVersionHistoryOpen(false)} />
+            <VersionHistoryModal isOpen={isVersionHistoryOpen} onClose={() => setIsVersionHistoryOpen(false)} storeId={storeId} />
         </div>
     );
 }
