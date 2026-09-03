@@ -2931,11 +2931,11 @@ export async function getSalesList(storeId: number, options?: SalesFilterOptions
         .order('created_at', { ascending: true }) // Mais antigas primeiro (para resolver logo)
     } else {
       // MODO HISTÃ“RICO: Traz tudo (Aberto, Fechada, Cancelada) dentro do prazo
-      if (options?.startDate) {
+      if (!search && options?.startDate) {
         const start = `${options.startDate}T00:00:00`
         query = query.gte('created_at', start)
       }
-      if (options?.endDate) {
+      if (!search && options?.endDate) {
         const end = `${options.endDate}T23:59:59`
         query = query.lte('created_at', end)
       }

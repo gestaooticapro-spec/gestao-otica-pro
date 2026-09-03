@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowRight, Check, Clock3, ExternalLink, GitMerge, History, Loader2, RotateCcw, ShieldAlert, Trash2, X } from 'lucide-react'
+import { ArrowRight, Check, ChevronDown, Clock3, ExternalLink, GitMerge, History, Loader2, RotateCcw, ShieldAlert, Trash2, X } from 'lucide-react'
 import type { DailyHealthAlert } from '@/lib/daily-store-health'
 
 type Props = { storeId: number; alert: DailyHealthAlert; onClose: () => void; onChanged: () => void }
@@ -90,6 +90,7 @@ export default function DataQualityCasesModal({ storeId, alert, onClose, onChang
   const [loadingPreview, setLoadingPreview] = useState<string | null>(null)
   const [confirmingMerge, setConfirmingMerge] = useState<string | null>(null)
   const [showMergeHistory, setShowMergeHistory] = useState(false)
+  const [showAllMergeHistory, setShowAllMergeHistory] = useState(false)
   const [mergeHistory, setMergeHistory] = useState<MergeHistoryItem[]>([])
   const [loadingMergeHistory, setLoadingMergeHistory] = useState(false)
   const [confirmingUndo, setConfirmingUndo] = useState<string | null>(null)
@@ -134,6 +135,7 @@ export default function DataQualityCasesModal({ storeId, alert, onClose, onChang
   const toggleMergeHistory = async () => {
     const next = !showMergeHistory
     setShowMergeHistory(next)
+    if (!next) setShowAllMergeHistory(false)
     setConfirmingUndo(null)
     if (next) await loadMergeHistory()
   }
@@ -221,7 +223,6 @@ export default function DataQualityCasesModal({ storeId, alert, onClose, onChang
         delete next[group.fingerprint]
         return next
       })
-      setShowMergeHistory(true)
       await loadMergeHistory()
       onChanged()
       await load()
@@ -263,7 +264,7 @@ export default function DataQualityCasesModal({ storeId, alert, onClose, onChang
           {data ? <p className="mt-1 text-sm text-slate-400">{duplicate ? `${data.totalGroups || 0} grupos aguardam decisão; este lote traz até 10.` : `${data.totalRecords} casos ainda aguardam revisão.`}</p> : null}
         </div>
         <div className="flex items-center gap-2">
-          {duplicate ? <button type="button" onClick={() => void toggleMergeHistory()} className={`inline-flex h-9 items-center gap-2 border px-3 text-xs font-semibold ${showMergeHistory ? 'border-cyan-300/40 bg-cyan-300/10 text-cyan-100' : 'border-white/10 text-slate-300 hover:bg-white/5 hover:text-white'}`}><History className="h-4 w-4" />Mesclagens recentes</button> : null}
+          {duplicate ? <button type="button" aria-expanded={showMergeHistory} onClick={() => void toggleMergeHistory()} className={`inline-flex h-9 items-center gap-2 border px-3 text-xs font-semibold ${showMergeHistory ? 'border-cyan-300/40 bg-cyan-300/10 text-cyan-100' : 'border-white/10 text-slate-300 hover:bg-white/5 hover:text-white'}`}><History className="h-4 w-4" />Mesclagens recentes<ChevronDown className={`h-4 w-4 transition-transform ${showMergeHistory ? 'rotate-180' : ''}`} /></button> : null}
           <button type="button" onClick={onClose} aria-label="Fechar" title="Fechar" className="inline-flex h-9 w-9 items-center justify-center border border-white/10 text-slate-300 hover:bg-white/5 hover:text-white"><X className="h-4 w-4" /></button>
         </div>
       </header>
@@ -273,10 +274,11 @@ export default function DataQualityCasesModal({ storeId, alert, onClose, onChang
       {showMergeHistory && duplicate ? <section className="mt-5 border border-white/10 bg-black/20 p-4" aria-label="Mesclagens recentes">
         <div className="flex items-center justify-between gap-3"><div><h3 className="font-bold text-white">Mesclagens recentes</h3><p className="mt-1 text-xs text-slate-400">O sistema só desfaz quando os cadastros e vínculos continuam como estavam ao final da mesclagem.</p></div>{loadingMergeHistory ? <Loader2 className="h-4 w-4 animate-spin text-cyan-200" /> : null}</div>
         {!loadingMergeHistory && !mergeHistory.length ? <p className="mt-4 text-sm text-slate-400">Nenhuma mesclagem foi realizada nesta fila.</p> : null}
-        {!loadingMergeHistory && mergeHistory.length ? <div className="mt-4 space-y-3">{mergeHistory.map((merge) => <article key={merge.operationKey} className="border border-white/10 px-3 py-3">
+        {!loadingMergeHistory && mergeHistory.length ? <div className="mt-4 space-y-3">{(showAllMergeHistory ? mergeHistory : mergeHistory.slice(0, 5)).map((merge) => <article key={merge.operationKey} className="border border-white/10 px-3 py-3">
           <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-bold text-white">{merge.targetLabel || 'Cadastro principal'} <span className="font-normal text-slate-400">#{merge.targetId}</span></p><p className="mt-1 text-xs text-slate-400">Cadastros incorporados: {merge.removedIds.map((id) => `#${id}`).join(', ')} · {new Date(merge.createdAt).toLocaleString('pt-BR')}</p></div>{merge.reversed ? <span className="text-xs font-bold text-emerald-200">Mesclagem desfeita</span> : !merge.recoverable ? <span className="text-xs text-slate-500">Recuperação indisponível</span> : confirmingUndo === merge.operationKey ? null : <button type="button" disabled={saving !== null} onClick={() => setConfirmingUndo(merge.operationKey)} className="inline-flex h-9 items-center gap-2 border border-amber-300/40 px-3 text-xs font-semibold text-amber-100 hover:bg-amber-300/10 disabled:opacity-50"><RotateCcw className="h-4 w-4" />Desfazer</button>}</div>
           {confirmingUndo === merge.operationKey && !merge.reversed ? <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-white/10 pt-3"><p className="mr-auto max-w-2xl text-xs text-amber-100">Os cadastros separados e seus vínculos serão restaurados. Se houve qualquer alteração depois da mesclagem, a operação será bloqueada.</p><button type="button" disabled={saving !== null} onClick={() => setConfirmingUndo(null)} className="inline-flex h-9 items-center border border-white/15 px-3 text-xs font-semibold text-slate-200 hover:bg-white/5 disabled:opacity-50">Cancelar</button><button type="button" disabled={saving !== null} onClick={() => void undoMerge(merge)} className="inline-flex h-9 items-center gap-2 border border-amber-300/50 bg-amber-300/10 px-3 text-xs font-bold text-amber-100 hover:bg-amber-300/20 disabled:opacity-50">{saving === `undo:${merge.operationKey}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}Confirmar desfazer</button></div> : null}
         </article>)}</div> : null}
+        {!loadingMergeHistory && mergeHistory.length > 5 ? <button type="button" onClick={() => setShowAllMergeHistory((current) => !current)} className="mt-4 inline-flex items-center gap-2 text-xs font-semibold text-cyan-200 hover:text-cyan-100"><ChevronDown className={`h-4 w-4 transition-transform ${showAllMergeHistory ? 'rotate-180' : ''}`} />{showAllMergeHistory ? 'Mostrar somente os 5 mais recentes' : `Mostrar todas as ${mergeHistory.length} mesclagens`}</button> : null}
       </section> : null}
 
       {!loading && duplicate && data?.groups?.length ? <div className="mt-5 space-y-6">{data.groups.map((group, index) => {

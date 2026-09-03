@@ -93,6 +93,13 @@ const RELEASE_10205_CHANGES: readonly string[] = [
 // Alterações de linha/minor (ex.: 1.02.xx -> 1.03.00) exigem solicitação expressa.
 export const RELEASE_HISTORY: Release[] = [
   {
+    version: '1.02.12',
+    date: '03/09/2026',
+    changes: [
+      'A busca textual do histórico de vendas passou a consultar vendas de qualquer data, sem ficar limitada ao período selecionado.',
+    ],
+  },
+  {
     version: '1.02.11',
     date: '03/09/2026',
     changes: [
