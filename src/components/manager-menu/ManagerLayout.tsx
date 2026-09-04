@@ -15,7 +15,6 @@ import {
     Percent,
     Settings,
     BarChart3,
-    HeartPulse,
     Store
 } from 'lucide-react';
 
@@ -37,15 +36,6 @@ interface ManagerLayoutProps {
 }
 
 const GERENCIA_LINKS = [
-    {
-        id: 'saude-da-loja',
-        title: 'Saúde da Loja',
-        subtitle: 'Resumo diário',
-        icon: HeartPulse,
-        route: (storeId: number) => `/dashboard/loja/${storeId}/saude-da-loja`,
-        tone: 'from-emerald-600/15 via-emerald-900/25 to-slate-900/60 hover:border-emerald-400/30',
-        colSpan: true
-    },
     {
         id: 'contas',
         title: 'Contas a Pagar',
@@ -237,15 +227,15 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl }:
                             <div className="absolute inset-0 bg-gradient-to-br from-blue-600/20 via-blue-900/30 to-slate-900/60" />
                             <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
                             <div className="absolute inset-0 p-8 flex flex-col items-start justify-end text-left z-10">
-                                <div className="mb-auto mt-3 p-5 rounded-2xl bg-blue-500/20 ring-1 ring-blue-400/30">
-                                    <Building2 className="w-10 h-10 text-blue-200" strokeWidth={1.7} />
+                                <div className="mb-auto mt-3 p-5 rounded-2xl bg-blue-500/20 ring-1 ring-blue-400/30 group-hover:bg-blue-500/40 transition-colors backdrop-blur-sm shadow-[0_0_30px_rgba(59,130,246,0.3)]">
+                                    <Building2 className="w-10 h-10 text-blue-200 group-hover:text-white transition-colors" strokeWidth={1.7} />
                                 </div>
                                 <h2 className="text-3xl font-black text-white tracking-tight mb-2">Operação da Loja</h2>
                                 <p className="text-blue-200/70 text-[10px] font-black uppercase tracking-[0.2em] mb-5">Fluxo de atendimento e loja vazia</p>
-                                <div className="flex items-center gap-2 text-blue-200/90 text-sm font-bold uppercase tracking-wider">
-                                    Abrir
-                                    <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-                                </div>
+                                <div className="w-12 h-1 bg-blue-500/50 rounded-full group-hover:w-24 group-hover:bg-blue-400 transition-all duration-300" />
+                            </div>
+                            <div className="absolute top-6 right-6 p-2 rounded-full bg-white/10 opacity-0 translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300">
+                                <ArrowRight className="w-5 h-5 text-white" />
                             </div>
                         </button>
 
@@ -259,15 +249,15 @@ export default function ManagerLayout({ children, storeId, storeName, logoUrl }:
                             <div className="absolute inset-0 bg-gradient-to-br from-emerald-600/20 via-emerald-900/30 to-slate-900/60" />
                             <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
                             <div className="absolute inset-0 p-8 flex flex-col items-start justify-end text-left z-10">
-                                <div className="mb-auto mt-3 p-5 rounded-2xl bg-emerald-500/20 ring-1 ring-emerald-400/30">
-                                    <Briefcase className="w-10 h-10 text-emerald-200" strokeWidth={1.7} />
+                                <div className="mb-auto mt-3 p-5 rounded-2xl bg-emerald-500/20 ring-1 ring-emerald-400/30 group-hover:bg-emerald-500/40 transition-colors backdrop-blur-sm shadow-[0_0_30px_rgba(16,185,129,0.3)]">
+                                    <Briefcase className="w-10 h-10 text-emerald-200 group-hover:text-white transition-colors" strokeWidth={1.7} />
                                 </div>
                                 <h2 className="text-3xl font-black text-white tracking-tight mb-2">Opções de Gerência</h2>
                                 <p className="text-emerald-200/70 text-[10px] font-black uppercase tracking-[0.2em] mb-5">Financeiro, relatórios e configurações</p>
-                                <div className="flex items-center gap-2 text-emerald-200/90 text-sm font-bold uppercase tracking-wider">
-                                    Abrir
-                                    <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-                                </div>
+                                <div className="w-12 h-1 bg-emerald-500/50 rounded-full group-hover:w-24 group-hover:bg-emerald-400 transition-all duration-300" />
+                            </div>
+                            <div className="absolute top-6 right-6 p-2 rounded-full bg-white/10 opacity-0 translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300">
+                                <ArrowRight className="w-5 h-5 text-white" />
                             </div>
                         </button>
                     </div>

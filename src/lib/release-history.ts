@@ -7,12 +7,15 @@ export type Release = {
 // A versão visível é sempre a primeira de RELEASE_HISTORY. Uma pendência só
 // abre o próximo patch depois da publicação efetiva da versão atual e nunca
 // altera o Dashboard ou o modal de histórico.
-export const PENDING_RELEASE_VERSION: string | null = null
+export const PENDING_RELEASE_VERSION: string | null = '1.02.14'
 /* export const PENDING_RELEASE_CHANGES: readonly string[] = [
   'Respostas claras a lembretes de parcelas, como "pode parar", agora cancelam somente os proximos lembretes de vencimento por WhatsApp.',
   'O cadastro do cliente passou a permitir escolher quais mensagens automáticas de WhatsApp pode receber, incluindo lembretes de parcelas e pós-venda.',
 ] */
-export const PENDING_RELEASE_CHANGES: readonly string[] = []
+export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'Os botoes iniciais do Hub Gerencial agora destacam o icone, a seta e o traco de cor no hover, preservando o texto alinhado a esquerda.',
+  'O atalho Saude da Loja foi removido da grade de opcoes da Gerencia.',
+]
 
 const RELEASE_10209_CHANGES: readonly string[] = [
   'IMPLEMENTADO O CADASTRO DE CLIENTES PJ COM RAZAO SOCIAL, NOME FANTASIA E CNPJ, COM EMISSAO DE NFC-E PARA EMPRESAS.',
