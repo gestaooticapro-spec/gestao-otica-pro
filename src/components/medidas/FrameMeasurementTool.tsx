@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Camera, CheckCircle2, Copy, ImageIcon, RotateCcw, Ruler, Save, Wand2 } from 'lucide-react'
+import { ArrowLeft, Camera, CheckCircle2, Copy, ImageIcon, RotateCcw, Ruler, Save, Wand2 } from 'lucide-react'
 import { findMedicaoOSByNumber, saveMedicaoOS, type MedicaoOSLookup } from '@/lib/actions/medidas.actions'
 import {
   canvasPointToPhoto,
@@ -91,8 +91,10 @@ const LABELS: Record<HKey, string> = {
 }
 
 const LENS_TYPE_LABEL: Record<NonNullable<LensType>, string> = {
-  surfacada: 'Surfaçada', bifocal: 'Bifocal', pronto: 'Pronto',
+  surfacada: 'Multifocal/VS', bifocal: 'Bifocal', pronto: 'Pronto',
 }
+
+const SELECTABLE_LENS_TYPES = ['surfacada', 'bifocal'] as const
 
 // ─── Constantes visuais ───────────────────────────────────────────────────────
 const CC_MM   = 50
@@ -149,6 +151,8 @@ export default function FrameMeasurementTool({
   const imgBoundsRef  = useRef({ x: 0, y: 0, w: 800, h: 600 })
   const activeGrpRef  = useRef<string | null>(null)
   const lensTypeRef   = useRef<LensType>(null)
+  const groupScrollRef = useRef<HTMLDivElement>(null)
+  const groupDragRef = useRef<{ pointerId: number; startX: number; startScroll: number; moved: boolean } | null>(null)
 
   const [step,        setStep]        = useState<Step>('capture')
   const [canvasW,     setCanvasW]     = useState(800)
@@ -481,30 +485,15 @@ export default function FrameMeasurementTool({
     setAiStatus('loading')
     setAiMessage('Localizando as lentes...')
     try {
-      const tokenResponse = await fetch('/api/medidas/lens-segment/token', {
+      const segmentResponse = await fetch('/api/medidas/lens-segment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storeId }),
+        body: JSON.stringify({ storeId, dataUrl: photoDataUrlRef.current }),
       })
-      const tokenPayload = await tokenResponse.json().catch(() => null) as { token?: string; segmentUrl?: string; error?: string } | null
-      if (!tokenResponse.ok || !tokenPayload?.token || !tokenPayload.segmentUrl) {
-        setAiStatus('error')
-        setAiMessage(tokenPayload?.error || 'Analise com IA indisponivel.')
-        return
-      }
-
-      const segmentResponse = await fetch(tokenPayload.segmentUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${tokenPayload.token}`,
-        },
-        body: JSON.stringify({ dataUrl: photoDataUrlRef.current }),
-      })
-      const segmentPayload = await segmentResponse.json().catch(() => null) as (LensSegmentationResult & { ok?: boolean; message?: string }) | null
+      const segmentPayload = await segmentResponse.json().catch(() => null) as (LensSegmentationResult & { ok?: boolean; message?: string; error?: string }) | null
       if (!segmentResponse.ok || !segmentPayload?.ok || !segmentPayload.lenses) {
         setAiStatus('error')
-        setAiMessage(segmentPayload?.message || 'Nao foi possivel localizar as duas lentes.')
+        setAiMessage(segmentPayload?.message || segmentPayload?.error || 'Nao foi possivel localizar as duas lentes.')
         return
       }
 
@@ -538,9 +527,11 @@ export default function FrameMeasurementTool({
       const confidence = `OD ${Math.round((od?.confidence ?? 0) * 100)}% · OE ${Math.round((oe?.confidence ?? 0) * 100)}%`
       setAiStatus('ok')
       setAiMessage(mapped.warnings.length ? `${confidence}. ${mapped.warnings.join(' ')}` : `Lentes localizadas: ${confidence}. Voce ainda pode ajustar os pontos.`)
-    } catch {
+    } catch (error) {
       setAiStatus('error')
-      setAiMessage('Nao foi possivel analisar a foto. Os pontos atuais foram mantidos.')
+      setAiMessage(error instanceof Error && error.message
+        ? `Nao foi possivel analisar a foto. ${error.message}`
+        : 'Nao foi possivel analisar a foto. Os pontos atuais foram mantidos.')
     }
   }
 
@@ -915,6 +906,14 @@ export default function FrameMeasurementTool({
       {/* Captura */}
       {step === 'capture' && (
         <div className="absolute inset-0 flex items-center justify-center p-8">
+          <button
+            type="button"
+            onClick={() => storeId ? router.push(`/tablet/${storeId}/os`) : router.back()}
+            className="absolute top-3 left-3 z-10 w-10 h-10 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center"
+            aria-label="Voltar"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
           <div className="text-center space-y-6 max-w-sm w-full">
             <div className="w-20 h-20 rounded-full bg-indigo-900/40 border border-indigo-700/40 flex items-center justify-center mx-auto">
               <Ruler className="w-9 h-9 text-indigo-400" />
@@ -971,11 +970,23 @@ export default function FrameMeasurementTool({
       {step !== 'capture' && (
         <>
           {/* Topo-esquerda */}
-          <div className="absolute top-3 left-3 flex items-center gap-2 pointer-events-none">
-            <div className="w-7 h-7 rounded-lg bg-indigo-600/90 backdrop-blur-sm flex items-center justify-center">
-              <Ruler className="w-3.5 h-3.5" />
-            </div>
-            <span className="text-sm font-semibold drop-shadow-lg">Medidor de Armação</span>
+          <div className="absolute top-3 left-3 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (step === 'calibrate') {
+                  reset()
+                  return
+                }
+                setActiveGroup(null)
+                setStep('calibrate')
+              }}
+              className="w-7 h-7 rounded-lg bg-indigo-600/90 backdrop-blur-sm flex items-center justify-center hover:bg-indigo-500"
+              aria-label="Voltar"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+            </button>
+            <span className="text-sm font-semibold drop-shadow-lg pointer-events-none">Medidor de Armação</span>
             {/* Indicador reservado para futura revisão da UX da detecção automática.
             {autoOk && (
               <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-800/80 backdrop-blur-sm text-emerald-300 border border-emerald-700/40 flex items-center gap-1">
@@ -1050,43 +1061,76 @@ export default function FrameMeasurementTool({
 
           {/* Painel — Medição / Concluído */}
           {(step === 'measure' || step === 'done') && meas && (
-            <div className="absolute bottom-0 left-0 right-0 bg-black/80 backdrop-blur-md border-t border-white/10">
+            <div className="absolute bottom-0 left-0 right-0 overflow-x-hidden bg-black/80 backdrop-blur-md border-t border-white/10">
 
               {/* Seletor de tipo de lente */}
-              {!lensType ? (
-                <div className="px-4 pt-3 pb-2 border-b border-white/8">
-                  <p className="text-xs text-slate-400 mb-2">Tipo de lente:</p>
-                  <div className="flex gap-2">
-                    {(['surfacada', 'bifocal', 'pronto'] as NonNullable<LensType>[]).map(t => (
-                      <button key={t} onClick={() => setLensType(t)}
-                        className="flex-1 py-2 rounded-lg text-xs font-medium border border-white/15 bg-white/5 active:bg-indigo-600/60 transition-colors">
-                        {LENS_TYPE_LABEL[t]}
-                      </button>
-                    ))}
-                  </div>
+              <div className="px-4 pt-3 pb-2 border-b border-white/8">
+                <div className="flex gap-2">
+                  {SELECTABLE_LENS_TYPES.map(t => (
+                    <button
+                      key={t}
+                      onClick={() => {
+                        setLensType(t)
+                        if (t !== 'bifocal' && activeGroup === 'palpebra') setActiveGroup(null)
+                      }}
+                      className={`flex-1 py-2 rounded-lg text-xs font-medium border transition-colors ${
+                        lensType === t
+                          ? 'bg-indigo-600 border-indigo-400 text-white'
+                          : 'border-white/15 bg-white/5 text-slate-300 active:bg-indigo-600/60'
+                      }`}
+                    >
+                      {LENS_TYPE_LABEL[t]}
+                    </button>
+                  ))}
                 </div>
-              ) : (
-                <div className="flex items-center gap-2 px-4 pt-2 pb-1">
-                  <span className="text-xs text-slate-400">Tipo:</span>
-                  <span className="text-xs font-semibold text-indigo-300">{LENS_TYPE_LABEL[lensType]}</span>
-                  <button onClick={() => setLensType(null)} className="ml-auto text-xs text-slate-500 hover:text-white transition-colors">
-                    Mudar
-                  </button>
-                </div>
-              )}
+              </div>
 
               {/* Chips de grupo */}
-              <div className="flex gap-2 px-3 pt-2 pb-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-                <button onClick={() => { setActiveGroup(null); setStep('calibrate') }}
-                  className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium border border-white/15 bg-white/5 text-slate-400 active:bg-white/10 whitespace-nowrap">
-                  ← Ref.
-                </button>
-                <div className="w-px bg-white/10 shrink-0 my-0.5" />
+              <div
+                ref={groupScrollRef}
+                className="flex min-w-0 cursor-grab gap-2 overflow-x-auto px-3 pt-2 pb-1 active:cursor-grabbing touch-pan-x"
+                style={{ scrollbarWidth: 'thin', WebkitOverflowScrolling: 'touch' }}
+                onPointerDown={(event) => {
+                  const el = groupScrollRef.current
+                  if (!el) return
+                  groupDragRef.current = {
+                    pointerId: event.pointerId,
+                    startX: event.clientX,
+                    startScroll: el.scrollLeft,
+                    moved: false,
+                  }
+                  el.setPointerCapture(event.pointerId)
+                }}
+                onPointerMove={(event) => {
+                  const drag = groupDragRef.current
+                  const el = groupScrollRef.current
+                  if (!drag || drag.pointerId !== event.pointerId || !el) return
+                  const dx = event.clientX - drag.startX
+                  if (Math.abs(dx) > 6) drag.moved = true
+                  if (drag.moved) {
+                    event.preventDefault()
+                    el.scrollLeft = drag.startScroll - dx
+                  }
+                }}
+                onPointerUp={() => { groupDragRef.current = groupDragRef.current?.moved ? { ...groupDragRef.current, pointerId: -1 } : null }}
+                onPointerCancel={() => { groupDragRef.current = null }}
+                onClickCapture={(event) => {
+                  if (!groupDragRef.current?.moved) return
+                  event.preventDefault()
+                  event.stopPropagation()
+                  groupDragRef.current = null
+                }}
+              >
                 {getGroups(lensType).map(g => (
                   <button key={g.id}
-                    onClick={() => setActiveGroup(prev => prev === g.id ? null : g.id)}
+                    disabled={!lensType}
+                    onClick={() => { if (!lensType) return; setActiveGroup(prev => prev === g.id ? null : g.id) }}
                     className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap border ${
-                      activeGroup === g.id ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-white/5 border-white/10 text-slate-300 active:bg-white/15'
+                      !lensType
+                        ? 'cursor-not-allowed border-white/10 bg-white/5 text-slate-600'
+                        : activeGroup === g.id
+                          ? 'bg-indigo-600 border-indigo-400 text-white'
+                          : 'bg-white/5 border-white/10 text-slate-300 active:bg-white/15'
                     }`}>
                     {g.label}
                   </button>
@@ -1094,7 +1138,11 @@ export default function FrameMeasurementTool({
               </div>
 
               <p className="text-xs text-slate-500 px-4 pt-0.5 pb-0.5 min-h-[16px]">
-                {activeGroup ? 'Arraste os balões — o ponto de medição fica visível acima' : 'Toque em uma medida para ajustar'}
+                {!lensType
+                  ? 'Escolha Multifocal/VS ou Bifocal para ajustar as medidas'
+                  : activeGroup
+                    ? 'Arraste os balões — o ponto de medição fica visível acima'
+                    : 'Toque em uma medida para ajustar'}
               </p>
 
               {/* Valores */}
@@ -1151,8 +1199,8 @@ export default function FrameMeasurementTool({
                         : <Wand2 className="w-3.5 h-3.5" />}
                       {aiStatus === 'loading' ? 'Analisando...' : 'Analisar com IA'}
                     </button>
-                    <button onClick={() => setStep('done')}
-                      className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-xs font-medium transition-colors">
+                    <button onClick={() => setStep('done')} disabled={!lensType}
+                      className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl text-xs font-medium transition-colors">
                       Confirmar ✓
                     </button>
                   </>

@@ -69,9 +69,12 @@ def verify_model_hash() -> None:
 
 def allowed_origins() -> set[str]:
     raw = os.environ.get("LENS_SEGMENT_ALLOWED_ORIGINS", "").strip()
-    if not raw:
-        return set()
-    return {item.strip().rstrip("/") for item in raw.split(",") if item.strip()}
+    allowed = {item.strip().rstrip("/") for item in raw.split(",") if item.strip()}
+    allowed.update({
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    })
+    return allowed
 
 
 def internal_secret() -> str:

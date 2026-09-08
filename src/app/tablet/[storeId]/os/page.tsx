@@ -24,19 +24,9 @@ export default async function TabletOSPage(props: { params: Promise<{ storeId: s
         </Link>
         <div>
           <h1 className="font-bold text-lg leading-tight">OS Pendentes de Laboratório</h1>
-          <p className="text-xs text-slate-400">{lista.length} OS aguardando envio para o lab</p>
+          <p className="mt-1 text-base font-medium text-slate-300">{lista.length} OS que faltam pedir no laboratório</p>
         </div>
       </header>
-
-      <div className="border-b border-white/10 bg-slate-900/70 px-4 py-3">
-        <Link
-          href={`/medidas-armacao?storeId=${storeId}`}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 active:bg-indigo-700"
-        >
-          <Camera className="h-4 w-4" />
-          Fazer medidas antes e informar OS depois
-        </Link>
-      </div>
 
       {lista.length === 0 ? (
         <div className="flex-1 flex items-center justify-center text-slate-500 text-sm">
@@ -90,6 +80,16 @@ export default async function TabletOSPage(props: { params: Promise<{ storeId: s
           })}
         </div>
       )}
+
+      <div className="border-t border-white/10 bg-slate-900/70 px-4 py-3">
+        <Link
+          href={`/medidas-armacao?storeId=${storeId}`}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 active:bg-indigo-700"
+        >
+          <Camera className="h-4 w-4" />
+          Fazer medidas antes e informar OS depois
+        </Link>
+      </div>
     </div>
   )
 }

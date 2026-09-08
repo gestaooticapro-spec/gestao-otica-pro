@@ -17,8 +17,15 @@ export const PENDING_RELEASE_CHANGES: readonly string[] = [
   'O atalho Saude da Loja foi removido da grade de opcoes da Gerencia.',
   'No tablet de medidas, depois de confirmar o gabarito, e possivel analisar a foto com IA para ajustar os pontos da armação e ainda corrigi-los na mao.',
   'No tablet de medidas, a captura pela camera ficou em um unico botao, sem guia DNP e sem grade.',
-  'No tablet, o atalho das OS pendentes passou a se chamar Fazer medidas antes e informar OS depois.',
+  'No tablet, o atalho das OS pendentes passou a se chamar Fazer medidas antes e informar OS depois e ficou abaixo da lista.',
+  'Na lista de OS pendentes do tablet, o subtitulo informa quantas OS faltam pedir no laboratorio.',
   'A tela inicial do medidor no tablet ficou so com o titulo e os botoes de galeria e camera.',
+  'A analise com IA no tablet de medidas passou a funcionar tambem pelo acesso local.',
+  'No medidor do tablet, a faixa de medidas pode ser arrastada para o lado quando nao cabe na tela.',
+  'No medidor do tablet, o tipo de lente ficou Multifocal/VS ou Bifocal, permanece visivel depois da escolha e as medidas so liberam apos marcar uma opcao. O retorno a referencia passou para o botao voltar ao lado do titulo.',
+  'A tela inicial do medidor no tablet ganhou um botao voltar para a lista de OS.',
+  'A tela de gabarito do medidor no tablet tambem ganhou um botao voltar, que retorna para escolher a foto.',
+  'No menu do tablet, o atalho OS passou a se chamar Medidas, com o subtitulo medidas para confeccao das lentes.',
 ]
 
 const RELEASE_10209_CHANGES: readonly string[] = [
