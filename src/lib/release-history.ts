@@ -16,6 +16,9 @@ export const PENDING_RELEASE_CHANGES: readonly string[] = [
   'Os botoes iniciais do Hub Gerencial agora destacam o icone, a seta e o traco de cor no hover, preservando o texto alinhado a esquerda.',
   'O atalho Saude da Loja foi removido da grade de opcoes da Gerencia.',
   'No tablet de medidas, depois de confirmar o gabarito, e possivel analisar a foto com IA para ajustar os pontos da armação e ainda corrigi-los na mao.',
+  'No tablet de medidas, a captura pela camera ficou em um unico botao, sem guia DNP e sem grade.',
+  'No tablet, o atalho das OS pendentes passou a se chamar Fazer medidas antes e informar OS depois.',
+  'A tela inicial do medidor no tablet ficou so com o titulo e os botoes de galeria e camera.',
 ]
 
 const RELEASE_10209_CHANGES: readonly string[] = [

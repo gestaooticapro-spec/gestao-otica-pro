@@ -2,8 +2,8 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt install-dependencies.sh ./
+RUN chmod +x install-dependencies.sh && ./install-dependencies.sh
 
 COPY detect_lenses.py server.py MODEL_SOURCE.txt ./
 COPY models/best.pt ./models/best.pt

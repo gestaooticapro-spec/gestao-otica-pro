@@ -22,13 +22,18 @@ No app (`gestao-otica-pro`):
 
 Expor so `/v1/segment` com HTTPS, `client_max_body_size 15m` (a foto chega em
 Base64) e timeout alto o bastante para CPU. `/health` fica em `127.0.0.1`. Nao registre o corpo da foto
-no access log.
+no access log. O unit `systemd` deve usar o usuario sem privilegios
+`lenssegmentation`.
 
 ## Boot
 
 O processo recusa subir se `MODEL_SOURCE.txt` nao tiver o `sha256` igual ao
 `models/best.pt`. Inferencia e uma de cada vez.
 
+As dependencias fixam PyTorch CPU: esta VPS nao usa GPU e nao deve baixar os
+pacotes CUDA.
+
 ```bash
+./install-dependencies.sh
 python server.py
 ```

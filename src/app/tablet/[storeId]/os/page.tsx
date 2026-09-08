@@ -34,7 +34,7 @@ export default async function TabletOSPage(props: { params: Promise<{ storeId: s
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 active:bg-indigo-700"
         >
           <Camera className="h-4 w-4" />
-          Tirar foto e informar OS depois
+          Fazer medidas antes e informar OS depois
         </Link>
       </div>
 

@@ -4,11 +4,15 @@ After=network.target
 
 [Service]
 Type=simple
+User=lenssegmentation
+Group=lenssegmentation
 WorkingDirectory=/opt/lens-segmentation
 EnvironmentFile=/opt/lens-segmentation/lens-segmentation.env
 ExecStart=/opt/lens-segmentation/.venv/bin/python server.py
 Restart=on-failure
 RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target

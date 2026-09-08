@@ -34,7 +34,6 @@ type FaceLandmarkerInstance = Awaited<ReturnType<MPModule['FaceLandmarker']['cre
 type RawLm = { x: number; y: number; z: number }
 type FaceLandmarkerResult = { faceLandmarks?: RawLm[][] }
 type ImageCaptureConstructor = new (track: MediaStreamTrack) => { takePhoto: () => Promise<Blob> }
-type CameraMode = 'grid' | 'guide'
 
 // ─── Grupos de medição ────────────────────────────────────────────────────────
 interface MGroup { id: string; label: string; handles: HKey[]; refs?: HKey[] }
@@ -173,23 +172,10 @@ export default function FrameMeasurementTool({
   const [cardMm,      setCardMm]      = useState(50)
   const [cardInput,   setCardInput]   = useState('50')
   const [cameraOpen,  setCameraOpen]  = useState(false)
-  const [cameraMode, setCameraMode] = useState<CameraMode>('guide')
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [viewZoom,    setViewZoom]    = useState(1)
-  const [gridDivs,    setGridDivs]    = useState(10)
-  const [showDnpGuide, setShowDnpGuide] = useState(true)
-  const [dnpGuideMm, setDnpGuideMm] = useState(32)
   const [aiStatus, setAiStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle')
   const [aiMessage, setAiMessage] = useState<string | null>(null)
-  const [livePupils, setLivePupils] = useState<{
-    r: Pt
-    l: Pt
-    center: Pt
-    faceCenter: Pt
-    rightPct: number
-    leftPct: number
-    balanceDiff: number
-  } | null>(null)
   const isDetachedFlow = !osId
 
   useEffect(() => { imgBoundsRef.current = imgBounds   }, [imgBounds])
@@ -207,74 +193,6 @@ export default function FrameMeasurementTool({
       video.play().catch(() => {})
     }
   }, [cameraOpen])
-
-  useEffect(() => {
-    if (!cameraOpen || cameraMode !== 'guide' || !showDnpGuide) {
-      setLivePupils(null)
-      return
-    }
-
-    let cancelled = false
-    let timer: ReturnType<typeof setTimeout> | null = null
-
-    const toPreviewPoint = (lm: RawLm): Pt | null => {
-      const video = videoRef.current
-      const preview = cameraPreviewRef.current
-      if (!video || !preview || !video.videoWidth || !video.videoHeight) return null
-
-      const cw = preview.clientWidth
-      const ch = preview.clientHeight
-      const scale = Math.min(cw / video.videoWidth, ch / video.videoHeight)
-      const rw = video.videoWidth * scale
-      const rh = video.videoHeight * scale
-      const ox = (cw - rw) / 2
-      const oy = (ch - rh) / 2
-
-      return { x: ox + lm.x * rw, y: oy + lm.y * rh }
-    }
-
-    const tick = async () => {
-      if (cancelled) return
-      const video = videoRef.current
-      if (video?.readyState && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-        const lm = await ensureLandmarker().catch(() => null)
-        if (lm && !cancelled) {
-          try {
-            const result = lm.detect(video) as FaceLandmarkerResult
-            const face = result.faceLandmarks?.[0]
-            const r = face?.[468] ? toPreviewPoint(face[468]) : null
-            const l = face?.[473] ? toPreviewPoint(face[473]) : null
-            const faceCenter = face?.[6] ? toPreviewPoint(face[6]) : null
-            if (r && l && faceCenter) {
-              const rightDistance = Math.max(0, faceCenter.x - r.x)
-              const leftDistance = Math.max(0, l.x - faceCenter.x)
-              const total = rightDistance + leftDistance
-              const rightPct = total > 0 ? Math.round((rightDistance / total) * 100) : 50
-              const leftPct = total > 0 ? 100 - rightPct : 50
-              setLivePupils({
-                r,
-                l,
-                center: { x: (r.x + l.x) / 2, y: (r.y + l.y) / 2 },
-                faceCenter,
-                rightPct,
-                leftPct,
-                balanceDiff: Math.abs(rightPct - leftPct),
-              })
-            } else setLivePupils(null)
-          } catch {
-            setLivePupils(null)
-          }
-        }
-      }
-      timer = setTimeout(tick, 220)
-    }
-
-    tick()
-    return () => {
-      cancelled = true
-      if (timer) clearTimeout(timer)
-    }
-  }, [cameraOpen, cameraMode, showDnpGuide])
 
   // ── Resize ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -431,13 +349,12 @@ export default function FrameMeasurementTool({
     const f = e.target.files?.[0]; if (f) processFile(f); e.target.value = ''
   }
 
-  async function startCamera(mode: CameraMode) {
+  async function startCamera() {
     if (!navigator.mediaDevices?.getUserMedia) {
       setCameraError('Camera indisponivel neste navegador')
       return
     }
     setCameraError(null)
-    setCameraMode(mode)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -462,7 +379,6 @@ export default function FrameMeasurementTool({
     const video = videoRef.current
     if (video) video.srcObject = null
     setCameraOpen(false)
-    setLivePupils(null)
   }
 
   async function takeCameraShot() {
@@ -1003,24 +919,15 @@ export default function FrameMeasurementTool({
             <div className="w-20 h-20 rounded-full bg-indigo-900/40 border border-indigo-700/40 flex items-center justify-center mx-auto">
               <Ruler className="w-9 h-9 text-indigo-400" />
             </div>
-            <div>
-              <h1 className="text-xl font-semibold mb-2">Medidor de Armação</h1>
-              <p className="text-slate-400 text-sm leading-relaxed">
-                Use um objeto de medida conhecida como referência (cartão, armação, régua).
-              </p>
-            </div>
+            <h1 className="text-xl font-semibold">Medidor de Armação</h1>
             <div className="flex flex-col gap-3">
               <button onClick={() => { fileRef.current!.removeAttribute('capture'); fileRef.current!.click() }}
                 className="flex items-center justify-center gap-2 w-full px-5 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-medium transition-colors">
                 <ImageIcon className="w-4 h-4" /> Escolher da galeria
               </button>
-              <button onClick={() => startCamera('guide')}
+              <button onClick={() => void startCamera()}
                 className="flex items-center justify-center gap-2 w-full px-5 py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-sm font-medium transition-colors">
-                <Camera className="w-4 h-4" /> Câmera com guia DNP
-              </button>
-              <button onClick={() => startCamera('grid')}
-                className="flex items-center justify-center gap-2 w-full px-5 py-3 bg-cyan-700 hover:bg-cyan-600 rounded-xl text-sm font-medium transition-colors">
-                <Camera className="w-4 h-4" /> Camera com grade
+                <Camera className="w-4 h-4" /> Câmera
               </button>
             </div>
             {cameraError && <p className="text-xs text-rose-400">{cameraError}</p>}
@@ -1040,142 +947,7 @@ export default function FrameMeasurementTool({
                 playsInline
                 muted
               />
-
-              {cameraMode === 'grid' && (
-                <div className="pointer-events-none absolute inset-0">
-                {Array.from({ length: gridDivs - 1 }).map((_, i) => (
-                  <div
-                    key={`v-${i}`}
-                    className="absolute bottom-0 top-0"
-                    style={{
-                      left: `${((i + 1) / gridDivs) * 100}%`,
-                      width: '1px',
-                      background: 'rgba(255,255,255,0.28)',
-                    }}
-                  />
-                ))}
-                {Array.from({ length: gridDivs - 1 }).map((_, i) => (
-                  <div
-                    key={`h-${i}`}
-                    className="absolute left-0 right-0"
-                    style={{
-                      top: `${((i + 1) / gridDivs) * 100}%`,
-                      height: '1px',
-                      background: 'rgba(255,255,255,0.28)',
-                    }}
-                  />
-                ))}
-                </div>
-              )}
-
-              {cameraMode === 'guide' && showDnpGuide && (
-                <div className="pointer-events-none absolute inset-0">
-                  <div
-                    className="absolute rounded-full border border-cyan-300/60"
-                    style={{
-                      left: '29%',
-                      right: '29%',
-                      top: '13%',
-                      bottom: '10%',
-                      boxShadow: '0 0 0 999px rgba(0,0,0,0.08)',
-                    }}
-                  />
-                  <div className="absolute bottom-[10%] top-[13%] left-1/2 w-px -translate-x-1/2 bg-cyan-300/80" />
-                  <div className="absolute left-[29%] right-[29%] top-[42%] h-px bg-cyan-300/80" />
-                  {livePupils ? (
-                    <>
-                      <div
-                        className={`absolute bottom-[10%] top-[13%] w-px -translate-x-1/2 ${livePupils.balanceDiff <= 8 ? 'bg-emerald-300/90' : livePupils.balanceDiff <= 18 ? 'bg-amber-300/90' : 'bg-rose-300/90'}`}
-                        style={{ left: livePupils.faceCenter.x }}
-                      />
-                      <div
-                        className="absolute h-px bg-indigo-200/90"
-                        style={{
-                          left: `${Math.min(livePupils.r.x, livePupils.l.x)}px`,
-                          top: `${livePupils.center.y}px`,
-                          width: `${Math.abs(livePupils.l.x - livePupils.r.x)}px`,
-                        }}
-                      />
-                      <div className="absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border border-emerald-200 bg-emerald-500/35" style={{ left: livePupils.r.x, top: livePupils.r.y }} />
-                      <div className="absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border border-emerald-200 bg-emerald-500/35" style={{ left: livePupils.l.x, top: livePupils.l.y }} />
-                      <div
-                        className={`absolute -translate-x-1/2 rounded px-2 py-1 text-[11px] font-black tabular-nums ${livePupils.balanceDiff <= 8 ? 'bg-emerald-950/85 text-emerald-100' : livePupils.balanceDiff <= 18 ? 'bg-amber-950/85 text-amber-100' : 'bg-rose-950/85 text-rose-100'}`}
-                        style={{ left: livePupils.faceCenter.x, top: livePupils.center.y - 34 }}
-                      >
-                        {livePupils.rightPct}/{livePupils.leftPct}
-                      </div>
-                      <div className="absolute -translate-x-1/2 rounded bg-black/75 px-2 py-1 text-[10px] font-bold text-emerald-100" style={{ left: livePupils.r.x, top: livePupils.r.y + 14 }}>
-                        OD {dnpGuideMm}mm
-                      </div>
-                      <div className="absolute -translate-x-1/2 rounded bg-black/75 px-2 py-1 text-[10px] font-bold text-emerald-100" style={{ left: livePupils.l.x, top: livePupils.l.y + 14 }}>
-                        OE {dnpGuideMm}mm
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="absolute left-1/2 top-[42%] h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-200 bg-black/70" />
-                      <div className="absolute left-[36%] top-[42%] h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border border-indigo-300 bg-indigo-500/30" />
-                      <div className="absolute left-[64%] top-[42%] h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border border-indigo-300 bg-indigo-500/30" />
-                      <div className="absolute left-[36%] top-[42%] h-px w-[14%] bg-indigo-300/90" />
-                      <div className="absolute right-[36%] top-[42%] h-px w-[14%] bg-indigo-300/90" />
-                      <div className="absolute left-[36%] top-[calc(42%+14px)] -translate-x-1/2 rounded bg-black/70 px-2 py-1 text-[10px] font-bold text-indigo-100">
-                        OD {dnpGuideMm}mm
-                      </div>
-                      <div className="absolute left-[64%] top-[calc(42%+14px)] -translate-x-1/2 rounded bg-black/70 px-2 py-1 text-[10px] font-bold text-indigo-100">
-                        OE {dnpGuideMm}mm
-                      </div>
-                    </>
-                  )}
-                  <div className="absolute left-1/2 top-[17%] -translate-x-1/2 rounded bg-black/65 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-cyan-100">
-                    {livePupils
-                      ? livePupils.balanceDiff <= 8
-                        ? 'Rosto alinhado'
-                        : 'Vire o rosto para centralizar'
-                      : 'Rosto de frente'}
-                  </div>
-                </div>
-              )}
             </div>
-          </div>
-
-          <div className="absolute left-3 right-3 top-3 space-y-2 rounded-lg bg-black/45 px-3 py-2">
-            {cameraMode === 'grid' && (
-              <div className="flex items-center gap-2">
-                <span className="w-16 whitespace-nowrap text-xs text-slate-100">Grade</span>
-                <input
-                  type="range"
-                  min={4}
-                  max={16}
-                  value={gridDivs}
-                  onChange={e => setGridDivs(parseInt(e.target.value, 10))}
-                  className="w-full"
-                />
-                <span className="w-12 text-right font-mono text-xs text-slate-100">{gridDivs}x{gridDivs}</span>
-              </div>
-            )}
-            {cameraMode === 'guide' && (
-              <div className="flex items-center gap-2">
-                <label className="flex w-16 items-center gap-1 whitespace-nowrap text-xs text-slate-100">
-                  <input
-                    type="checkbox"
-                    checked={showDnpGuide}
-                    onChange={e => setShowDnpGuide(e.target.checked)}
-                    className="h-3 w-3 accent-cyan-400"
-                  />
-                  DNP
-                </label>
-                <input
-                  type="range"
-                  min={26}
-                  max={40}
-                  value={dnpGuideMm}
-                  onChange={e => setDnpGuideMm(parseInt(e.target.value, 10))}
-                  className="w-full"
-                  disabled={!showDnpGuide}
-                />
-                <span className="w-12 text-right font-mono text-xs text-slate-100">{dnpGuideMm}mm</span>
-              </div>
-            )}
           </div>
 
           <div className="absolute bottom-4 left-4 right-4 flex gap-2">
