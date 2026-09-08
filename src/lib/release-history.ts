@@ -7,26 +7,8 @@ export type Release = {
 // A versão visível é sempre a primeira de RELEASE_HISTORY. Uma pendência só
 // abre o próximo patch depois da publicação efetiva da versão atual e nunca
 // altera o Dashboard ou o modal de histórico.
-export const PENDING_RELEASE_VERSION: string | null = '1.02.14'
-/* export const PENDING_RELEASE_CHANGES: readonly string[] = [
-  'Respostas claras a lembretes de parcelas, como "pode parar", agora cancelam somente os proximos lembretes de vencimento por WhatsApp.',
-  'O cadastro do cliente passou a permitir escolher quais mensagens automáticas de WhatsApp pode receber, incluindo lembretes de parcelas e pós-venda.',
-] */
-export const PENDING_RELEASE_CHANGES: readonly string[] = [
-  'Os botoes iniciais do Hub Gerencial agora destacam o icone, a seta e o traco de cor no hover, preservando o texto alinhado a esquerda.',
-  'O atalho Saude da Loja foi removido da grade de opcoes da Gerencia.',
-  'No tablet de medidas, depois de confirmar o gabarito, e possivel analisar a foto com IA para ajustar os pontos da armação e ainda corrigi-los na mao.',
-  'No tablet de medidas, a captura pela camera ficou em um unico botao, sem guia DNP e sem grade.',
-  'No tablet, o atalho das OS pendentes passou a se chamar Fazer medidas antes e informar OS depois e ficou abaixo da lista.',
-  'Na lista de OS pendentes do tablet, o subtitulo informa quantas OS faltam pedir no laboratorio.',
-  'A tela inicial do medidor no tablet ficou so com o titulo e os botoes de galeria e camera.',
-  'A analise com IA no tablet de medidas passou a funcionar tambem pelo acesso local.',
-  'No medidor do tablet, a faixa de medidas pode ser arrastada para o lado quando nao cabe na tela.',
-  'No medidor do tablet, o tipo de lente ficou Multifocal/VS ou Bifocal, permanece visivel depois da escolha e as medidas so liberam apos marcar uma opcao. O retorno a referencia passou para o botao voltar ao lado do titulo.',
-  'A tela inicial do medidor no tablet ganhou um botao voltar para a lista de OS.',
-  'A tela de gabarito do medidor no tablet tambem ganhou um botao voltar, que retorna para escolher a foto.',
-  'No menu do tablet, o atalho OS passou a se chamar Medidas, com o subtitulo medidas para confeccao das lentes.',
-]
+export const PENDING_RELEASE_VERSION: string | null = null
+export const PENDING_RELEASE_CHANGES: readonly string[] = []
 
 const RELEASE_10209_CHANGES: readonly string[] = [
   'IMPLEMENTADO O CADASTRO DE CLIENTES PJ COM RAZAO SOCIAL, NOME FANTASIA E CNPJ, COM EMISSAO DE NFC-E PARA EMPRESAS.',
@@ -110,6 +92,25 @@ const RELEASE_10205_CHANGES: readonly string[] = [
 // Abra uma versão pendente na primeira alteração após o último fechamento.
 // Alterações de linha/minor (ex.: 1.02.xx -> 1.03.00) exigem solicitação expressa.
 export const RELEASE_HISTORY: Release[] = [
+  {
+    version: '1.02.14',
+    date: '08/09/2026',
+    changes: [
+      'Os botoes iniciais do Hub Gerencial agora destacam o icone, a seta e o traco de cor no hover, preservando o texto alinhado a esquerda.',
+      'O atalho Saude da Loja foi removido da grade de opcoes da Gerencia.',
+      'No tablet de medidas, depois de confirmar o gabarito, e possivel analisar a foto com IA para ajustar os pontos da armação e ainda corrigi-los na mao.',
+      'No tablet de medidas, a captura pela camera ficou em um unico botao, sem guia DNP e sem grade.',
+      'No tablet, o atalho das OS pendentes passou a se chamar Fazer medidas antes e informar OS depois e ficou abaixo da lista.',
+      'Na lista de OS pendentes do tablet, o subtitulo informa quantas OS faltam pedir no laboratorio.',
+      'A tela inicial do medidor no tablet ficou so com o titulo e os botoes de galeria e camera.',
+      'A analise com IA no tablet de medidas passou a funcionar tambem pelo acesso local.',
+      'No medidor do tablet, a faixa de medidas pode ser arrastada para o lado quando nao cabe na tela.',
+      'No medidor do tablet, o tipo de lente ficou Multifocal/VS ou Bifocal, permanece visivel depois da escolha e as medidas so liberam apos marcar uma opcao. O retorno a referencia passou para o botao voltar ao lado do titulo.',
+      'A tela inicial do medidor no tablet ganhou um botao voltar para a lista de OS.',
+      'A tela de gabarito do medidor no tablet tambem ganhou um botao voltar, que retorna para escolher a foto.',
+      'No menu do tablet, o atalho OS passou a se chamar Medidas, com o subtitulo medidas para confeccao das lentes.',
+    ],
+  },
   {
     version: '1.02.13',
     date: '03/09/2026',
