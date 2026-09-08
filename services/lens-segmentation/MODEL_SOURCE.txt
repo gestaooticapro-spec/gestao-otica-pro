@@ -1,0 +1,4 @@
+source: torre-neosmart/runs/segment/train/weights/best.pt
+copied_at: 2026-09-08
+sha256: 1d7c5dce2fc5b9911bdd1e68b41d64dce2c9ca5869c58ab8813c6fd3d63bb580
+note: Frozen MB Optical snapshot. A/B/D is the OD eyewire only; OE is used for bridge and fitting height. Torre retrains do not update this file automatically.

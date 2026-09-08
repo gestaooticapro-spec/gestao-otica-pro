@@ -15,6 +15,7 @@ export const PENDING_RELEASE_VERSION: string | null = '1.02.14'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
   'Os botoes iniciais do Hub Gerencial agora destacam o icone, a seta e o traco de cor no hover, preservando o texto alinhado a esquerda.',
   'O atalho Saude da Loja foi removido da grade de opcoes da Gerencia.',
+  'No tablet de medidas, depois de confirmar o gabarito, e possivel analisar a foto com IA para ajustar os pontos da armação e ainda corrigi-los na mao.',
 ]
 
 const RELEASE_10209_CHANGES: readonly string[] = [

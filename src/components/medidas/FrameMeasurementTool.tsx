@@ -2,8 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Camera, CheckCircle2, Copy, ImageIcon, RotateCcw, Ruler, Save } from 'lucide-react'
+import { Camera, CheckCircle2, Copy, ImageIcon, RotateCcw, Ruler, Save, Wand2 } from 'lucide-react'
 import { findMedicaoOSByNumber, saveMedicaoOS, type MedicaoOSLookup } from '@/lib/actions/medidas.actions'
+import {
+  canvasPointToPhoto,
+  mapFrontLensSegmentationToHandles,
+  photoPointToCanvas,
+  type ExistingFrontLensHandles,
+  type FrontLensHandleKey,
+  type LensSegmentationResult,
+} from '@/lib/medidas/front-lens-segmentation'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Step     = 'capture' | 'calibrate' | 'measure' | 'done'
@@ -134,6 +142,7 @@ export default function FrameMeasurementTool({
   const cameraPreviewRef = useRef<HTMLDivElement>(null)
   const streamRef     = useRef<MediaStream | null>(null)
   const imgRef        = useRef<HTMLImageElement | null>(null)
+  const photoDataUrlRef = useRef<string | null>(null)
   const landmarkerRef = useRef<FaceLandmarkerInstance | null>(null)
   const rawLmsRef     = useRef<RawLm[] | null>(null)
   const draggingRef   = useRef<HKey | null>(null)
@@ -170,6 +179,8 @@ export default function FrameMeasurementTool({
   const [gridDivs,    setGridDivs]    = useState(10)
   const [showDnpGuide, setShowDnpGuide] = useState(true)
   const [dnpGuideMm, setDnpGuideMm] = useState(32)
+  const [aiStatus, setAiStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle')
+  const [aiMessage, setAiMessage] = useState<string | null>(null)
   const [livePupils, setLivePupils] = useState<{
     r: Pt
     l: Pt
@@ -365,24 +376,55 @@ export default function FrameMeasurementTool({
     } catch (e) { console.warn('[MediaPipe]', e) }
   }
 
-  // ── Arquivo ───────────────────────────────────────────────────────────────
-  function processFile(file: File) {
-    const reader = new FileReader()
-    reader.onload = ev => {
-      const img = new Image()
-      img.onload = () => {
-        imgRef.current = img
-        const cw = containerRef.current?.clientWidth  ?? window.innerWidth
-        const ch = containerRef.current?.clientHeight ?? window.innerHeight
-        const s  = Math.min(cw / img.naturalWidth, ch / img.naturalHeight)
-        const dw = img.naturalWidth * s, dh = img.naturalHeight * s
-        const b  = { x: (cw - dw) / 2, y: (ch - dh) / 2, w: dw, h: dh }
-        setImgBounds(b); setPts(defaultHandles(b)); setStep('calibrate')
-        ensureLandmarker().catch(() => null)
-      }
-      img.src = ev.target!.result as string
+  async function loadOrientedPhoto(file: File) {
+    let dataUrl: string
+    try {
+      const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' } as ImageBitmapOptions)
+      const canvas = document.createElement('canvas')
+      canvas.width = bitmap.width
+      canvas.height = bitmap.height
+      const ctx = canvas.getContext('2d')
+      if (!ctx) throw new Error('canvas')
+      ctx.drawImage(bitmap, 0, 0)
+      bitmap.close()
+      dataUrl = canvas.toDataURL('image/jpeg', 0.92)
+    } catch {
+      dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result))
+        reader.onerror = () => reject(new Error('read'))
+        reader.readAsDataURL(file)
+      })
     }
-    reader.readAsDataURL(file)
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new Image()
+      image.onload = () => resolve(image)
+      image.onerror = () => reject(new Error('image'))
+      image.src = dataUrl
+    })
+    return { img, dataUrl }
+  }
+
+  function applyLoadedPhoto(img: HTMLImageElement, dataUrl: string) {
+    imgRef.current = img
+    photoDataUrlRef.current = dataUrl
+    const cw = containerRef.current?.clientWidth  ?? window.innerWidth
+    const ch = containerRef.current?.clientHeight ?? window.innerHeight
+    const s  = Math.min(cw / img.naturalWidth, ch / img.naturalHeight)
+    const dw = img.naturalWidth * s, dh = img.naturalHeight * s
+    const b  = { x: (cw - dw) / 2, y: (ch - dh) / 2, w: dw, h: dh }
+    setImgBounds(b)
+    setPts(defaultHandles(b))
+    setAiStatus('idle')
+    setAiMessage(null)
+    setStep('calibrate')
+    ensureLandmarker().catch(() => null)
+  }
+
+  function processFile(file: File) {
+    void loadOrientedPhoto(file).then(({ img, dataUrl }) => applyLoadedPhoto(img, dataUrl)).catch(() => {
+      setCameraError('Nao foi possivel abrir a foto')
+    })
   }
 
   function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -487,6 +529,103 @@ export default function FrameMeasurementTool({
         setPts(prev => prev ? applyLandmarks(rawLmsRef.current!, imgBounds, prev) : prev)
     } finally { setConfirming(false) }
     setActiveGroup(null); setStep('measure')
+  }
+
+  function currentHandlesInPhoto(h: Handles, img: HTMLImageElement, bounds: typeof imgBounds): ExistingFrontLensHandles {
+    const photo = { width: img.naturalWidth, height: img.naturalHeight }
+    const toPhoto = (point: Pt) => canvasPointToPhoto(point, bounds, photo)
+    return {
+      pupilR: toPhoto(h.pupilR),
+      pupilL: toPhoto(h.pupilL),
+      bridgeR: toPhoto(h.bridgeR),
+      bridgeL: toPhoto(h.bridgeL),
+      mountR: toPhoto(h.mountR),
+      mountL: toPhoto(h.mountL),
+      lensLeft: toPhoto(h.lensLeft),
+      lensRight: toPhoto(h.lensRight),
+      lensTop: toPhoto(h.lensTop),
+      lensBottom: toPhoto(h.lensBottom),
+      diagA: toPhoto(h.diagA),
+      diagB: toPhoto(h.diagB),
+    }
+  }
+
+  async function analyzeWithAi() {
+    if (!pts || !imgRef.current || !photoDataUrlRef.current) {
+      setAiStatus('error')
+      setAiMessage('Capture e calibre a foto antes de analisar.')
+      return
+    }
+    if (!storeId) {
+      setAiStatus('error')
+      setAiMessage('Loja nao identificada para analisar a foto.')
+      return
+    }
+
+    setAiStatus('loading')
+    setAiMessage('Localizando as lentes...')
+    try {
+      const tokenResponse = await fetch('/api/medidas/lens-segment/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storeId }),
+      })
+      const tokenPayload = await tokenResponse.json().catch(() => null) as { token?: string; segmentUrl?: string; error?: string } | null
+      if (!tokenResponse.ok || !tokenPayload?.token || !tokenPayload.segmentUrl) {
+        setAiStatus('error')
+        setAiMessage(tokenPayload?.error || 'Analise com IA indisponivel.')
+        return
+      }
+
+      const segmentResponse = await fetch(tokenPayload.segmentUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${tokenPayload.token}`,
+        },
+        body: JSON.stringify({ dataUrl: photoDataUrlRef.current }),
+      })
+      const segmentPayload = await segmentResponse.json().catch(() => null) as (LensSegmentationResult & { ok?: boolean; message?: string }) | null
+      if (!segmentResponse.ok || !segmentPayload?.ok || !segmentPayload.lenses) {
+        setAiStatus('error')
+        setAiMessage(segmentPayload?.message || 'Nao foi possivel localizar as duas lentes.')
+        return
+      }
+
+      const img = imgRef.current
+      const bounds = imgBoundsRef.current
+      const mapped = mapFrontLensSegmentationToHandles(
+        {
+          imageWidth: segmentPayload.imageWidth,
+          imageHeight: segmentPayload.imageHeight,
+          mirrored: false,
+          lenses: segmentPayload.lenses,
+        },
+        { width: img.naturalWidth, height: img.naturalHeight },
+        currentHandlesInPhoto(pts, img, bounds),
+      )
+
+      const photo = { width: img.naturalWidth, height: img.naturalHeight }
+      setPts((current) => {
+        if (!current) return current
+        const next = { ...current }
+        ;(Object.keys(mapped.handles) as FrontLensHandleKey[]).forEach((key) => {
+          const point = mapped.handles[key]
+          if (!point) return
+          next[key] = photoPointToCanvas(point, bounds, photo)
+        })
+        return next
+      })
+
+      const od = segmentPayload.lenses.find((lens) => lens.side === 'OD')
+      const oe = segmentPayload.lenses.find((lens) => lens.side === 'OE')
+      const confidence = `OD ${Math.round((od?.confidence ?? 0) * 100)}% · OE ${Math.round((oe?.confidence ?? 0) * 100)}%`
+      setAiStatus('ok')
+      setAiMessage(mapped.warnings.length ? `${confidence}. ${mapped.warnings.join(' ')}` : `Lentes localizadas: ${confidence}. Voce ainda pode ajustar os pontos.`)
+    } catch {
+      setAiStatus('error')
+      setAiMessage('Nao foi possivel analisar a foto. Os pontos atuais foram mantidos.')
+    }
   }
 
   // ── Cálculo das medidas ───────────────────────────────────────────────────
@@ -835,7 +974,8 @@ export default function FrameMeasurementTool({
     setStep('capture'); setPts(null); setActiveGroup(null); setLensType(null)
     setAutoOk(false); setShowDiam(false); setSaved(false)
     setLinkedOS(null); setOsNumberInput(''); setOsLookupError(null)
-    rawLmsRef.current = null; imgRef.current = null
+    setAiStatus('idle'); setAiMessage(null)
+    rawLmsRef.current = null; imgRef.current = null; photoDataUrlRef.current = null
   }
 
   const meas  = pts ? calc(pts) : null
@@ -1224,15 +1364,21 @@ export default function FrameMeasurementTool({
                 </div>
               )}
 
+              {aiMessage && step === 'measure' && (
+                <p className={`text-xs px-4 pt-1 ${aiStatus === 'error' ? 'text-amber-300' : 'text-slate-300'}`}>{aiMessage}</p>
+              )}
+
               {/* Ações */}
               <div className="px-4 pb-3 pt-1 flex flex-wrap gap-2">
                 {step === 'measure' && !activeGroup && (
                   <>
-                    {/* Botão de cálculo de diâmetro reservado para uso futuro.
-                    <button onClick={() => setShowDiam(v => !v)}
-                      className={`flex-1 py-2 rounded-xl text-xs font-medium border transition-colors ${showDiam ? 'bg-indigo-900/60 border-indigo-500 text-indigo-200' : 'bg-white/5 border-white/10 text-slate-300'}`}>
-                      {showDiam ? 'Ocultar diâmetro' : 'Calcular diâmetro'}
-                    </button> */}
+                    <button onClick={() => void analyzeWithAi()} disabled={aiStatus === 'loading'}
+                      className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 rounded-xl text-xs font-medium transition-colors flex items-center justify-center gap-1.5">
+                      {aiStatus === 'loading'
+                        ? <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin inline-block" />
+                        : <Wand2 className="w-3.5 h-3.5" />}
+                      {aiStatus === 'loading' ? 'Analisando...' : 'Analisar com IA'}
+                    </button>
                     <button onClick={() => setStep('done')}
                       className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-xs font-medium transition-colors">
                       Confirmar ✓

@@ -10,3 +10,4 @@ tmp
 .tabelas
 *.sql
 !supabase/migrations/*.sql
+services/lens-segmentation/models

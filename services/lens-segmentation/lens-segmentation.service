@@ -1,0 +1,14 @@
+[Unit]
+Description=MB Optical lens segmentation
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/lens-segmentation
+EnvironmentFile=/opt/lens-segmentation/lens-segmentation.env
+ExecStart=/opt/lens-segmentation/.venv/bin/python server.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
