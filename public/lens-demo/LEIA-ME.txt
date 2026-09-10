@@ -21,5 +21,6 @@ http://localhost:3000/dashboard/loja/1/lentes/campo-focal
 http://localhost:3000/dashboard/loja/1/torre/medidas
 http://localhost:3000/dashboard/loja/1/torre
 
+https://gestao-otica-pro.vercel.app/admin/torres
 
 DOSSIÊ TRÍPLICE DO MOTOR

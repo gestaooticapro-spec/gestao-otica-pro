@@ -7,7 +7,7 @@ import {
     Loader2, Save, Trash2, Search, X,
     ArrowLeftToLine, ArrowRightToLine, ChevronLeft, ChevronRight,
     User, ClipboardList, ScrollText, Users2, UserPlus, Calendar, Pencil,
-    AlertTriangle, Gem, Trophy, Medal, ArrowLeft
+    AlertTriangle, Gem, Trophy, Medal, ArrowLeft, FileSpreadsheet
 } from 'lucide-react';
 import { Database } from '@/lib/database.types';
 import { CustomerWhatsAppMessagePreferences, getCustomerWhatsAppMessagePreferences, saveCustomerDetails, deleteCustomer } from '@/lib/actions/customer.actions';
@@ -136,6 +136,7 @@ export default function StoreClientPage() {
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<ActiveTab>('principal');
     const [isPrescriptionHistoryOpen, setIsPrescriptionHistoryOpen] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
 
     const [dependentesList, setDependentesList] = useState<Dependente[]>([]);
 
@@ -505,6 +506,38 @@ export default function StoreClientPage() {
         setActiveTab('principal');
     };
 
+    const handleExportCustomers = async () => {
+        setIsExporting(true);
+        try {
+            const response = await fetch(`/api/stores/${storeId}/customers/export`, {
+                method: 'GET',
+                cache: 'no-store',
+            });
+
+            if (!response.ok) {
+                const payload = await response.json().catch(() => null) as { message?: string } | null;
+                throw new Error(payload?.message || 'Não foi possível gerar o relatório.');
+            }
+
+            const blob = await response.blob();
+            const disposition = response.headers.get('content-disposition') || '';
+            const filename = disposition.match(/filename="([^"]+)"/i)?.[1]
+                || `clientes-loja-${storeId}.xlsx`;
+            const downloadUrl = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
+        } catch (error) {
+            alert(error instanceof Error ? error.message : 'Não foi possível gerar o relatório.');
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
     const handleSelectCustomer = async (cust: Customer, index: number) => {
         if (!cust.rua && !cust.email && cust.id) {
             setLoading(true);
@@ -735,6 +768,15 @@ export default function StoreClientPage() {
                             <div className="flex gap-2">
                                 <button type="button" onClick={handleNew} disabled={isSaving} className={`${baseButtonStyle} bg-blue-500/10 text-blue-300 hover:bg-blue-500/20 border-blue-500/30`}>
                                     <UserPlus className="h-4 w-4" /> Novo
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleExportCustomers}
+                                    disabled={isExporting || isNaN(storeId)}
+                                    className={`${baseButtonStyle} bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 border-emerald-500/30`}
+                                >
+                                    {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
+                                    {isExporting ? 'Gerando...' : 'Exportar Excel'}
                                 </button>
                                 {currentIndex !== -1 && (
                                     <button type="button" onClick={handleDelete} disabled={isDeleting} className={`${baseButtonStyle} bg-red-500/10 text-red-300 hover:bg-red-500/20 border-red-500/30`}>

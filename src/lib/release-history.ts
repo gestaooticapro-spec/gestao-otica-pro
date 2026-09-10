@@ -7,8 +7,10 @@ export type Release = {
 // A versão visível é sempre a primeira de RELEASE_HISTORY. Uma pendência só
 // abre o próximo patch depois da publicação efetiva da versão atual e nunca
 // altera o Dashboard ou o modal de histórico.
-export const PENDING_RELEASE_VERSION: string | null = null
-export const PENDING_RELEASE_CHANGES: readonly string[] = []
+export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
+export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'O cadastro de clientes ganhou a exportação em Excel da lista de nomes e telefones da loja atual.',
+]
 
 const RELEASE_10209_CHANGES: readonly string[] = [
   'IMPLEMENTADO O CADASTRO DE CLIENTES PJ COM RAZAO SOCIAL, NOME FANTASIA E CNPJ, COM EMISSAO DE NFC-E PARA EMPRESAS.',
