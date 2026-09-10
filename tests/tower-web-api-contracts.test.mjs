@@ -75,9 +75,10 @@ test('contratos web v1 autenticam o token do equipamento e limitam o acesso por 
 })
 
 test('gateway de IA autentica equipamento, valida payload e limita consumo por dispositivo', async () => {
-  const [route, rateLimit] = await Promise.all([
+  const [route, rateLimit, narratives] = await Promise.all([
     read('src/app/api/tower/v1/web/ai/route.ts'),
     read('src/lib/server/tower-activation-rate-limit.ts'),
+    read('src/lib/actions/gemini-narratives.actions.ts'),
   ])
 
   assert.match(route, /MAX_BODY_BYTES = 4_000_000/)
@@ -88,6 +89,7 @@ test('gateway de IA autentica equipamento, valida payload e limita consumo por d
   assert.match(route, /'locate-measurement-points'/)
   assert.match(route, /'generate-lens-sales-assist'/)
   assert.match(route, /'interpret-lens-observation'/)
+  assert.match(route, /comparison: GenericObjectSchema\.optional\(\)/)
   assert.match(route, /'generate-visagismo-narrative'/)
   assert.match(route, /export const maxDuration = 120/)
   assert.match(route, /narrativa de visagismo.*validada.*esgotada/)
@@ -95,6 +97,10 @@ test('gateway de IA autentica equipamento, valida payload e limita consumo por d
   assert.match(route, /Cache-Control.*no-store/)
   assert.match(rateLimit, /createHash\('sha256'\)\.update\(`\$\{deviceId\}:\$\{operation\}`/)
   assert.match(rateLimit, /tower-ai:\$\{operation\}/)
+  assert.match(narratives, /reinforceExplicitObservationFeatures/)
+  assert.match(narratives, /structuredComparison/)
+  assert.match(narratives, /A IA nao altera a ordem, nao ranqueia novamente/)
+  assert.match(narratives, /preferencia_lab, preferencia_marca/)
 })
 
 test('sync do dispositivo aceita todo o atendimento offline e a configuracao instala dados operacionais', async () => {

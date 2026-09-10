@@ -51,6 +51,7 @@ const SalesAssistPayloadSchema = z.object({
   technicalTriage: GenericObjectSchema.nullable(),
   motorInput: GenericObjectSchema,
   recommendations: z.array(GenericObjectSchema).min(1).max(3),
+  comparison: GenericObjectSchema.optional(),
 }).strict()
 const ObservationPayloadSchema = z.object({
   observation: z.string().trim().min(1).max(2000),
