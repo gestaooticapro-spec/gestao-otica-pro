@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { generateLensSalesAssistAction } from '@/lib/actions/gemini-narratives.actions'
+import {
+  generateLensSalesAssistAction,
+  interpretLensObservationAction,
+} from '@/lib/actions/gemini-narratives.actions'
 import { locateTowerMeasurementPointsWithAiAction } from '@/lib/actions/tower-measurement-ai.actions'
 import { generateVisagismoNarrativeAction } from '@/lib/actions/visagismo-ai.actions'
 import { consumeTowerAuthenticatedRateLimit } from '@/lib/server/tower-activation-rate-limit'
@@ -49,6 +52,11 @@ const SalesAssistPayloadSchema = z.object({
   motorInput: GenericObjectSchema,
   recommendations: z.array(GenericObjectSchema).min(1).max(3),
 }).strict()
+const ObservationPayloadSchema = z.object({
+  observation: z.string().trim().min(1).max(2000),
+  motorInput: GenericObjectSchema,
+  availableLaboratories: z.array(z.string().trim().min(1).max(120)).max(20),
+}).strict()
 const VisagismoPayloadSchema = z.object({
   analysis: GenericObjectSchema,
   customerProfile: GenericObjectSchema,
@@ -63,12 +71,14 @@ const VisagismoPayloadSchema = z.object({
 const RequestSchema = z.discriminatedUnion('command', [
   z.object({ storeId: z.number().int().positive(), command: z.literal('locate-measurement-points'), payload: MeasurementPayloadSchema }).strict(),
   z.object({ storeId: z.number().int().positive(), command: z.literal('generate-lens-sales-assist'), payload: SalesAssistPayloadSchema }).strict(),
+  z.object({ storeId: z.number().int().positive(), command: z.literal('interpret-lens-observation'), payload: ObservationPayloadSchema }).strict(),
   z.object({ storeId: z.number().int().positive(), command: z.literal('generate-visagismo-narrative'), payload: VisagismoPayloadSchema }).strict(),
 ])
 
 const limits = {
   'locate-measurement-points': { attempts: 12, windowSeconds: 10 * 60 },
   'generate-lens-sales-assist': { attempts: 24, windowSeconds: 10 * 60 },
+  'interpret-lens-observation': { attempts: 36, windowSeconds: 10 * 60 },
   'generate-visagismo-narrative': { attempts: 24, windowSeconds: 10 * 60 },
 } as const
 
@@ -128,6 +138,11 @@ export async function POST(request: NextRequest) {
   if (parsed.data.command === 'generate-lens-sales-assist') {
     const result = await generateLensSalesAssistAction(parsed.data.payload as Parameters<typeof generateLensSalesAssistAction>[0])
     return json({ success: true, message: 'Narrativa de lentes concluida.', data: result })
+  }
+  if (parsed.data.command === 'interpret-lens-observation') {
+    const result = await interpretLensObservationAction(parsed.data.payload as Parameters<typeof interpretLensObservationAction>[0])
+    console.info(`[Tower AI] observacao ${result.success ? 'interpretada' : 'esgotada'} para dispositivo ${auth.deviceId}`)
+    return json({ success: true, message: 'Interpretacao da observacao concluida.', data: result })
   }
 
   const result = await generateVisagismoNarrativeAction(parsed.data.payload as Parameters<typeof generateVisagismoNarrativeAction>[0])

@@ -87,6 +87,7 @@ test('gateway de IA autentica equipamento, valida payload e limita consumo por d
   assert.match(route, /consumeTowerAuthenticatedRateLimit/)
   assert.match(route, /'locate-measurement-points'/)
   assert.match(route, /'generate-lens-sales-assist'/)
+  assert.match(route, /'interpret-lens-observation'/)
   assert.match(route, /'generate-visagismo-narrative'/)
   assert.match(route, /export const maxDuration = 120/)
   assert.match(route, /narrativa de visagismo.*validada.*esgotada/)
