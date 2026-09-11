@@ -322,7 +322,7 @@ export default function ParcelasInterface({ storeId, reportMode = false }: { sto
 
             {/* TABELA DE DADOS */}
             <div className="flex-1 overflow-auto p-6 bg-slate-950/30 flex flex-col items-center">
-                <div className="w-full max-w-6xl">
+                <div className="w-full max-w-none">
                     {!hasSearched ? (
                     <div className="h-full flex flex-col items-center justify-center text-center max-w-sm mx-auto">
                         <div className="w-16 h-16 bg-blue-500/10 border border-blue-500/20 rounded-full flex items-center justify-center mb-6 text-blue-500">
