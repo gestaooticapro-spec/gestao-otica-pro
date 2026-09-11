@@ -11,6 +11,7 @@ export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
   'O cadastro de clientes ganhou a exportação em Excel da lista de nomes e telefones da loja atual.',
   'Clientes com apenas um telefone cadastrado passam a ter os dois campos de telefone preenchidos automaticamente na migração.',
+  'A tabela de parcelas ganhou largura suficiente para exibir integralmente os botões de comprovante e reversão.',
 ]
 
 const RELEASE_10209_CHANGES: readonly string[] = [
