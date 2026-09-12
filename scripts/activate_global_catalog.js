@@ -51,13 +51,18 @@ async function main() {
 
   const { data: version, error: versionError } = await supabase
     .from('global_catalog_versions')
-    .select('id,laboratorio')
+    .select('id,laboratorio,status')
     .eq('laboratorio', laboratorio)
     .eq('versao', versao)
     .single()
 
   if (versionError || !version) {
     console.error('Versao global nao encontrada.', versionError)
+    process.exit(1)
+  }
+
+  if (version.status !== 'published') {
+    console.error('Somente catalogos publicados podem ser ativados.')
     process.exit(1)
   }
 

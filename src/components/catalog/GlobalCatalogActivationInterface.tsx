@@ -206,18 +206,24 @@ function VersionCard({
           </div>
 
           <div className="mt-5 flex flex-col gap-3">
-            <button
-              onClick={handleActivate}
-              disabled={isPending}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-cyan-500 px-4 py-3 font-black text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isPending ? (
-                <RefreshCcw className="h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCcw className="h-4 w-4" />
-              )}
-              {buttonLabel}
-            </button>
+            {version.status === 'published' ? (
+              <button
+                onClick={handleActivate}
+                disabled={isPending}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-cyan-500 px-4 py-3 font-black text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isPending ? (
+                  <RefreshCcw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCcw className="h-4 w-4" />
+                )}
+                {buttonLabel}
+              </button>
+            ) : (
+              <p className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center text-xs font-bold text-slate-400">
+                Versao indisponivel para ativacao.
+              </p>
+            )}
 
             {isCurrent ? (
               <button

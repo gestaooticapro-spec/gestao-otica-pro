@@ -6,6 +6,7 @@ import { getNuvemLocalToken } from "@/lib/nuvem-local";
 import { Database } from "@/lib/database.types";
 import { isStoreModuleEnabledForStore } from "@/lib/store-modules.server";
 import { documentDigits, isValidCnpj, isValidCpf } from "@/lib/customer-document";
+import { formatFiscalUserMessage } from "@/lib/fiscal-user-message";
 
 // Sanitiza xNome para atender ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â  regex do SEFAZ: ^([!-ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¹]{1}[ -ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¹]{0,}[!-ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¹]{1}|[!-ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¹]{1})$
 function sanitizeXNome(nome: string | null | undefined): string {
@@ -485,36 +486,7 @@ function extractFiscalAuthorizationMessage(result: any, fallback: string) {
 }
 
 function formatFiscalProviderMessage(message: string) {
-    const normalized = String(message || "").trim();
-    const lower = normalized.toLowerCase();
-
-    if (
-        lower.includes("could not connect to server") ||
-        lower.includes("winhttp operation") ||
-        lower.includes("nfeautorizacao4") ||
-        lower.includes("error: (12029)")
-    ) {
-        return [
-            "Falha de comunicacao com a SEFAZ/PR no momento.",
-            "A nota nao foi autorizada e voce pode tentar novamente mais tarde.",
-            "",
-            `Detalhe tecnico: ${normalized}`,
-        ].join("\n");
-    }
-
-    if (
-        lower.includes("ora-04025") ||
-        (lower.includes("erro nao catalogado") && lower.includes("sql"))
-    ) {
-        return [
-            "A SEFAZ/PR respondeu com instabilidade interna durante a autorizacao.",
-            "Nao parece ser um erro de preenchimento da nota.",
-            "",
-            `Detalhe tecnico: ${normalized}`,
-        ].join("\n");
-    }
-
-    return normalized;
+    return formatFiscalUserMessage(message);
 }
 
 function isNuvemLocalFiscalUrl(baseUrl: string) {

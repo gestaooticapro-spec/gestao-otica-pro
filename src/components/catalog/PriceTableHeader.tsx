@@ -206,7 +206,7 @@ export default function PriceTableHeader({
 
             {/* Cards */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {overview.versions.map((version) => {
+              {overview.versions.filter((version) => version.status === 'published').map((version) => {
                 const active = version.activation?.status === 'active'
                 return (
                   <button

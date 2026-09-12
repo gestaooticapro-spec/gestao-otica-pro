@@ -30,7 +30,7 @@ const GEOMETRY_EXPECTED = new Map([
   ['PRO LIFE VI', 'Hoyalux iD LifeStyle 4'],
   ['OMEGALUX IN', 'Varilux Liberty 3.0'],
   ['OMEGALUX DIGITAL', 'Varilux Comfort Max'],
-  ['OMEGALUX 4K', 'Varilux XR Pro'],
+  ['OMEGALUX 4K', 'PRO LIFE VI'],
 ])
 
 function readJson(filePath) {

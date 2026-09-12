@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext';
 import ModuleDisabledState from '@/components/modules/ModuleDisabledState';
+import { formatFiscalUserMessage } from "@/lib/fiscal-user-message";
 
 type Invoice = {
     id: string;
@@ -34,27 +35,8 @@ type Invoice = {
     valor_total: number | null;
 };
 
-function formatFiscalStatusMessage(message?: string | null) {
-    const normalized = String(message || "").trim();
-    const lower = normalized.toLowerCase();
-
-    if (
-        lower.includes("could not connect to server") ||
-        lower.includes("winhttp operation") ||
-        lower.includes("nfeautorizacao4") ||
-        lower.includes("error: (12029)")
-    ) {
-        return `Instabilidade externa na SEFAZ/PR.\nA autorizacao nao foi concluida e voce pode tentar novamente mais tarde.\n\nDetalhe tecnico:\n${normalized}`;
-    }
-
-    if (
-        lower.includes("ora-04025") ||
-        (lower.includes("erro nao catalogado") && lower.includes("sql"))
-    ) {
-        return `A SEFAZ/PR respondeu com instabilidade interna.\nNao parece ser erro de preenchimento da nota.\n\nDetalhe tecnico:\n${normalized}`;
-    }
-
-    return normalized || "Erro desconhecido";
+function invoiceErrorText(invoice: Pick<Invoice, "error_message" | "motivo_rejeicao">, includeTechnicalDetail = false) {
+    return formatFiscalUserMessage(invoice.motivo_rejeicao || invoice.error_message, { includeTechnicalDetail });
 }
 
 export default function FiscalDashboard(props: { params: { storeId: string } }) {
@@ -150,7 +132,7 @@ export default function FiscalDashboard(props: { params: { storeId: string } }) 
                         const detalhes = res.data.mensagens.map((m: any) => `${m.codigo}: ${m.descricao}`).join("\n");
                         if (detalhes) msg = detalhes;
                     }
-                    alert(`Status fiscal com falha:\n\n${formatFiscalStatusMessage(msg)}`);
+                    alert(`Status fiscal com falha:\n\n${formatFiscalUserMessage(msg)}`);
                 } else {
                     alert(`Status atualizado: ${res.status}`);
                 }
@@ -439,8 +421,8 @@ export default function FiscalDashboard(props: { params: { storeId: string } }) 
                                             <td className="px-5 py-4">
                                                 {getStatusBadge(inv.status)}
                                                 {(inv.error_message || inv.motivo_rejeicao) && (
-                                                    <p className="text-[10px] text-red-400 mt-1 max-w-[180px] truncate" title={inv.motivo_rejeicao || inv.error_message || ""}>
-                                                        {inv.motivo_rejeicao || inv.error_message}
+                                                    <p className="text-[10px] text-red-400 mt-1 max-w-[180px] truncate" title={invoiceErrorText(inv)}>
+                                                        {invoiceErrorText(inv)}
                                                     </p>
                                                 )}
                                                 {inv.status === "authorized" && inv.chave_acesso && (
@@ -500,7 +482,7 @@ export default function FiscalDashboard(props: { params: { storeId: string } }) 
                                                     {/* Detalhes erro/rejeição */}
                                                     {(inv.status === "error" || inv.status === "rejected") && (
                                                         <button
-                                                            onClick={() => alert(`Detalhes:\n\n${inv.motivo_rejeicao || inv.error_message || "Sem detalhes disponíveis."}`)}
+                                                            onClick={() => alert(`Detalhes:\n\n${invoiceErrorText(inv, true)}`)}
                                                             className="p-2 bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 rounded-lg transition"
                                                             title="Ver detalhes do erro"
                                                         >

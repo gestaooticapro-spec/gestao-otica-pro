@@ -12,6 +12,10 @@ export const PENDING_RELEASE_CHANGES: readonly string[] = [
   'O cadastro de clientes ganhou a exportação em Excel da lista de nomes e telefones da loja atual.',
   'Clientes com apenas um telefone cadastrado passam a ter os dois campos de telefone preenchidos automaticamente na migração.',
   'A tabela de parcelas passou a usar toda a largura disponível para exibir integralmente os botões de comprovante e reversão.',
+  'A ativação de tabelas globais passou a aceitar somente versões publicadas, protegendo as lojas contra catálogos em rascunho ou arquivados.',
+  'As linhas OmegaLux e Pro Life foram separadas: a OmegaLux ganhou tabela própria e a Pro Life passou a integrar uma opção alternativa da tabela Hoya.',
+  'A geometria da lente OMEGALUX 4K passou a copiar a da PRO LIFE VI.',
+  'Quando a SEFAZ não responde na emissão da nota, o sistema avisa que a autorização não foi concluída e pede para tentar mais tarde, em vez do código técnico da conexão.',
 ]
 
 const RELEASE_10209_CHANGES: readonly string[] = [

@@ -387,7 +387,7 @@ async function activateGlobalCatalogForStoreWithContext(
     step = 'carregando versao global'
     const { data: rawVersion, error: versionError } = await supabaseAdmin
       .from('global_catalog_versions')
-      .select('id,laboratorio')
+      .select('id,laboratorio,status')
       .eq('id', versionId)
       .single()
 
@@ -395,6 +395,10 @@ async function activateGlobalCatalogForStoreWithContext(
 
     if (versionError || !version) {
       throw new Error('Versao global nao encontrada.')
+    }
+
+    if (version.status !== 'published') {
+      throw new Error('Somente catalogos publicados podem ser ativados.')
     }
 
     step = 'carregando familias globais'

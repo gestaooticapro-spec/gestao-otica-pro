@@ -41,7 +41,7 @@ const MAPPINGS = [
   { target: 'PRO LIFE VI', source: 'Hoyalux iD LifeStyle 4', confidence: 'confirmed_by_store' },
   { target: 'OMEGALUX IN', source: 'Varilux Liberty 3.0', confidence: 'confirmed_by_store' },
   { target: 'OMEGALUX DIGITAL', source: 'Varilux Comfort Max', confidence: 'confirmed_by_store' },
-  { target: 'OMEGALUX 4K', source: 'Varilux XR Pro', confidence: 'confirmed_by_store' },
+  { target: 'OMEGALUX 4K', source: 'PRO LIFE VI', confidence: 'confirmed_by_store' },
 ]
 
 function normalize(value) {

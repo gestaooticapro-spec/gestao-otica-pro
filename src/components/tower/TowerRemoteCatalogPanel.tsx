@@ -37,7 +37,10 @@ export default function TowerRemoteCatalogPanel({ publicCode }: Props) {
 
   const versions = useMemo(() => {
     const term = search.trim().toLocaleLowerCase('pt-BR')
-    return (overview?.versions || []).filter((version) => !term || `${version.laboratorio} ${version.versao}`.toLocaleLowerCase('pt-BR').includes(term))
+    return (overview?.versions || []).filter((version) =>
+      version.status === 'published' &&
+      (!term || `${version.laboratorio} ${version.versao}`.toLocaleLowerCase('pt-BR').includes(term)),
+    )
   }, [overview, search])
 
   function activate(version: StoreCatalogVersionSummary) {
