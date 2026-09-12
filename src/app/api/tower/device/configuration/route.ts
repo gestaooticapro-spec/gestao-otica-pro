@@ -18,6 +18,8 @@ import {
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+export const revalidate = 0
+export const fetchCache = 'force-no-store'
 
 type VersionRow = { id: string; laboratorio: string; versao: string; published_at: string | null }
 type CustomerRow = {
@@ -76,7 +78,10 @@ export async function GET(request: NextRequest) {
   if (selectedByTower?.length === 0) {
     return NextResponse.json({ success: false, message: 'Selecao de catalogos invalida.' }, { status: 400 })
   }
-  const admin = createAdminClient()
+  // Este endpoint e a descoberta online da Torre. O snapshot pode continuar
+  // operacionalmente no SQLite, mas a consulta ao backoffice precisa enxergar
+  // imediatamente publicacoes e arquivamentos feitos depois do deploy.
+  const admin = createAdminClient({ noStore: true })
   const [{ data: versionData, error: versionError }, remoteConfig, aiSuggestionConfig] = await Promise.all([
     admin
       .from('global_catalog_versions')

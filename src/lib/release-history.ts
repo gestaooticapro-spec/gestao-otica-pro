@@ -15,6 +15,7 @@ export const PENDING_RELEASE_CHANGES: readonly string[] = [
   'A ativação de tabelas globais passou a aceitar somente versões publicadas, protegendo as lojas contra catálogos em rascunho ou arquivados.',
   'As linhas OmegaLux e Pro Life foram separadas: a OmegaLux ganhou tabela própria e a Pro Life passou a integrar uma opção alternativa da tabela Hoya.',
   'A geometria da lente OMEGALUX 4K passou a copiar a da PRO LIFE VI.',
+  'A Torre passou a consultar sempre as publicações mais recentes das tabelas de lentes, sem reaproveitar uma lista anterior após atualizações no catálogo global.',
   'Quando a SEFAZ não responde na emissão da nota, o sistema avisa que a autorização não foi concluída e pede para tentar mais tarde, em vez do código técnico da conexão.',
 ]
 

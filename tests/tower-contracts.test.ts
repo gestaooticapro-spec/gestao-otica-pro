@@ -11,8 +11,41 @@ import {
 } from '../src/lib/tower/device-activation-contract'
 import { hashTowerAdminPin, verifyTowerAdminPin } from '../src/lib/tower-admin-pin'
 import { normalizeTowerRemoteConfig } from '../src/lib/tower/remote-config'
+import { createAdminClient } from '../src/lib/supabase/admin'
 
 const token = 'A'.repeat(43)
+
+test('cliente administrativo sem cache encaminha no-store para o Supabase', async (t) => {
+  const previousUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const previousServiceRole = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const previousFetch = globalThis.fetch
+  let receivedCache: RequestCache | undefined
+
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key'
+  globalThis.fetch = (async (_input, init) => {
+    receivedCache = init?.cache
+    return new Response('[]', {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }) as typeof fetch
+
+  t.after(() => {
+    if (previousUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL
+    else process.env.NEXT_PUBLIC_SUPABASE_URL = previousUrl
+    if (previousServiceRole === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = previousServiceRole
+    globalThis.fetch = previousFetch
+  })
+
+  const { error } = await createAdminClient({ noStore: true })
+    .from('global_catalog_versions')
+    .select('id')
+
+  assert.equal(error, null)
+  assert.equal(receivedCache, 'no-store')
+})
 
 test('extrai ativacao por QR sem aceitar prefixo ou tamanho incorretos', () => {
   assert.equal(extractTowerActivationSecret('qr', `MBTOWER:1:${token}`), token)
