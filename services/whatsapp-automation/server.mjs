@@ -19,16 +19,15 @@ const PENDING_REPLY_RECOVERY_DELAY_MS = 1500
 const MAX_ADMIN_BODY_BYTES = 15 * 1024 * 1024
 const MAX_MEDIA_BYTES = 10 * 1024 * 1024
 const MAX_INBOUND_VISION_BYTES = 3 * 1024 * 1024
-// A Loja 1 e o canal piloto do atendimento automatico. O watchdog fica
-// propositalmente restrito a esta instancia para nao reiniciar os demais
-// WhatsApps sem uma decisao operacional explicita.
-const STORE_ONE_WATCHDOG_ENABLED = process.env.WHATSAPP_STORE_ONE_WATCHDOG_ENABLED !== 'false'
-const STORE_ONE_WATCHDOG_INSTANCE_KEY = process.env.WHATSAPP_STORE_ONE_WATCHDOG_INSTANCE_KEY || 'loja-1-otica-prisma-guaira'
-const STORE_ONE_WATCHDOG_INTERVAL_MS = Math.max(30000, Number(process.env.WHATSAPP_STORE_ONE_WATCHDOG_INTERVAL_MS || 60000))
-const STORE_ONE_WATCHDOG_RESTART_COOLDOWN_MS = Math.max(60000, Number(process.env.WHATSAPP_STORE_ONE_WATCHDOG_RESTART_COOLDOWN_MS || 300000))
-const STORE_ONE_RECONCILIATION_ENABLED = process.env.WHATSAPP_STORE_ONE_RECONCILIATION_ENABLED !== 'false'
-const STORE_ONE_RECONCILIATION_INTERVAL_MS = Math.max(30000, Number(process.env.WHATSAPP_STORE_ONE_RECONCILIATION_INTERVAL_MS || 60000))
-const STORE_ONE_RECONCILIATION_LOOKBACK_MS = Math.max(60000, Number(process.env.WHATSAPP_STORE_ONE_RECONCILIATION_LOOKBACK_MS || 24 * 60 * 60 * 1000))
+// A lista vem dos canais ativos do app; uma desconexao voluntaria desativa o
+// canal e o retira automaticamente do monitoramento.
+const WATCHDOG_ENABLED = process.env.WHATSAPP_WATCHDOG_ENABLED !== 'false'
+const WATCHDOG_INTERVAL_MS = Math.max(30000, Number(process.env.WHATSAPP_WATCHDOG_INTERVAL_MS || 60000))
+const WATCHDOG_RESTART_COOLDOWN_MS = Math.max(60000, Number(process.env.WHATSAPP_WATCHDOG_RESTART_COOLDOWN_MS || 300000))
+const RECONCILIATION_ENABLED = process.env.WHATSAPP_RECONCILIATION_ENABLED !== 'false'
+const RECONCILIATION_INTERVAL_MS = Math.max(30000, Number(process.env.WHATSAPP_RECONCILIATION_INTERVAL_MS || 60000))
+const RECONCILIATION_LOOKBACK_MS = Math.max(60000, Number(process.env.WHATSAPP_RECONCILIATION_LOOKBACK_MS || 24 * 60 * 60 * 1000))
+const ACTIVE_CHANNELS_REFRESH_MS = Math.max(30000, Number(process.env.WHATSAPP_ACTIVE_CHANNELS_REFRESH_MS || 60000))
 const INBOUND_FORWARD_RETRY_ATTEMPTS = Math.max(1, Number(process.env.WHATSAPP_INBOUND_FORWARD_RETRY_ATTEMPTS || 5))
 const INBOUND_FORWARD_RETRY_BASE_MS = Math.max(1000, Number(process.env.WHATSAPP_INBOUND_FORWARD_RETRY_BASE_MS || 5000))
 const WEBHOOK_REPLAY_MAX_AGE_MS = Math.max(60000, Number(process.env.WHATSAPP_WEBHOOK_REPLAY_MAX_AGE_MS || 15 * 60 * 1000))
@@ -36,9 +35,12 @@ const RECONCILIATION_PAGE_SIZE = 500
 const RECONCILIATION_MAX_PAGES = 10
 const inboundBuffers = new Map()
 const recentlyObservedProviderIds = new Map()
-let storeOneWatchdogRunning = false
-let storeOneWatchdogLastRestartAt = 0
-let storeOneReconciliationRunning = false
+let watchdogRunning = false
+const watchdogLastRestartAt = new Map()
+let reconciliationRunning = false
+let activeChannels = []
+let activeChannelsRefreshedAt = 0
+let activeChannelsRefreshPromise = null
 const serviceStartedAt = Date.now()
 
 function requiredEnv(name) {
@@ -412,17 +414,21 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-function rememberProviderMessage(providerMessageId) {
+function observedProviderKey(instanceKey, providerMessageId) {
+  return `${instanceKey}::${providerMessageId}`
+}
+
+function rememberProviderMessage(instanceKey, providerMessageId) {
   if (!providerMessageId) return
-  recentlyObservedProviderIds.set(String(providerMessageId), Date.now())
-  const cutoff = Date.now() - Math.max(STORE_ONE_RECONCILIATION_LOOKBACK_MS * 2, 60 * 60 * 1000)
+  recentlyObservedProviderIds.set(observedProviderKey(instanceKey, providerMessageId), Date.now())
+  const cutoff = Date.now() - Math.max(RECONCILIATION_LOOKBACK_MS * 2, 60 * 60 * 1000)
   for (const [id, observedAt] of recentlyObservedProviderIds) {
     if (observedAt < cutoff) recentlyObservedProviderIds.delete(id)
   }
 }
 
-function forgetProviderMessage(providerMessageId) {
-  if (providerMessageId) recentlyObservedProviderIds.delete(String(providerMessageId))
+function forgetProviderMessage(instanceKey, providerMessageId) {
+  if (providerMessageId) recentlyObservedProviderIds.delete(observedProviderKey(instanceKey, providerMessageId))
 }
 
 function providerCreatedAtMs(inbound) {
@@ -464,7 +470,7 @@ async function processInboundWithRetry(instanceKey, inbound, payload, source = '
     try {
       const result = await processInbound(instanceKey, inbound, payload)
       await auditWebhookEvent(instanceKey, inbound, source, 'forwarded')
-      rememberProviderMessage(inbound.providerMessageId)
+      rememberProviderMessage(instanceKey, inbound.providerMessageId)
       return result
     } catch (error) {
       lastError = error
@@ -476,7 +482,7 @@ async function processInboundWithRetry(instanceKey, inbound, payload, source = '
   }
 
   await auditWebhookEvent(instanceKey, inbound, source, 'failed', String(lastError?.message || lastError))
-  forgetProviderMessage(inbound.providerMessageId)
+  forgetProviderMessage(instanceKey, inbound.providerMessageId)
   throw lastError
 }
 
@@ -766,40 +772,69 @@ function isEvolutionDisconnectedState(state) {
   return ['close', 'closed', 'disconnected', 'offline', 'refused'].includes(state)
 }
 
-async function runStoreOneConnectionWatchdog() {
-  if (!STORE_ONE_WATCHDOG_ENABLED || storeOneWatchdogRunning) return
-  storeOneWatchdogRunning = true
+async function getActiveChannels() {
+  if (Date.now() - activeChannelsRefreshedAt < ACTIVE_CHANNELS_REFRESH_MS) return activeChannels
+  if (activeChannelsRefreshPromise) return activeChannelsRefreshPromise
+
+  activeChannelsRefreshPromise = (async () => {
+    try {
+      const result = await appRequest('/api/whatsapp/active-channels', {}, 15000)
+      if (!Array.isArray(result.channels)) throw new Error('Invalid active channels response')
+      activeChannels = result.channels.filter((channel) =>
+        Number.isSafeInteger(channel?.store_id)
+        && /^[a-zA-Z0-9_-]{2,120}$/.test(channel?.instance_key || '')
+      )
+      activeChannelsRefreshedAt = Date.now()
+      const keys = new Set(activeChannels.map((channel) => channel.instance_key))
+      for (const key of watchdogLastRestartAt.keys()) {
+        if (!keys.has(key)) watchdogLastRestartAt.delete(key)
+      }
+      console.log(`[channels] active stores=${activeChannels.map((channel) => channel.store_id).join(',') || 'none'}`)
+    } catch (error) {
+      // Uma falha do app nao autoriza monitorar instancias desconhecidas.
+      console.error('[channels] active channel refresh failed:', error)
+    } finally {
+      activeChannelsRefreshPromise = null
+    }
+    return activeChannels
+  })()
+  return activeChannelsRefreshPromise
+}
+
+async function runConnectionWatchdog() {
+  if (!WATCHDOG_ENABLED || watchdogRunning) return
+  watchdogRunning = true
 
   try {
-    const statePayload = await getEvolutionConnectionState(STORE_ONE_WATCHDOG_INSTANCE_KEY)
-    const state = extractConnectionState(statePayload)
-    if (isEvolutionConnectedState(state)) return
+    for (const channel of await getActiveChannels()) {
+      const { instance_key: instanceKey, store_id: storeId } = channel
+      try {
+        const statePayload = await getEvolutionConnectionState(instanceKey)
+        const state = extractConnectionState(statePayload)
+        if (isEvolutionConnectedState(state)) continue
 
-    // Durante o QR e a reconexao inicial a Evolution informa "connecting".
-    // Reiniciar nesse momento invalida a tentativa em andamento e pode deixar
-    // a instancia em ciclo de reconexao. Estados desconhecidos tambem nao
-    // devem disparar um restart sem confirmacao explicita de desconexao.
-    if (!isEvolutionDisconnectedState(state)) {
-      console.warn(`[watchdog] store=1 instance=${STORE_ONE_WATCHDOG_INSTANCE_KEY} state=${state}; waiting without restart.`)
-      return
+        // QR, reconexao e estados desconhecidos nao confirmam uma queda.
+        if (!isEvolutionDisconnectedState(state)) {
+          console.warn(`[watchdog] store=${storeId} instance=${instanceKey} state=${state}; waiting without restart.`)
+          continue
+        }
+
+        const now = Date.now()
+        if (now - (watchdogLastRestartAt.get(instanceKey) || 0) < WATCHDOG_RESTART_COOLDOWN_MS) {
+          console.warn(`[watchdog] store=${storeId} instance=${instanceKey} state=${state}; restart skipped during cooldown.`)
+          continue
+        }
+
+        watchdogLastRestartAt.set(instanceKey, now)
+        console.warn(`[watchdog] store=${storeId} instance=${instanceKey} state=${state}; restarting Evolution instance.`)
+        await restartEvolutionInstance(instanceKey)
+      } catch (error) {
+        // Falha da consulta nao confirma queda; as outras lojas seguem.
+        console.error(`[watchdog] store=${storeId} instance=${instanceKey} health check failed:`, error)
+      }
     }
-
-    const now = Date.now()
-    const elapsedSinceRestart = now - storeOneWatchdogLastRestartAt
-    if (elapsedSinceRestart < STORE_ONE_WATCHDOG_RESTART_COOLDOWN_MS) {
-      console.warn(`[watchdog] store=1 instance=${STORE_ONE_WATCHDOG_INSTANCE_KEY} state=${state}; restart skipped during cooldown.`)
-      return
-    }
-
-    storeOneWatchdogLastRestartAt = now
-    console.warn(`[watchdog] store=1 instance=${STORE_ONE_WATCHDOG_INSTANCE_KEY} state=${state}; restarting Evolution instance.`)
-    await restartEvolutionInstance(STORE_ONE_WATCHDOG_INSTANCE_KEY)
-  } catch (error) {
-    // A falha da propria consulta nao deve reiniciar cegamente a instancia:
-    // ela pode ser uma indisponibilidade temporaria da API Evolution.
-    console.error(`[watchdog] store=1 instance=${STORE_ONE_WATCHDOG_INSTANCE_KEY} health check failed:`, error)
   } finally {
-    storeOneWatchdogRunning = false
+    watchdogRunning = false
   }
 }
 
@@ -1017,7 +1052,7 @@ async function flushBufferedInbound(key, reason = 'timeout') {
         ...message,
         phone: entry.phone,
       }, entry.source || 'webhook', 'forwarded')
-      rememberProviderMessage(message.providerMessageId)
+      rememberProviderMessage(entry.instanceKey, message.providerMessageId)
     }
     return result
   } catch (error) {
@@ -1026,7 +1061,7 @@ async function flushBufferedInbound(key, reason = 'timeout') {
         ...message,
         phone: entry.phone,
       }, entry.source || 'webhook', 'failed', String(error?.message || error))
-      forgetProviderMessage(message.providerMessageId)
+      forgetProviderMessage(entry.instanceKey, message.providerMessageId)
     }
     throw error
   }
@@ -1112,7 +1147,7 @@ async function handleMessage(instanceKey, payload) {
   }
 
   await auditWebhookEvent(instanceKey, inbound, 'webhook')
-  rememberProviderMessage(inbound.providerMessageId)
+  rememberProviderMessage(instanceKey, inbound.providerMessageId)
 
   console.log(`[webhook] inbound instance=${instanceKey} phone=${inbound.phone} text="${previewText(inbound.messageText)}"`)
 
@@ -1214,71 +1249,80 @@ async function knownInboundProviderIds(instanceKey, providerMessageIds) {
   return { knownIds, pendingReplies }
 }
 
-async function runStoreOneMessageReconciliation() {
-  if (!STORE_ONE_RECONCILIATION_ENABLED || storeOneReconciliationRunning) return
-  storeOneReconciliationRunning = true
+async function reconcileChannel(channel) {
+  const { instance_key: instanceKey, store_id: storeId } = channel
+  const cutoff = Math.max(serviceStartedAt - RECONCILIATION_LOOKBACK_MS, Date.now() - RECONCILIATION_LOOKBACK_MS)
+  const response = await findRecentEvolutionMessages(instanceKey, cutoff)
+  const allRecords = response.records
+  const recentRecords = allRecords
+    .filter((record) => record?.key?.fromMe === false)
+    .filter((record) => evolutionRecordTimestampMs(record) >= cutoff)
+    .filter((record) => record?.key?.id && !recentlyObservedProviderIds.has(observedProviderKey(instanceKey, record.key.id)))
+    .sort((left, right) => evolutionRecordTimestampMs(left) - evolutionRecordTimestampMs(right))
+  const { knownIds, pendingReplies } = await knownInboundProviderIds(
+    instanceKey,
+    recentRecords.map((record) => String(record.key.id))
+  )
+  const candidates = recentRecords.filter((record) => !knownIds.has(String(record.key.id)))
+
+  console.log(`[reconciliation] scan store=${storeId} instance=${instanceKey} records=${allRecords.length} recent=${recentRecords.length} missing=${candidates.length} pending_replies=${pendingReplies.length} total=${response.total} pages=${response.pages}`)
+
+  for (const pending of pendingReplies) {
+    const delivered = await deliverPendingReply(instanceKey, pending)
+    await auditWebhookEvent(instanceKey, {
+      providerMessageId: pending.providerMessageId,
+      phone: pending.phone,
+    }, 'reconciliation', 'forwarded')
+    rememberProviderMessage(instanceKey, pending.providerMessageId)
+    console.warn(`[reconciliation] delivered pending reply instance=${instanceKey} outbound=${pending.outboundMessageId} provider_message_id=${delivered.providerMessageId}`)
+  }
+
+  for (const record of recentRecords) {
+    if (knownIds.has(String(record.key.id))) rememberProviderMessage(instanceKey, record.key.id)
+  }
+
+  for (const record of candidates) {
+    const payload = evolutionRecordAsWebhookPayload(instanceKey, record)
+    const inbound = extractInbound(payload)
+    if (!inbound) {
+      rememberProviderMessage(instanceKey, record.key.id)
+      continue
+    }
+
+    if (inbound.statusReferenceId) {
+      await auditWebhookEvent(instanceKey, inbound, 'reconciliation', 'forwarded')
+      rememberProviderMessage(instanceKey, record.key.id)
+      continue
+    }
+
+    console.warn(`[reconciliation] recovered instance=${instanceKey} phone=${inbound.phone} provider_message_id=${inbound.providerMessageId} text="${previewText(inbound.messageText)}"`)
+    const normalizedText = normalizeAggregationText(inbound.messageText)
+    if (!inbound.attachmentKind && normalizedText) {
+      enqueueBufferedInbound(instanceKey, {
+        ...inbound,
+        messageText: normalizedText,
+        source: 'reconciliation',
+      })
+    } else {
+      await processInboundWithRetry(instanceKey, inbound, payload, 'reconciliation')
+    }
+  }
+}
+
+async function runMessageReconciliation() {
+  if (!RECONCILIATION_ENABLED || reconciliationRunning) return
+  reconciliationRunning = true
 
   try {
-    const cutoff = Math.max(serviceStartedAt - STORE_ONE_RECONCILIATION_LOOKBACK_MS, Date.now() - STORE_ONE_RECONCILIATION_LOOKBACK_MS)
-    const response = await findRecentEvolutionMessages(STORE_ONE_WATCHDOG_INSTANCE_KEY, cutoff)
-    const allRecords = response.records
-    const recentRecords = allRecords
-      .filter((record) => record?.key?.fromMe === false)
-      .filter((record) => evolutionRecordTimestampMs(record) >= cutoff)
-      .filter((record) => record?.key?.id && !recentlyObservedProviderIds.has(String(record.key.id)))
-      .sort((left, right) => evolutionRecordTimestampMs(left) - evolutionRecordTimestampMs(right))
-    const { knownIds, pendingReplies } = await knownInboundProviderIds(
-      STORE_ONE_WATCHDOG_INSTANCE_KEY,
-      recentRecords.map((record) => String(record.key.id))
-    )
-    const candidates = recentRecords.filter((record) => !knownIds.has(String(record.key.id)))
-
-    console.log(`[reconciliation] scan instance=${STORE_ONE_WATCHDOG_INSTANCE_KEY} records=${allRecords.length} recent=${recentRecords.length} missing=${candidates.length} pending_replies=${pendingReplies.length} total=${response.total} pages=${response.pages}`)
-
-    for (const pending of pendingReplies) {
-      const delivered = await deliverPendingReply(STORE_ONE_WATCHDOG_INSTANCE_KEY, pending)
-      await auditWebhookEvent(STORE_ONE_WATCHDOG_INSTANCE_KEY, {
-        providerMessageId: pending.providerMessageId,
-        phone: pending.phone,
-      }, 'reconciliation', 'forwarded')
-      rememberProviderMessage(pending.providerMessageId)
-      console.warn(`[reconciliation] delivered pending reply instance=${STORE_ONE_WATCHDOG_INSTANCE_KEY} outbound=${pending.outboundMessageId} provider_message_id=${delivered.providerMessageId}`)
-    }
-
-    for (const record of recentRecords) {
-      if (knownIds.has(String(record.key.id))) rememberProviderMessage(record.key.id)
-    }
-
-    for (const record of candidates) {
-      const payload = evolutionRecordAsWebhookPayload(STORE_ONE_WATCHDOG_INSTANCE_KEY, record)
-      const inbound = extractInbound(payload)
-      if (!inbound) {
-        rememberProviderMessage(record.key.id)
-        continue
-      }
-
-      if (inbound.statusReferenceId) {
-        await auditWebhookEvent(STORE_ONE_WATCHDOG_INSTANCE_KEY, inbound, 'reconciliation', 'forwarded')
-        rememberProviderMessage(record.key.id)
-        continue
-      }
-
-      console.warn(`[reconciliation] recovered instance=${STORE_ONE_WATCHDOG_INSTANCE_KEY} phone=${inbound.phone} provider_message_id=${inbound.providerMessageId} text="${previewText(inbound.messageText)}"`)
-      const normalizedText = normalizeAggregationText(inbound.messageText)
-      if (!inbound.attachmentKind && normalizedText) {
-        enqueueBufferedInbound(STORE_ONE_WATCHDOG_INSTANCE_KEY, {
-          ...inbound,
-          messageText: normalizedText,
-          source: 'reconciliation',
-        })
-      } else {
-        await processInboundWithRetry(STORE_ONE_WATCHDOG_INSTANCE_KEY, inbound, payload, 'reconciliation')
+    for (const channel of await getActiveChannels()) {
+      try {
+        await reconcileChannel(channel)
+      } catch (error) {
+        console.error(`[reconciliation] store=${channel.store_id} instance=${channel.instance_key} failed:`, error)
       }
     }
-  } catch (error) {
-    console.error(`[reconciliation] store=1 instance=${STORE_ONE_WATCHDOG_INSTANCE_KEY} failed:`, error)
   } finally {
-    storeOneReconciliationRunning = false
+    reconciliationRunning = false
   }
 }
 
@@ -1418,23 +1462,23 @@ server.listen(config.port, '0.0.0.0', () => {
   console.log(`[whatsapp-automation] Listening on port ${config.port}`)
 })
 
-if (STORE_ONE_WATCHDOG_ENABLED) {
+if (WATCHDOG_ENABLED) {
   // Executa uma vez ao iniciar e depois permanece independente do dashboard.
   // O intervalo curto limita a janela de uma desconexao real, enquanto o
   // cooldown impede ciclos de restart caso a Evolution esteja instavel.
-  void runStoreOneConnectionWatchdog()
+  void runConnectionWatchdog()
   setInterval(() => {
-    void runStoreOneConnectionWatchdog()
-  }, STORE_ONE_WATCHDOG_INTERVAL_MS)
-  console.log(`[watchdog] store=1 enabled instance=${STORE_ONE_WATCHDOG_INSTANCE_KEY} interval_ms=${STORE_ONE_WATCHDOG_INTERVAL_MS}`)
+    void runConnectionWatchdog()
+  }, WATCHDOG_INTERVAL_MS)
+  console.log(`[watchdog] enabled interval_ms=${WATCHDOG_INTERVAL_MS}`)
 }
 
-if (STORE_ONE_RECONCILIATION_ENABLED) {
+if (RECONCILIATION_ENABLED) {
   setTimeout(() => {
-    void runStoreOneMessageReconciliation()
+    void runMessageReconciliation()
   }, 10000)
   setInterval(() => {
-    void runStoreOneMessageReconciliation()
-  }, STORE_ONE_RECONCILIATION_INTERVAL_MS)
-  console.log(`[reconciliation] store=1 enabled instance=${STORE_ONE_WATCHDOG_INSTANCE_KEY} interval_ms=${STORE_ONE_RECONCILIATION_INTERVAL_MS} lookback_ms=${STORE_ONE_RECONCILIATION_LOOKBACK_MS}`)
+    void runMessageReconciliation()
+  }, RECONCILIATION_INTERVAL_MS)
+  console.log(`[reconciliation] enabled interval_ms=${RECONCILIATION_INTERVAL_MS} lookback_ms=${RECONCILIATION_LOOKBACK_MS}`)
 }

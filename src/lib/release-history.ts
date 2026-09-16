@@ -9,6 +9,7 @@ export type Release = {
 // altera o Dashboard ou o modal de histórico.
 export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'A protecao de conectividade e a recuperacao de mensagens do WhatsApp passaram a acompanhar todas as lojas com canal ativo.',
   'O cadastro de clientes ganhou a exportação em Excel da lista de nomes e telefones da loja atual.',
   'Clientes com apenas um telefone cadastrado passam a ter os dois campos de telefone preenchidos automaticamente na migração.',
   'A tabela de parcelas passou a usar toda a largura disponível para exibir integralmente os botões de comprovante e reversão.',

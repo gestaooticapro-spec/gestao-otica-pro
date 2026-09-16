@@ -738,7 +738,7 @@ export async function refreshWhatsAppConnection(storeId: number): Promise<WhatsA
       storeId: store.id,
       instanceKey: current.channel.instance_key,
       phoneNumber: current.channel.phone_number,
-      isActive: connectionStatus === 'connected',
+      isActive: current.channel.is_active || connectionStatus === 'connected',
       connectionStatus,
     })
 
@@ -812,7 +812,7 @@ export async function runDashboardWhatsAppWakePing(storeId: number): Promise<Das
       storeId: store.id,
       instanceKey: current.instance_key,
       phoneNumber: current.phone_number,
-      isActive: connectionStatus === 'connected',
+      isActive: current.is_active || connectionStatus === 'connected',
       connectionStatus,
     })
 

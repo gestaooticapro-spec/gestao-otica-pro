@@ -42,6 +42,12 @@ docker compose -f compose.example.yml up -d --build
 O serviço não acessa diretamente o Supabase. Todo acesso de negócio passa pelos
 endpoints internos autenticados do app.
 
+O watchdog e a reconciliacao consultam `/api/whatsapp/active-channels` para
+acompanhar somente canais Evolution ativos. Cada instancia tem seu proprio
+cooldown de restart; estados `connecting` ou desconhecidos nao disparam restart.
+Uma desconexao solicitada pelo operador desativa o canal e o retira da lista.
+O ping com auditoria na tela de loja vazia continua exclusivo da Loja 1.
+
 ## Envio administrativo
 
 `POST /admin/messages/send` aceita mensagem de texto ou uma mídia real. A mídia
