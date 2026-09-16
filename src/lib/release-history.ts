@@ -7,8 +7,15 @@ export type Release = {
 // A versão visível é sempre a primeira de RELEASE_HISTORY. Uma pendência só
 // abre o próximo patch depois da publicação efetiva da versão atual e nunca
 // altera o Dashboard ou o modal de histórico.
-export const PENDING_RELEASE_VERSION: string | null = null
-export const PENDING_RELEASE_CHANGES: readonly string[] = []
+export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
+export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'A protecao de conectividade e a recuperacao de mensagens do WhatsApp passaram a acompanhar todas as lojas com canal ativo.',
+  'O cadastro de clientes ganhou a exportação em Excel da lista de nomes e telefones da loja atual.',
+  'Clientes com apenas um telefone cadastrado passam a ter os dois campos de telefone preenchidos automaticamente na migração.',
+  'A tabela de parcelas passou a usar toda a largura disponível para exibir integralmente os botões de comprovante e reversão.',
+  'A ativação de tabelas globais passou a aceitar somente versões publicadas, protegendo as lojas contra catálogos em rascunho ou arquivados.',
+  'Quando a SEFAZ não responde na emissão da nota, o sistema avisa que a autorização não foi concluída e pede para tentar mais tarde, em vez do código técnico da conexão.',
+]
 
 const RELEASE_10209_CHANGES: readonly string[] = [
   'IMPLEMENTADO O CADASTRO DE CLIENTES PJ COM RAZAO SOCIAL, NOME FANTASIA E CNPJ, COM EMISSAO DE NFC-E PARA EMPRESAS.',
@@ -92,21 +99,6 @@ const RELEASE_10205_CHANGES: readonly string[] = [
 // Abra uma versão pendente na primeira alteração após o último fechamento.
 // Alterações de linha/minor (ex.: 1.02.xx -> 1.03.00) exigem solicitação expressa.
 export const RELEASE_HISTORY: Release[] = [
-  {
-    version: '1.02.15',
-    date: '16/09/2026',
-    changes: [
-      'A protecao de conectividade e a recuperacao de mensagens do WhatsApp passaram a acompanhar todas as lojas com canal ativo.',
-      'O cadastro de clientes ganhou a exportação em Excel da lista de nomes e telefones da loja atual.',
-      'Clientes com apenas um telefone cadastrado passam a ter os dois campos de telefone preenchidos automaticamente na migração.',
-      'A tabela de parcelas passou a usar toda a largura disponível para exibir integralmente os botões de comprovante e reversão.',
-      'A ativação de tabelas globais passou a aceitar somente versões publicadas, protegendo as lojas contra catálogos em rascunho ou arquivados.',
-      'As linhas OmegaLux e Pro Life foram separadas: a OmegaLux ganhou tabela própria e a Pro Life passou a integrar uma opção alternativa da tabela Hoya.',
-      'A geometria da lente OMEGALUX 4K passou a copiar a da PRO LIFE VI.',
-      'A Torre passou a consultar sempre as publicações mais recentes das tabelas de lentes, sem reaproveitar uma lista anterior após atualizações no catálogo global.',
-      'Quando a SEFAZ não responde na emissão da nota, o sistema avisa que a autorização não foi concluída e pede para tentar mais tarde, em vez do código técnico da conexão.',
-    ],
-  },
   {
     version: '1.02.14',
     date: '08/09/2026',
