@@ -148,6 +148,9 @@ Pagamentos de parcelas nao podem ser somados novamente como pagamentos diretos d
 
 ## Versionamento de deploy
 
+A politica obrigatoria para o historico esta em [RELEASE_VERSIONING_POLICY.md](/G:/projetos/gestao-otica-pro/RELEASE_VERSIONING_POLICY.md:1).
+A autorizacao literal **"mude a versao"** do usuario e exigida somente para fechar uma versao e mover seus textos para `RELEASE_HISTORY`. Enquanto a versao estiver pendente, `PENDING_RELEASE_VERSION` e `PENDING_RELEASE_CHANGES` devem ser atualizados normalmente para acompanhar as alteracoes feitas. Informacoes internas devem ficar fora dos textos de release.
+
 `1.02.00` e o deploy mais antigo atualmente registrado neste repositorio. Versoes anteriores so devem ser acrescentadas se houver uma fonte confiavel para recupera-las.
 
 O rodape da Central de Operacoes exibe a versao atual e permite abrir o historico de deploys. O registro fica em `src/lib/release-history.ts`.
