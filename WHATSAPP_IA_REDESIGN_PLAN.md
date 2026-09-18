@@ -1629,18 +1629,13 @@ Memória não deve virar uma autorização para adivinhar. Se “ela”, “isso
 valor” ou outra referência puder apontar para mais de um assunto, a IA deve
 fazer uma pergunta curta e específica.
 
-## O que ainda não está decidido
+## Questões ainda abertas do redesign
 
-- se a janela será fixa em 10 mensagens ou adaptativa;
-- se mensagens antigas devem ser resumidas quando excederem o limite de tokens;
-- qual será a duração de uma chamada;
-- se a IA pode continuar depois de um handoff humano;
 - quais ferramentas serão disponibilizadas na primeira versão;
 - quais assuntos podem ser respondidos sem ferramenta;
-- como lidar com anexos, áudio e mensagens agrupadas;
-- se a classificação será feita antes da IA principal ou pela própria
-  interação principal;
-- como cada loja poderá configurar tom, horário e limites;
+- qual será a lista de respostas permitidas em `human_pending`;
+- qual será o protocolo final para detectar e registrar uma assunção humana;
+- como cada loja poderá configurar tom e limites sem alterar regras de segurança;
 - quais dados históricos serão suficientes para validar o primeiro fluxo.
 
 ## Próxima etapa
@@ -1650,13 +1645,14 @@ fazer uma pergunta curta e específica.
 3. Classificar manualmente o motivo da chamada e o resultado esperado.
 4. Identificar os cinco a dez padrões mais frequentes.
 5. Revisar este documento com esses padrões.
-6. Só então desenhar o contrato da nova interação e sua primeira implementação.
+6. Validar os contratos já aprovados em simulação antes do primeiro envio real.
 
-## Auditoria de regras atuais que não podem desaparecer
+## Inventário do sistema atual para reaproveitamento deliberado
 
-O redesign deve substituir a decisão e a memória da conversa, mas não pode
-perder as proteções operacionais já existentes no transporte, na fila e no
-histórico. A auditoria do código atual encontrou as regras abaixo.
+O sistema atual contém capacidades operacionais que podem ser reaproveitadas,
+mas nenhuma delas entra automaticamente no motor novo apenas por existir hoje.
+Cada item abaixo deve ser confirmado como parte do redesign, adaptado ou
+descartado por decisão explícita.
 
 ### Transporte, recebimento e duplicidade
 
@@ -1857,13 +1853,13 @@ nomeado e configurável para ser ajustado depois de observar as conversas reais.
 - provider indisponível, JSON inválido e timeout devem cair em resposta
   conservadora ou handoff, sem quebrar o webhook nem repetir o envio.
 
-Esta auditoria passa a ser um checklist obrigatório da implementação. Uma regra
-existente só pode ser removida quando houver uma decisão explícita de produto
-registrada neste documento.
+Este inventário serve como fonte de ideias e riscos conhecidos do sistema atual.
+O checklist obrigatório do redesign será formado somente depois que cada item
+receber uma decisão explícita: `reaproveitar`, `adaptar` ou `não levar`.
 
-### Matriz de preservação e testes obrigatórios
+### Matriz de reaproveitamento e testes obrigatórios
 
-| Regra atual | Como será preservada no redesign | Teste obrigatório |
+| Capacidade atual | Tratamento desejado ou decisão necessária no redesign | Teste obrigatório |
 |---|---|---|
 | Agregação de mensagens consecutivas | Aguardar cerca de 20 segundos, reiniciando o prazo a cada nova mensagem do mesmo número | “Olá”, “tudo bem?” e a pergunta principal geram uma única interação |
 | Deduplicação por mensagem do provedor | Usar `provider_message_id` como chave idempotente | O mesmo webhook repetido não gera segunda resposta |
