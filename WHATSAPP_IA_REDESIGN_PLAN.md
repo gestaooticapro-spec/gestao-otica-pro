@@ -1720,6 +1720,58 @@ controle persistente.
 - uma mensagem do cliente durante uma pausa humana deve ser silenciada ou
   encaminhada conforme o estado, nunca reativar a IA por acidente.
 
+#### Prazo do bloqueio após interação humana
+
+O bloqueio depois que um funcionário responde não pode ser infinito e também
+não deve depender de liberação manual obrigatória. A regra recomendada para o
+redesign é:
+
+- cada mensagem real enviada por um funcionário inicia ou renova o estado
+  `human_active`;
+- o prazo é contado a partir da última atividade humana, não do primeiro pedido
+  de atendente nem do primeiro handoff da IA;
+- durante `human_active`, novas mensagens do cliente são registradas e não
+  reativam a IA nem renovam o prazo;
+- quando o prazo de inatividade humana expirar, o estado passa para
+  `human_released` ou `auto` automaticamente;
+- a próxima mensagem do cliente pode então iniciar uma nova interação da IA,
+  recebendo a memória recente e a indicação de que houve atendimento humano;
+- `force_human` continua sendo a única exceção persistente e exige alteração
+  manual do operador.
+
+O fim do bloqueio não apaga a continuidade. Ele apenas muda quem pode
+responder. A memória deve preservar, dentro da janela recente e do resumo
+estruturado:
+
+- o assunto que levou ao atendimento humano;
+- o que o cliente perguntou ou relatou;
+- o que o funcionário respondeu, quando essa mensagem estiver disponível;
+- que o caso já passou por atendimento humano, sem exigir que a IA determine
+  se o problema foi resolvido;
+- a última atividade humana e o tempo decorrido desde ela.
+
+Assim, se o funcionário respondeu pela manhã e o cliente voltar duas horas e um
+minuto depois perguntando “resolveram o problema?”, a IAra não deve tratar isso
+como uma conversa nova, nem tentar concluir se o problema foi resolvido. Ela
+deve reconhecer que o cliente está retomando um caso já encaminhado e chamar
+novamente um funcionário, por exemplo: “Entendi, você está retomando aquele
+assunto. Como sou a IAra, uma assistente virtual, vou chamar novamente um
+atendente para continuar esse atendimento.”
+
+A memória serve para impedir que a IAra responda de forma aleatória, repita
+perguntas ou invente uma solução. Ela não transforma fatos incompletos de uma
+conversa humana em confirmação operacional.
+
+Decisão aprovada: o novo desenho usará uma janela curta de 2 horas
+após a última mensagem humana, preferencialmente contada dentro do horário de
+atendimento da loja. Assim, uma resposta do funcionário pela manhã protege a
+continuidade imediata da conversa, mas uma nova chamada à tarde pode voltar para
+a IA se a equipe não tiver continuado o atendimento. Esse valor não é o antigo
+bloqueio fixo de 12 horas: ele é renovável pela atividade do funcionário, não
+começa quando a IA faz o handoff e não impede a loja de manter um número em
+`force_human` quando o caso exigir acompanhamento manual. O prazo deve ficar
+nomeado e configurável para ser ajustado depois de observar as conversas reais.
+
 ### Anexos e comprovantes
 
 - imagem, PDF, áudio, vídeo, localização, figurinha ou arquivo ilegível devem
@@ -1808,6 +1860,108 @@ controle persistente.
 Esta auditoria passa a ser um checklist obrigatório da implementação. Uma regra
 existente só pode ser removida quando houver uma decisão explícita de produto
 registrada neste documento.
+
+### Matriz de preservação e testes obrigatórios
+
+| Regra atual | Como será preservada no redesign | Teste obrigatório |
+|---|---|---|
+| Agregação de mensagens consecutivas | Aguardar cerca de 20 segundos, reiniciando o prazo a cada nova mensagem do mesmo número | “Olá”, “tudo bem?” e a pergunta principal geram uma única interação |
+| Deduplicação por mensagem do provedor | Usar `provider_message_id` como chave idempotente | O mesmo webhook repetido não gera segunda resposta |
+| Recuperação de resposta pendente | Reentregar outbound já criado quando o envio foi interrompido | Falha após criar outbound não duplica a mensagem |
+| Reconciliação de webhook perdido | Consultar mensagens recentes do canal e processar somente as ausentes | Mensagem recebida durante indisponibilidade do webhook é recuperada |
+| Normalização de telefone | Unificar formatos equivalentes, inclusive nono dígito | O mesmo cliente não recebe dois estados por variação do número |
+| Canais e conexão | Processar apenas canal ativo e conectado | Canal desligado não agenda nem responde mensagens |
+| Mensagens `fromMe` | Registrar mensagem humana no histórico sem tratá-la como inbound do cliente | Envio pelo celular da loja aparece como humano e não dispara IA |
+| Grupos do WhatsApp | Ignorar grupos no atendimento individual | Mensagem em grupo não cria conversa automática |
+| `force_human` | Manter bloqueio persistente até alteração manual | Cliente em Humano nunca recebe resposta da IA |
+| `force_ai` | Tratar IA como override temporário e consumível | Depois da próxima chamada, o controle volta ao automático |
+| Handoff da IA | Usar `human_pending` sem bloquear indefinidamente | “Recebeu?” após handoff mantém o contexto e recebe resposta adequada |
+| Resposta humana | Usar `human_active` com prazo renovável pela última mensagem do funcionário | Nova mensagem humana renova o prazo; cliente sozinho não renova |
+| Expiração do humano | Após a janela de inatividade, liberar a IA sem apagar a memória | Retomada após a expiração não começa do zero |
+| Memória contextual | Preservar mensagens recentes, resumo, assunto, tempo e participação humana | “Resolveram o problema?” retoma o caso sem alucinar uma solução |
+| Janela curta da IA | Usar aproximadamente 10 mensagens como contexto, sem substituir estados operacionais | Mudança de assunto dentro da janela é identificada corretamente |
+| Anexos | Registrar tipo, contexto e confirmação única; não resolver automaticamente | Imagem/PDF seguido de “recebeu?” não gera resposta aleatória |
+| Áudio, vídeo, localização e arquivo ilegível | Confirmar recebimento e encaminhar conforme o tipo | Esses formatos não entram em resposta comercial automática |
+| Comprovante | Extrair dados internamente, sem dar baixa automática | Comprovante não altera parcela sem ação humana/sistema financeiro |
+| Match de comprovante | Exibir atalho interno somente em correspondência única por telefone + valor | Ambiguidade não escolhe parcela provável |
+| Pós-venda por OS | Manter vínculo com OS, `post_sales` e interações | Atendimento concluído permanece auditável na OS correta |
+| Agrupamento de OSs | Agrupar mesmo cliente e beneficiário na mesma venda ou janela de 14 dias | Duas OSs relacionadas geram um follow-up agrupado |
+| Âncora do agrupamento | Não permitir agrupamento transitivo indefinido | Entregas em 0, 13 e 26 dias não viram um único grupo |
+| Duplicidade de pós-venda | Uma OS coberta não recebe novo primeiro follow-up | Reexecução do job não cria segundo envio |
+| Cancelamento de pós-venda | Excluir venda cancelada/devolvida e pós-venda já concluído | OS cancelada antes do disparo é removida da fila |
+| Avaliação de pós-venda | Aceitar nota clara de 1 a 5 apenas na etapa correta | “Nota 5”, “5 estrelas” e “5/5” são aceitos; números soltos não |
+| Encerramento automático | Manter nota 3 sem resposta, nota 4 para positivo sem número e humano para dúvida/reclamação | Cada resultado encerra ou preserva o caso corretamente |
+| Lembrete de parcela | Revalidar parcela, saldo, venda, canal e preferências antes do envio | Parcela paga após agendamento é cancelada, não enviada |
+| Unicidade de lembrete | No máximo um lembrete por parcela e canal | Execuções simultâneas não duplicam o aviso |
+| Cliente em dia | Consultar atraso internamente; parabenizar apenas sem vencida não paga | Parcelas futuras não impedem “em dia”; atraso impede o parabéns |
+| Mensagem financeira inicial | Usar modelo controlado, sem invenção de valor ou pendência | Lembrete informa apenas o próximo vencimento definido |
+| Valor de parcela | Exigir confirmação financeira adequada ou humano | Número do WhatsApp sozinho não libera valor detalhado |
+| Pix | Enviar somente chave oficial cadastrada | Chave Pix não confirma pagamento ou baixa |
+| `PARAR`/`VOLTAR` | Manter escopo correto e registrar preferência | Cancelar e reativar lembretes funciona sem afetar conversa comum |
+| Horário da loja | Reutilizar agenda, intervalo, feriado e exceções | “Posso ir agora?” recebe resposta baseada na situação real |
+| Fora do expediente | Manter trava separada do handoff humano | Fechamento não cria bloqueio humano permanente |
+| Status do WhatsApp | Separar publicação, reação e conversa comum | Reação a Status usa contexto; publicação da loja não vira chamada |
+| Repetição de status | Silenciar repetição dentro da janela própria, permitindo novo assunto | Pergunta repetida é silenciada, mudança de tema é processada |
+| Retenção | Limpar somente dados expirados e não protegidos | Faxina não apaga `force_human`, handoff ativo ou anexo pendente |
+| IA indisponível | Usar resposta canônica conservadora ou handoff | Timeout, JSON inválido e falha de provider não quebram o fluxo |
+| Auditoria | Registrar inbound, decisão, IA, outbound, rota, motivo e estado | Cada resposta automática pode ser reconstruída no modal |
+| Simulação | Reutilizar decisão sem gravar conversa real | Simulação não envia nem polui inbound/outbound reais |
+
+Esta matriz deve acompanhar cada etapa do desenvolvimento. Um item só pode ser
+marcado como implementado quando o teste correspondente existir e passar.
+
+## Decisões técnicas aprovadas
+
+### Memória: opção B
+
+A memória será composta por:
+
+- resumo estruturado da conversa;
+- últimas 10 mensagens literais, incluindo cliente, IA e funcionário;
+- assunto ativo, fase, pendência, participação humana, anexos e tempo decorrido.
+
+O resumo evita que a IA precise reconstruir toda a situação a cada mensagem. As
+10 mensagens preservam o texto real, o tom e detalhes que não cabem em campos
+estruturados. A expiração de um bloqueio humano não apaga essa memória.
+
+### Estados: opção C
+
+O redesign usará estados independentes, e não um único estado gigante. A
+conversa terá dimensões separadas para:
+
+- `active_topic`;
+- `conversation_phase`;
+- `human_control`;
+- `attachment_status`;
+- `pending_action`;
+- prazos e horários relevantes.
+
+Isso permite mudar de assunto sem destruir o contexto anterior e evita criar um
+estado novo para cada combinação de assunto, anexo e atendimento humano.
+
+### Contrato da IA: opção C com humanização
+
+A IA devolverá classificação estruturada, incluindo intenção, confiança,
+mudança de assunto, pedido de humano, anexo e entidades reconhecidas. O sistema
+continuará responsável pela decisão operacional e produzirá uma resposta
+canônica baseada somente em fatos confirmados.
+
+Uma etapa opcional de humanização poderá transformar a resposta canônica em um
+texto mais natural. O humanizador deverá preservar fatos, decisão, política de
+segurança, identificação da IAra e necessidade de handoff. Ele não poderá criar
+preços, prazos, confirmações, soluções ou promessas que não estejam na resposta
+canônica.
+
+Fluxo aprovado:
+
+```text
+mensagem + memória
+  → classificação estruturada da IA
+  → decisão operacional do sistema
+  → resposta canônica
+  → humanização controlada
+  → envio e registro
+```
 
 ## Decisão de arquitetura após a análise
 

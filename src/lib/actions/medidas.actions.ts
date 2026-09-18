@@ -19,6 +19,18 @@ export interface MedicaoPayload {
   fotoBase64?: string
 }
 
+const BRIDGE_MIN_MM = 17
+const BRIDGE_MAX_MM = 22
+const BRIDGE_BLOCK_MIN_MM = BRIDGE_MIN_MM * 0.8
+const BRIDGE_BLOCK_MAX_MM = BRIDGE_MAX_MM * 1.2
+
+function validateMedicao(payload: MedicaoPayload): string | null {
+  if (!Number.isFinite(payload.ponte) || payload.ponte < BRIDGE_BLOCK_MIN_MM || payload.ponte > BRIDGE_BLOCK_MAX_MM) {
+    return `A ponte ficou em ${payload.ponte.toFixed(1)} mm. O salvamento foi bloqueado: a medida deve ficar entre ${BRIDGE_BLOCK_MIN_MM.toFixed(1)} e ${BRIDGE_BLOCK_MAX_MM.toFixed(1)} mm. Refaça a foto e centralize o rosto.`
+  }
+  return null
+}
+
 export interface MedicaoOSLookup {
   id: number
   protocolo_fisico: string | null
@@ -75,6 +87,9 @@ export async function findMedicaoOSByNumber(
 }
 
 export async function saveMedicaoOS(payload: MedicaoPayload): Promise<{ ok: boolean; error?: string }> {
+  const validationError = validateMedicao(payload)
+  if (validationError) return { ok: false, error: validationError }
+
   const supabase      = createClient()
   const supabaseAdmin = createAdminClient()
 

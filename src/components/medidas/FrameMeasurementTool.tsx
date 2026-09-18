@@ -103,6 +103,11 @@ const B_R     = 24
 const A_R     = 5
 const CAL_ARM = 14
 const CAL_DOT = 4
+const BRIDGE_MIN_MM = 17
+const BRIDGE_MAX_MM = 22
+const BRIDGE_BLOCK_MIN_MM = BRIDGE_MIN_MM * 0.8
+const BRIDGE_BLOCK_MAX_MM = BRIDGE_MAX_MM * 1.2
+const DNP_REVIEW_DIFFERENCE_MM = 5
 
 // Tamanhos de blank disponíveis no mercado (mm)
 const BLANKS = [60, 65, 70, 75, 80, 85]
@@ -825,6 +830,23 @@ export default function FrameMeasurementTool({
       }
 
       const m = calc(pts)
+
+      if (m.ponte < BRIDGE_BLOCK_MIN_MM || m.ponte > BRIDGE_BLOCK_MAX_MM) {
+        setOsLookupError(`Salvamento bloqueado: a ponte ficou em ${fmt(m.ponte)} mm. Refaça a foto e centralize o rosto. A medida permitida para continuar fica entre ${fmt(BRIDGE_BLOCK_MIN_MM)} e ${fmt(BRIDGE_BLOCK_MAX_MM)} mm.`)
+        return
+      }
+
+      const warnings: string[] = []
+      if (m.ponte < BRIDGE_MIN_MM || m.ponte > BRIDGE_MAX_MM) {
+        warnings.push(`a ponte ficou em ${fmt(m.ponte)} mm, fora da faixa recomendada de ${BRIDGE_MIN_MM} a ${BRIDGE_MAX_MM} mm`)
+      }
+      const dnpDifference = Math.abs(m.dnpOD - m.dnpOE)
+      if (dnpDifference > DNP_REVIEW_DIFFERENCE_MM) {
+        warnings.push(`a diferença entre DNP OD e OE ficou em ${fmt(dnpDifference)} mm; confirme que o rosto está de frente e centralizado`)
+      }
+      if (warnings.length && !window.confirm(`Atenção antes de salvar:\n\n${warnings.map((warning) => `• ${warning}`).join('\n')}\n\nSe o cliente estiver na loja, recomenda-se refazer a foto. Deseja salvar mesmo assim?`)) {
+        return
+      }
 
       // Captura o canvas como JPEG base64
       let fotoBase64: string | undefined

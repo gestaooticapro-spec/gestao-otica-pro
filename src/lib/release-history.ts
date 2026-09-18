@@ -11,6 +11,7 @@ export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
   'Incluída documentação operacional para preparar a importação histórica de dados da loja.',
   'A protecao de conectividade e a recuperacao de mensagens do WhatsApp passaram a acompanhar todas as lojas com canal ativo.',
+  'O salvamento de medidas no tablet alerta para ponte ou DNP fora do padrao e bloqueia pontes com desvio critico, orientando refazer a foto quando o rosto estiver desalinhado.',
   'O cadastro de clientes ganhou a exportação em Excel da lista de nomes e telefones da loja atual.',
   'Clientes com apenas um telefone cadastrado passam a ter os dois campos de telefone preenchidos automaticamente na migração.',
   'A tabela de parcelas passou a usar toda a largura disponível para exibir integralmente os botões de comprovante e reversão.',
