@@ -55,6 +55,10 @@ import {
   buildWhatsAppStatusContextLine,
   findWhatsAppStatusPublication,
 } from './status-publications'
+import {
+  captureWhatsAppShadowInbound,
+  captureWhatsAppShadowOutbound,
+} from './redesign/shadow-ingestion'
 
 const SAME_STATUS_SILENCE_WINDOW_MS = 2 * 60 * 60 * 1000
 const HUMAN_PAUSE_MS = 60 * 60 * 1000
@@ -2510,6 +2514,15 @@ export async function resolveCustomerStatus(
   }
   if (inboundError && inboundError.code !== '23505') throw inboundError
   if (!inbound) throw new Error('Inbound do WhatsApp nao foi criado nem recuperado.')
+
+  await captureWhatsAppShadowInbound({
+    channel,
+    remotePhone: normalizedPhone,
+    providerMessageId: input.providerMessageId,
+    messageText: effectiveMessageText,
+    providerCreatedAt: input.providerCreatedAt || null,
+    payload: input.payload,
+  })
 
   const preferenceCommand = installmentReminderPreferenceCommand(effectiveMessageText)
   const preferenceState = await findConversationState(channel.id, normalizedPhone)
@@ -5065,7 +5078,8 @@ export async function markStoreInitiatedConversation(
   if (forceAiClearError) throw forceAiClearError
 
   if (mirrorOutbound) {
-    const { error: outboundInsertError } = await (supabase.from('whatsapp_outbound_messages') as any)
+    const sentAt = new Date().toISOString()
+    const { data: mirroredOutbound, error: outboundInsertError } = await (supabase.from('whatsapp_outbound_messages') as any)
       .insert({
         tenant_id: channel.tenant_id,
         store_id: channel.store_id,
@@ -5076,7 +5090,7 @@ export async function markStoreInitiatedConversation(
         message_text: messageText || '[mensagem enviada pela loja sem texto legivel]',
         message_type: 'operator_store_initiated',
         status: 'sent',
-        sent_at: new Date().toISOString(),
+        sent_at: sentAt,
         payload: {
           source: 'store_device',
           sentBy: 'operator',
@@ -5085,7 +5099,24 @@ export async function markStoreInitiatedConversation(
           rawPayload: input.payload ?? null,
         },
       })
+      .select('id')
+      .single()
     if (outboundInsertError) throw outboundInsertError
+
+    await captureWhatsAppShadowOutbound({
+      channel,
+      outboundMessageId: mirroredOutbound.id,
+      remotePhone: normalizedPhone,
+      providerMessageId: providerMessageId || null,
+      messageText: messageText || '[mensagem enviada pela loja sem texto legivel]',
+      messageType: 'operator_store_initiated',
+      payload: {
+        source: 'store_device',
+        sentBy: 'operator',
+        fromMe: true,
+      },
+      sentAt,
+    })
   }
 
   const automationSettings = await loadStoreWhatsAppSettings(channel.store_id)

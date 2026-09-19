@@ -736,6 +736,122 @@ export interface Database {
         }
       }
 
+      whatsapp_conversation_memory: {
+        Row: {
+          id: number
+          tenant_id: string
+          store_id: number
+          channel_id: number
+          remote_phone: string
+          mode: 'legacy' | 'shadow' | 'redesign'
+          summary: Json
+          last_message_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          tenant_id: string
+          store_id: number
+          channel_id: number
+          remote_phone: string
+          mode?: 'legacy' | 'shadow' | 'redesign'
+          summary?: Json
+          last_message_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          mode?: 'legacy' | 'shadow' | 'redesign'
+          summary?: Json
+          last_message_at?: string | null
+          updated_at?: string
+        }
+      }
+
+      whatsapp_conversation_messages: {
+        Row: {
+          id: string
+          conversation_id: number
+          source_key: string
+          provider_message_id: string | null
+          role: 'customer' | 'assistant' | 'human' | 'system'
+          message_kind: 'text' | 'image' | 'document' | 'audio' | 'video' | 'location' | 'sticker' | 'unknown'
+          message_text: string | null
+          occurred_at: string
+          metadata: Json
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          conversation_id: number
+          source_key: string
+          provider_message_id?: string | null
+          role: 'customer' | 'assistant' | 'human' | 'system'
+          message_kind: 'text' | 'image' | 'document' | 'audio' | 'video' | 'location' | 'sticker' | 'unknown'
+          message_text?: string | null
+          occurred_at: string
+          metadata?: Json
+          created_at?: string
+        }
+        Update: {
+          provider_message_id?: string | null
+          message_text?: string | null
+          metadata?: Json
+        }
+      }
+
+      whatsapp_conversation_turns: {
+        Row: {
+          id: string
+          conversation_id: number
+          turn_key: string
+          status: 'collecting' | 'ready' | 'processing' | 'processed' | 'failed'
+          opened_at: string
+          closes_at: string
+          processed_at: string | null
+          metadata: Json
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          conversation_id: number
+          turn_key: string
+          status?: 'collecting' | 'ready' | 'processing' | 'processed' | 'failed'
+          opened_at: string
+          closes_at: string
+          processed_at?: string | null
+          metadata?: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          turn_key?: string
+          status?: 'collecting' | 'ready' | 'processing' | 'processed' | 'failed'
+          closes_at?: string
+          processed_at?: string | null
+          metadata?: Json
+          updated_at?: string
+        }
+      }
+
+      whatsapp_conversation_turn_messages: {
+        Row: {
+          turn_id: string
+          message_id: string
+          position: number
+        }
+        Insert: {
+          turn_id: string
+          message_id: string
+          position: number
+        }
+        Update: {
+          position?: number
+        }
+      }
+
       whatsapp_status_publications: {
         Row: {
           id: number
@@ -2295,6 +2411,17 @@ export interface Database {
       [_ in never]: never
     }
     Functions: {
+      create_whatsapp_conversation_turn: {
+        Args: {
+          p_conversation_id: number
+          p_turn_key: string
+          p_message_ids: string[]
+          p_opened_at: string
+          p_closes_at: string
+          p_metadata: Json
+        }
+        Returns: string
+      }
       renegotiate_store_financing: {
         Args: {
           p_financing_id: number

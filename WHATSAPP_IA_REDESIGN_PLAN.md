@@ -1965,3 +1965,38 @@ O código novo deverá nascer isolado do roteador legado, com uma interface que
 receba a chamada completa e devolva uma decisão estruturada. A integração com
 os fluxos atuais só deverá acontecer depois que o comportamento puder ser
 testado em simulação, sem enviar mensagens reais.
+
+## Estado da implementação
+
+### Fundação isolada — concluída em 18/09/2026
+
+- contratos estritos para memória, estados independentes, classificação da IA,
+  decisão do sistema e humanização controlada;
+- regra testada de bloqueio humano por 2 horas, sem apagar o contexto ao liberar
+  a IA, e preservação do modo `force_human`;
+- memória persistente própria do redesign, separada do estado temporário legado;
+- armazenamento literal e idempotente de cada mensagem de cliente, IA ou
+  funcionário, sem guardar conteúdo binário/base64;
+- janela carregada com as 10 mensagens literais mais recentes em ordem
+  cronológica;
+- turno de processamento relacionado às mensagens individuais por ID, sem
+  substituir as falas originais por um texto concatenado;
+- adaptador de ingestão em modo sombra para copiar mensagens recebidas e saídas
+  confirmadas, distinguindo cliente, IA e funcionário;
+- mensagens agrupadas pelo serviço atual são novamente separadas antes de entrar
+  na memória, preservando cada `provider_message_id`;
+- ativação explícita por loja por meio de `whatsapp_automation.ai_redesign.mode`,
+  com `legacy` como padrão seguro;
+- falhas de leitura ou gravação do redesign não interrompem nem alteram a resposta
+  produzida pelo fluxo legado;
+- ao final da espera atual, o banco cria o turno `ready` e todos os vínculos com
+  suas mensagens na mesma transação;
+- a chave do turno é idempotente: repetir o webhook devolve o mesmo turno, mas
+  reutilizar a chave com outro conjunto de mensagens é rejeitado;
+- o limite de 10 mensagens vale para a memória enviada à IA, não para o turno:
+  um agrupamento válido preserva até 50 mensagens originais para auditoria.
+
+Esta fundação já possui pontos de captura no webhook e na confirmação de envio,
+mas permanece inativa enquanto a loja estiver em `legacy`. Mesmo quando uma loja
+for colocada em `shadow`, o fluxo atual continuará sendo o único responsável por
+atender clientes; o redesign apenas registrará contexto até sua validação.

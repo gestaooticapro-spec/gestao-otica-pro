@@ -68,12 +68,17 @@ export type WhatsAppAiResponderSettings = {
   tools_enabled?: boolean
 }
 
+export type WhatsAppAiRedesignSettings = {
+  mode?: 'legacy' | 'shadow' | 'redesign'
+}
+
 export type WhatsAppAutomationSettings = {
   enabled?: boolean
   os_on_demand?: WhatsAppAutomationOsOnDemandSettings
   installment_due_reminder?: WhatsAppInstallmentDueReminderSettings
   post_sale_followup?: WhatsAppPostSaleFollowupSettings
   ai_responder?: WhatsAppAiResponderSettings
+  ai_redesign?: WhatsAppAiRedesignSettings
   [key: string]: Json | undefined
 }
 

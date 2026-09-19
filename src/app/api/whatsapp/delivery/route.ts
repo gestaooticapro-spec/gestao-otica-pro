@@ -6,6 +6,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { Json } from '@/lib/database.types'
 import { isValidWhatsAppInternalRequest } from '@/lib/whatsapp/internal-auth'
 import { extractWhatsAppCanonicalReply } from '@/lib/whatsapp/canonical'
+import { captureWhatsAppShadowOutbound } from '@/lib/whatsapp/redesign/shadow-ingestion'
 
 export const runtime = 'nodejs'
 
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
 
     const supabase = createAdminClient()
     const { data: existing, error: existingError } = await (supabase.from('whatsapp_outbound_messages') as any)
-      .select('status, payload')
+      .select('id, tenant_id, store_id, channel_id, remote_phone, provider_message_id, message_text, message_type, status, payload, sent_at')
       .eq('id', parsed.data.outboundMessageId)
       .maybeSingle()
 
@@ -64,18 +65,35 @@ export async function POST(request: Request) {
         : { delivery: (parsed.data.payload ?? null) as Json }),
     }
 
+    const sentAt = parsed.data.status === 'sent' ? new Date().toISOString() : null
     const { error } = await (supabase.from('whatsapp_outbound_messages') as any)
       .update({
         status: parsed.data.status,
         ...(parsed.data.providerMessageId ? { provider_message_id: parsed.data.providerMessageId } : {}),
         error_message: parsed.data.errorMessage ?? null,
         payload: nextPayload,
-        ...(parsed.data.status === 'sent' ? { sent_at: new Date().toISOString() } : {}),
+        ...(sentAt ? { sent_at: sentAt } : {}),
       })
       .eq('id', parsed.data.outboundMessageId)
       .neq('status', 'sent')
 
     if (error) throw error
+    if (sentAt) {
+      await captureWhatsAppShadowOutbound({
+        channel: {
+          id: existing.channel_id,
+          tenant_id: existing.tenant_id,
+          store_id: existing.store_id,
+        },
+        outboundMessageId: existing.id,
+        remotePhone: existing.remote_phone,
+        providerMessageId: parsed.data.providerMessageId || existing.provider_message_id || null,
+        messageText: existing.message_text,
+        messageType: existing.message_type,
+        payload: nextPayload as Json,
+        sentAt,
+      })
+    }
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('[WhatsApp] Failed to update delivery:', error)
