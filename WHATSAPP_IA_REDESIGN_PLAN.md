@@ -2048,3 +2048,7 @@ Também foi validada a captura de uma resposta automática do legado como saída
 `assistant`: o sistema escolheu a resposta canônica de horário a partir da agenda
 da loja e a IA legada apenas a humanizou sob a política de não acrescentar fatos.
 O redesign registrou a saída confirmada sem participar dessa decisão ou envio.
+
+Por fim, uma mensagem enviada manualmente pela Central foi registrada como saída
+`human` com tipo `operator_manual`. A captura sombra já distingue, em conversa
+real, cliente, resposta automática e funcionário.
