@@ -22,7 +22,9 @@ import {
 import {
   extractShadowInboundMessages,
   buildShadowInboundTurn,
+  clearWhatsAppRedesignModeCache,
   inferShadowOutboundRole,
+  resolveCachedWhatsAppRedesignMode,
   resolveWhatsAppRedesignMode,
   runFailOpenShadowCapture,
 } from '../src/lib/whatsapp/redesign/shadow-ingestion'
@@ -352,6 +354,43 @@ test('modo sombra exige ativacao explicita por loja', () => {
   assert.equal(resolveWhatsAppRedesignMode(undefined), 'legacy')
   assert.equal(resolveWhatsAppRedesignMode({ ai_redesign: { mode: 'shadow' } }), 'shadow')
   assert.equal(resolveWhatsAppRedesignMode({ ai_redesign: { mode: 'redesign' } }), 'redesign')
+})
+
+test('modo do redesign usa cache curto por loja e evita leituras repetidas', async () => {
+  clearWhatsAppRedesignModeCache()
+  let loads = 0
+  const loader = async () => {
+    loads += 1
+    return 'shadow' as const
+  }
+
+  assert.equal(await resolveCachedWhatsAppRedesignMode(1, loader, 1_000), 'shadow')
+  assert.equal(await resolveCachedWhatsAppRedesignMode(1, loader, 1_001), 'shadow')
+  assert.equal(loads, 1)
+
+  assert.equal(await resolveCachedWhatsAppRedesignMode(1, loader, 61_001), 'shadow')
+  assert.equal(loads, 2)
+  clearWhatsAppRedesignModeCache()
+})
+
+test('leituras simultaneas do modo compartilham a mesma consulta', async () => {
+  clearWhatsAppRedesignModeCache()
+  let loads = 0
+  let releaseLoader = () => {}
+  const gate = new Promise<void>((resolve) => { releaseLoader = resolve })
+  const loader = async () => {
+    loads += 1
+    await gate
+    return 'legacy' as const
+  }
+
+  const first = resolveCachedWhatsAppRedesignMode(2, loader, 1_000)
+  const second = resolveCachedWhatsAppRedesignMode(2, loader, 1_000)
+  releaseLoader()
+
+  assert.deepEqual(await Promise.all([first, second]), ['legacy', 'legacy'])
+  assert.equal(loads, 1)
+  clearWhatsAppRedesignModeCache()
 })
 
 test('ingestao sombra separa mensagens agregadas sem guardar o texto concatenado', () => {

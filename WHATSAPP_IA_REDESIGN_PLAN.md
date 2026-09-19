@@ -2027,6 +2027,9 @@ testado em simulação, sem enviar mensagens reais.
 - o contrato da decisão distingue handoff durante o expediente de handoff para
   a próxima abertura; respostas que não dependem de funcionário permanecem
   disponíveis fora do horário.
+- a leitura do modo `legacy`/`shadow`/`redesign` usa cache curto por loja e
+  compartilha consultas simultâneas, reduzindo o custo do espelhamento sem
+  atrasar indefinidamente uma alteração operacional de modo.
 
 Esta fundação já possui pontos de captura no webhook e na confirmação de envio,
 mas permanece inativa enquanto a loja estiver em `legacy`. Mesmo quando uma loja

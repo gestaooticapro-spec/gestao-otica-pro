@@ -58,6 +58,11 @@ export type WhatsAppShadowTurnEnvelope = {
   metadata: Record<string, unknown>
 }
 
+const WHATSAPP_REDESIGN_MODE_CACHE_MS = 60_000
+const WHATSAPP_REDESIGN_MODE_CACHE_MAX_STORES = 100
+const modeCache = new Map<number, { mode: WhatsAppRedesignMode; expiresAt: number }>()
+const pendingModeLoads = new Map<number, Promise<WhatsAppRedesignMode>>()
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -195,6 +200,44 @@ async function loadMode(storeId: number): Promise<WhatsAppRedesignMode> {
   return resolveWhatsAppRedesignMode(settings.whatsapp_automation)
 }
 
+function rememberMode(storeId: number, mode: WhatsAppRedesignMode, now: number) {
+  if (!modeCache.has(storeId) && modeCache.size >= WHATSAPP_REDESIGN_MODE_CACHE_MAX_STORES) {
+    const oldestStoreId = modeCache.keys().next().value
+    if (typeof oldestStoreId === 'number') modeCache.delete(oldestStoreId)
+  }
+  modeCache.delete(storeId)
+  modeCache.set(storeId, { mode, expiresAt: now + WHATSAPP_REDESIGN_MODE_CACHE_MS })
+}
+
+export async function resolveCachedWhatsAppRedesignMode(
+  storeId: number,
+  loader: (targetStoreId: number) => Promise<WhatsAppRedesignMode> = loadMode,
+  now: number = Date.now()
+): Promise<WhatsAppRedesignMode> {
+  const cached = modeCache.get(storeId)
+  if (cached && cached.expiresAt > now) return cached.mode
+  if (cached) modeCache.delete(storeId)
+
+  const pending = pendingModeLoads.get(storeId)
+  if (pending) return pending
+
+  const loadPromise = loader(storeId)
+    .then((mode) => {
+      rememberMode(storeId, WhatsAppRedesignModeSchema.parse(mode), now)
+      return mode
+    })
+    .finally(() => {
+      pendingModeLoads.delete(storeId)
+    })
+  pendingModeLoads.set(storeId, loadPromise)
+  return loadPromise
+}
+
+export function clearWhatsAppRedesignModeCache() {
+  modeCache.clear()
+  pendingModeLoads.clear()
+}
+
 function identity(
   channel: WhatsAppShadowChannel,
   remotePhone: string,
@@ -225,7 +268,7 @@ export async function runFailOpenShadowCapture<T>(
 
 export async function captureWhatsAppShadowInbound(input: WhatsAppShadowInboundInput) {
   const result = await runFailOpenShadowCapture(async () => {
-    const mode = await loadMode(input.channel.store_id)
+    const mode = await resolveCachedWhatsAppRedesignMode(input.channel.store_id)
     if (mode === 'legacy') return { captured: false, reason: 'legacy_mode' as const }
 
     const store = new WhatsAppRedesignConversationStore()
@@ -248,7 +291,7 @@ export async function captureWhatsAppShadowInbound(input: WhatsAppShadowInboundI
 
 export async function captureWhatsAppShadowOutbound(input: WhatsAppShadowOutboundInput) {
   const result = await runFailOpenShadowCapture(async () => {
-    const mode = await loadMode(input.channel.store_id)
+    const mode = await resolveCachedWhatsAppRedesignMode(input.channel.store_id)
     if (mode === 'legacy') return { captured: false, reason: 'legacy_mode' as const }
 
     const store = new WhatsAppRedesignConversationStore()
