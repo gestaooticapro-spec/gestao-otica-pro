@@ -2038,3 +2038,8 @@ Esta fundação já possui pontos de captura no webhook e na confirmação de en
 mas permanece inativa enquanto a loja estiver em `legacy`. Mesmo quando uma loja
 for colocada em `shadow`, o fluxo atual continuará sendo o único responsável por
 atender clientes; o redesign apenas registrará contexto até sua validação.
+
+A validação real posterior na Loja 1 confirmou a captura de uma janela agregada:
+três mensagens foram preservadas individualmente, em ordem, e geraram um turno
+`ready` com os três vínculos e a espera de 20 segundos. Nenhuma resposta foi
+enviada pelo redesign, pois a loja permanece em `shadow`.
