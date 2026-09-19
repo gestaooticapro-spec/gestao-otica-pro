@@ -2043,3 +2043,8 @@ A validação real posterior na Loja 1 confirmou a captura de uma janela agregad
 três mensagens foram preservadas individualmente, em ordem, e geraram um turno
 `ready` com os três vínculos e a espera de 20 segundos. Nenhuma resposta foi
 enviada pelo redesign, pois a loja permanece em `shadow`.
+
+Também foi validada a captura de uma resposta automática do legado como saída
+`assistant`: o sistema escolheu a resposta canônica de horário a partir da agenda
+da loja e a IA legada apenas a humanizou sob a política de não acrescentar fatos.
+O redesign registrou a saída confirmada sem participar dessa decisão ou envio.
