@@ -420,7 +420,7 @@ test('janela agregada vira um turno pronto com chave idempotente', () => {
     role: 'customer',
     message_kind: 'text',
     message_text: `Mensagem ${index + 1}`,
-    occurred_at: new Date(Date.parse(BASE_TIME) + index * 1000).toISOString(),
+    occurred_at: new Date(Date.parse(BASE_TIME) + index * 1000).toISOString().replace('Z', '+00:00'),
   }))
   const turn = buildShadowInboundTurn('provider-3', storedMessages, {
     aggregated: true,

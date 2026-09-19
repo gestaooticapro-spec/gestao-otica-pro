@@ -69,13 +69,20 @@ export type WhatsAppStoredMessageRow = {
 }
 
 export function toConversationMessage(row: WhatsAppStoredMessageRow): WhatsAppConversationMessage {
+  const occurredAt = new Date(row.occurred_at)
+  if (Number.isNaN(occurredAt.getTime())) {
+    throw new Error('Data da mensagem persistida invalida.')
+  }
+
   return WhatsAppConversationMessageSchema.parse({
     id: row.id,
     providerMessageId: row.provider_message_id,
     role: row.role,
     kind: row.message_kind,
     text: row.message_text,
-    occurredAt: row.occurred_at,
+    // O PostgreSQL pode devolver timestamptz com offset (+00:00), enquanto o
+    // contrato interno usa a representacao UTC canonica terminada em Z.
+    occurredAt: occurredAt.toISOString(),
   })
 }
 

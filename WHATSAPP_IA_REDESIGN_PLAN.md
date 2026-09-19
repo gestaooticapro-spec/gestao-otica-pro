@@ -2030,6 +2030,9 @@ testado em simulação, sem enviar mensagens reais.
 - a leitura do modo `legacy`/`shadow`/`redesign` usa cache curto por loja e
   compartilha consultas simultâneas, reduzindo o custo do espelhamento sem
   atrasar indefinidamente uma alteração operacional de modo.
+- horários `timestamptz` retornados pelo banco são normalizados para UTC antes
+  de validar a memória e criar o turno; isso preserva a captura fail-open sem
+  perder o turno por diferença de formato (`+00:00` versus `Z`).
 
 Esta fundação já possui pontos de captura no webhook e na confirmação de envio,
 mas permanece inativa enquanto a loja estiver em `legacy`. Mesmo quando uma loja
