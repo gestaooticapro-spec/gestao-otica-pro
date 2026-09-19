@@ -2071,5 +2071,10 @@ real, cliente, resposta automática e funcionário.
 - a rota interna de processamento exige segredo operacional e registra
   explicitamente `sendsMessage: false`; esta etapa não cria outbound, não chama
   o provedor de envio e não altera quem atende o cliente;
-- antes de concluir esta etapa, ainda será necessário publicar o processador e
-  validar suas decisões gravadas em turnos reais da Loja 1.
+- o processador foi publicado e executado sobre três turnos reais da Loja 1:
+  dois foram classificados como `store_hours` e receberam a proposta
+  `answer_store_hours`; um foi classificado como `vision_exam`, com confiança de
+  0,98, e recebeu a proposta `human_handoff`;
+- os três turnos terminaram em `processed`, sem falha e com
+  `sendsMessage: false`. Antes de concluir esta etapa, ainda serão validados os
+  cenários reais de mudança de assunto e de anexo.

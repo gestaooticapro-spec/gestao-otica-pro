@@ -34,3 +34,7 @@ registrado no `WHATSAPP_IA_REDESIGN_PLAN.md`.
 ## Historico
 
 - 18/09/2026: etapa 1 iniciada com processamento exclusivamente em sombra.
+- 18/09/2026: processador publicado e executado na Loja 1; três turnos reais
+  foram processados sem falha e com `sendsMessage: false` (dois de horário e um
+  de exame de vista). A etapa continua em andamento até validar mudança de
+  assunto e anexo.
