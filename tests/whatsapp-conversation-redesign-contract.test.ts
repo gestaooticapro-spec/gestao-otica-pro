@@ -4,6 +4,7 @@ import {
   WHATSAPP_REDESIGN_HUMAN_ACTIVE_MS,
   WhatsAppConversationMemorySchema,
   WhatsAppRedesignClassificationSchema,
+  WhatsAppSystemDecisionDraftSchema,
   WhatsAppSystemDecisionSchema,
   canActDuringHumanPending,
   defaultConversationSummary,
@@ -25,6 +26,7 @@ import {
   resolveWhatsAppRedesignMode,
   runFailOpenShadowCapture,
 } from '../src/lib/whatsapp/redesign/shadow-ingestion'
+import { applyStoreAvailabilityToDecision } from '../src/lib/whatsapp/redesign/store-availability-policy'
 
 const BASE_TIME = '2026-09-18T12:00:00.000Z'
 
@@ -154,6 +156,7 @@ test('decisao do sistema exige resposta canonica exceto em no_reply', () => {
     action: 'answer_store_hours',
     canonicalReply: 'A loja esta aberta agora.',
     facts: { isOpenNow: true },
+    humanHandoffTiming: null,
     humanization,
   }))
 
@@ -161,6 +164,7 @@ test('decisao do sistema exige resposta canonica exceto em no_reply', () => {
     action: 'no_reply',
     canonicalReply: null,
     facts: {},
+    humanHandoffTiming: null,
     humanization,
   }))
 
@@ -168,8 +172,117 @@ test('decisao do sistema exige resposta canonica exceto em no_reply', () => {
     action: 'human_handoff',
     canonicalReply: null,
     facts: {},
+    humanHandoffTiming: null,
     humanization,
   }))
+})
+
+test('fora do expediente nao bloqueia respostas que nao dependem de funcionario', () => {
+  const decision = WhatsAppSystemDecisionSchema.parse({
+    action: 'answer_store_location',
+    canonicalReply: 'Estamos na Rua Principal, 100.',
+    facts: { address: 'Rua Principal, 100' },
+    humanHandoffTiming: null,
+    humanization: {
+      mustNotAddFacts: true,
+      mustKeepShort: true,
+      mustIdentifyIara: false,
+      mustMentionHumanHandoff: false,
+      forbiddenClaims: [],
+    },
+  })
+
+  const result = applyStoreAvailabilityToDecision(decision, {
+    is_open_now: false,
+    is_exceptional_closure: false,
+    today_schedule: '08:00 as 18:00',
+    next_open_schedule: 'Amanhã às 08:00',
+    full_weekly_schedule: 'Segunda-feira: 08:00 - 18:00',
+  })
+
+  assert.deepEqual(result, decision)
+})
+
+test('handoff fora do expediente informa quando a equipe continuara o atendimento', () => {
+  const decision = WhatsAppSystemDecisionDraftSchema.parse({
+    action: 'human_handoff',
+    canonicalReply: 'Sou a IAra, uma assistente virtual. Vou encaminhar sua pergunta sobre a peca para um atendente.',
+    facts: { handoffReason: 'product_availability' },
+    humanHandoffTiming: null,
+    humanization: {
+      mustNotAddFacts: true,
+      mustKeepShort: true,
+      mustIdentifyIara: true,
+      mustMentionHumanHandoff: true,
+      forbiddenClaims: [],
+    },
+  })
+
+  const result = applyStoreAvailabilityToDecision(decision, {
+    is_open_now: false,
+    is_exceptional_closure: false,
+    today_schedule: 'Fechado',
+    next_open_schedule: 'Amanhã às 08:00',
+    full_weekly_schedule: 'Segunda-feira: 08:00 - 18:00',
+  })
+
+  assert.equal(result.humanHandoffTiming?.mode, 'when_store_opens')
+  assert.equal(result.humanHandoffTiming?.nextOpenSchedule, 'Amanhã às 08:00')
+  assert.equal(result.facts.isStoreOpenNow, false)
+  assert.match(result.canonicalReply || '', /quando ela abrir, amanhã às 08:00/i)
+})
+
+test('handoff fechado nunca inventa horario quando a agenda nao calcula a proxima abertura', () => {
+  const decision = WhatsAppSystemDecisionDraftSchema.parse({
+    action: 'human_handoff',
+    canonicalReply: 'Sou a IAra, uma assistente virtual. Vou encaminhar este caso para um atendente.',
+    facts: { handoffReason: 'unknown' },
+    humanHandoffTiming: null,
+    humanization: {
+      mustNotAddFacts: true,
+      mustKeepShort: true,
+      mustIdentifyIara: true,
+      mustMentionHumanHandoff: true,
+      forbiddenClaims: [],
+    },
+  })
+
+  assert.throws(() => applyStoreAvailabilityToDecision(decision, {
+    is_open_now: false,
+    is_exceptional_closure: true,
+    exceptional_closure_reason: 'Fechamento excepcional',
+    today_schedule: 'Fechado excepcionalmente',
+    next_open_schedule: '',
+    full_weekly_schedule: '',
+  }), /proximo horario de abertura nao foi calculado/i)
+})
+
+test('handoff durante o expediente continua imediato', () => {
+  const decision = WhatsAppSystemDecisionDraftSchema.parse({
+    action: 'repeat_handoff',
+    canonicalReply: 'Sou a IAra, uma assistente virtual. Vou chamar novamente um atendente para continuar esse assunto.',
+    facts: { handoffReason: 'conversation_continuation' },
+    humanHandoffTiming: null,
+    humanization: {
+      mustNotAddFacts: true,
+      mustKeepShort: true,
+      mustIdentifyIara: true,
+      mustMentionHumanHandoff: true,
+      forbiddenClaims: [],
+    },
+  })
+
+  const result = applyStoreAvailabilityToDecision(decision, {
+    is_open_now: true,
+    is_exceptional_closure: false,
+    today_schedule: '08:00 as 18:00',
+    next_open_schedule: '',
+    full_weekly_schedule: 'Segunda-feira: 08:00 - 18:00',
+  })
+
+  assert.equal(result.canonicalReply, decision.canonicalReply)
+  assert.equal(result.humanHandoffTiming?.mode, 'during_open_hours')
+  assert.equal(result.facts.isStoreOpenNow, true)
 })
 
 test('persistencia exige uma chave de origem idempotente para cada mensagem', () => {

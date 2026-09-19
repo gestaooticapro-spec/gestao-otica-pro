@@ -1830,10 +1830,18 @@ nomeado e configurável para ser ajustado depois de observar as conversas reais.
 
 - horário deve ser calculado pela agenda estruturada da loja, incluindo intervalo,
   feriado, fechamento excepcional, abertura excepcional e fuso;
-- existe uma trava de fora do expediente que pode silenciar ou orientar handoff
-  para interações genéricas, anexos e pedidos de humano;
-- essa trava deve ser separada de um handoff real e liberada quando a loja abrir,
-  conforme a política definida;
+- estar fora do expediente não bloqueia a IAra nem transforma a conversa em
+  silêncio: respostas que podem ser dadas com fatos confirmados, como horário,
+  endereço, mapa e outras capacidades automáticas, continuam normalmente;
+- o horário modifica apenas o encaminhamento humano. Se a decisão depender de
+  funcionário enquanto a loja estiver fechada, a IAra deve se identificar,
+  informar o encaminhamento e explicar que a equipe continuará o atendimento
+  quando a loja abrir, citando o próximo horário calculado pela agenda;
+- o encaminhamento fica registrado como `human_pending`, mas o fechamento da
+  loja não cria `human_active`, não inicia a pausa de duas horas e não impede
+  novas respostas automáticas seguras antes da abertura;
+- se o próximo horário não puder ser calculado, o sistema não pode inventar um
+  prazo: deve usar uma resposta conservadora e registrar a falha operacional;
 - status publicado pela própria loja tem contexto e validade próprios; uma
   reação ao status pode iniciar outro fluxo, mas a publicação em si não é uma
   chamada do cliente;
@@ -1895,7 +1903,7 @@ receber uma decisão explícita: `reaproveitar`, `adaptar` ou `não levar`.
 | Pix | Enviar somente chave oficial cadastrada | Chave Pix não confirma pagamento ou baixa |
 | `PARAR`/`VOLTAR` | Manter escopo correto e registrar preferência | Cancelar e reativar lembretes funciona sem afetar conversa comum |
 | Horário da loja | Reutilizar agenda, intervalo, feriado e exceções | “Posso ir agora?” recebe resposta baseada na situação real |
-| Fora do expediente | Manter trava separada do handoff humano | Fechamento não cria bloqueio humano permanente |
+| Fora do expediente | Manter respostas automáticas normais e adaptar somente o handoff para o próximo horário real de abertura | Endereço/horário continuam respondidos; handoff fechado informa quando a loja abre e não cria `human_active` |
 | Status do WhatsApp | Separar publicação, reação e conversa comum | Reação a Status usa contexto; publicação da loja não vira chamada |
 | Repetição de status | Silenciar repetição dentro da janela própria, permitindo novo assunto | Pergunta repetida é silenciada, mudança de tema é processada |
 | Retenção | Limpar somente dados expirados e não protegidos | Faxina não apaga `force_human`, handoff ativo ou anexo pendente |
@@ -1959,6 +1967,27 @@ mensagem + memória
   → envio e registro
 ```
 
+### Expediente como modificador do handoff
+
+O expediente não é uma autorização geral para a IA responder. Depois que o
+sistema produzir a decisão operacional, a agenda da loja será aplicada assim:
+
+- decisão sem funcionário: permanece inalterada, mesmo com a loja fechada;
+- `human_handoff` ou `repeat_handoff` com a loja aberta: encaminhamento imediato;
+- `human_handoff` ou `repeat_handoff` com a loja fechada: encaminhamento marcado
+  como `when_store_opens`, com `nextOpenSchedule` obrigatório;
+- o humanizador deve preservar a identificação da IAra, a necessidade de
+  funcionário e o horário de retomada, sem prometer atendimento antes da abertura.
+
+Exemplo canônico fora do expediente:
+
+> Sou a IAra, uma assistente virtual. Vou encaminhar sua pergunta para um
+> atendente. Como a loja está fechada agora, um funcionário continuará com você
+> quando ela abrir, amanhã às 8h.
+
+Essa regra vale também para retomadas, anexos, reclamações, disponibilidade de
+produto e qualquer outro fluxo cuja conclusão dependa de uma pessoa.
+
 ## Decisão de arquitetura após a análise
 
 O código novo deverá nascer isolado do roteador legado, com uma interface que
@@ -1995,6 +2024,9 @@ testado em simulação, sem enviar mensagens reais.
   reutilizar a chave com outro conjunto de mensagens é rejeitado;
 - o limite de 10 mensagens vale para a memória enviada à IA, não para o turno:
   um agrupamento válido preserva até 50 mensagens originais para auditoria.
+- o contrato da decisão distingue handoff durante o expediente de handoff para
+  a próxima abertura; respostas que não dependem de funcionário permanecem
+  disponíveis fora do horário.
 
 Esta fundação já possui pontos de captura no webhook e na confirmação de envio,
 mas permanece inativa enquanto a loja estiver em `legacy`. Mesmo quando uma loja

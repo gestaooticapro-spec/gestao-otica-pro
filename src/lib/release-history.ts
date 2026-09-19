@@ -17,6 +17,7 @@ export const PENDING_RELEASE_CHANGES: readonly string[] = [
   'A tabela de parcelas passou a usar toda a largura disponível para exibir integralmente os botões de comprovante e reversão.',
   'A ativação de tabelas globais passou a aceitar somente versões publicadas, protegendo as lojas contra catálogos em rascunho ou arquivados.',
   'Quando a SEFAZ não responde na emissão da nota, o sistema avisa que a autorização não foi concluída e pede para tentar mais tarde, em vez do código técnico da conexão.',
+  'O novo fluxo de atendimento do WhatsApp mantém respostas automáticas fora do expediente e, quando depender da equipe, informa o próximo horário real de abertura.',
 ]
 
 const RELEASE_10209_CHANGES: readonly string[] = [

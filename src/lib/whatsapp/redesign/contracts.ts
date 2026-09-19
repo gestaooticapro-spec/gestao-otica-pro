@@ -158,12 +158,27 @@ export const WhatsAppHumanizationPolicySchema = z.object({
 }).strict()
 export type WhatsAppHumanizationPolicy = z.infer<typeof WhatsAppHumanizationPolicySchema>
 
-export const WhatsAppSystemDecisionSchema = z.object({
+export const WhatsAppHumanHandoffTimingSchema = z.discriminatedUnion('mode', [
+  z.object({
+    mode: z.literal('during_open_hours'),
+    nextOpenSchedule: z.null(),
+  }).strict(),
+  z.object({
+    mode: z.literal('when_store_opens'),
+    nextOpenSchedule: z.string().trim().min(1).max(200),
+  }).strict(),
+])
+export type WhatsAppHumanHandoffTiming = z.infer<typeof WhatsAppHumanHandoffTimingSchema>
+
+const WhatsAppSystemDecisionBaseSchema = z.object({
   action: WhatsAppRedesignActionSchema,
   canonicalReply: z.string().trim().min(1).max(1200).nullable(),
   facts: z.record(z.string(), WhatsAppCanonicalFactSchema),
+  humanHandoffTiming: WhatsAppHumanHandoffTimingSchema.nullable(),
   humanization: WhatsAppHumanizationPolicySchema,
-}).strict().superRefine((decision, context) => {
+}).strict()
+
+export const WhatsAppSystemDecisionDraftSchema = WhatsAppSystemDecisionBaseSchema.superRefine((decision, context) => {
   if (decision.action === 'no_reply' && decision.canonicalReply !== null) {
     context.addIssue({
       code: 'custom',
@@ -177,6 +192,27 @@ export const WhatsAppSystemDecisionSchema = z.object({
       code: 'custom',
       path: ['canonicalReply'],
       message: 'A decisao exige resposta canonica.',
+    })
+  }
+})
+export type WhatsAppSystemDecisionDraft = z.infer<typeof WhatsAppSystemDecisionDraftSchema>
+
+export const WhatsAppSystemDecisionSchema = WhatsAppSystemDecisionDraftSchema.superRefine((decision, context) => {
+  const isHumanHandoff = decision.action === 'human_handoff' || decision.action === 'repeat_handoff'
+
+  if (isHumanHandoff && !decision.humanHandoffTiming) {
+    context.addIssue({
+      code: 'custom',
+      path: ['humanHandoffTiming'],
+      message: 'O encaminhamento humano exige a definicao de quando a equipe podera atender.',
+    })
+  }
+
+  if (!isHumanHandoff && decision.humanHandoffTiming !== null) {
+    context.addIssue({
+      code: 'custom',
+      path: ['humanHandoffTiming'],
+      message: 'Somente encaminhamentos humanos podem definir horario para a equipe.',
     })
   }
 })
