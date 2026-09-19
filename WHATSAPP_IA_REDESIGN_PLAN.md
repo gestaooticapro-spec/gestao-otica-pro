@@ -2052,3 +2052,24 @@ O redesign registrou a saída confirmada sem participar dessa decisão ou envio.
 Por fim, uma mensagem enviada manualmente pela Central foi registrada como saída
 `human` com tipo `operator_manual`. A captura sombra já distingue, em conversa
 real, cliente, resposta automática e funcionário.
+
+### Processamento de turnos em sombra — iniciado em 18/09/2026
+
+- foi criado um classificador exclusivo do redesign, com saída estrita para
+  intenção, confiança, relação com o assunto anterior, pedido de humano, anexo e
+  entidades; ele não pode escrever a resposta ao cliente;
+- o sistema produz separadamente a decisão operacional, a resposta canônica e o
+  motivo da decisão usando somente fatos oficiais da loja;
+- a agenda estruturada modifica apenas decisões de handoff; horário e endereço
+  podem ser propostos normalmente fora do expediente;
+- turnos `ready` da loja em `shadow` são reivindicados de forma condicional para
+  evitar processamento simultâneo e recebem `processed` ou `failed` com
+  diagnóstico no `metadata`;
+- o contexto da decisão termina no fechamento do turno, impedindo que a resposta
+  posterior do sistema legado seja apresentada ao novo classificador como se já
+  fizesse parte da conversa;
+- a rota interna de processamento exige segredo operacional e registra
+  explicitamente `sendsMessage: false`; esta etapa não cria outbound, não chama
+  o provedor de envio e não altera quem atende o cliente;
+- antes de concluir esta etapa, ainda será necessário publicar o processador e
+  validar suas decisões gravadas em turnos reais da Loja 1.

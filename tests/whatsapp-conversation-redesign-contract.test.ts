@@ -29,6 +29,12 @@ import {
   runFailOpenShadowCapture,
 } from '../src/lib/whatsapp/redesign/shadow-ingestion'
 import { applyStoreAvailabilityToDecision } from '../src/lib/whatsapp/redesign/store-availability-policy'
+import {
+  buildOfficialStoreLocationReply,
+  buildWhatsAppShadowDecision,
+} from '../src/lib/whatsapp/redesign/system-decision'
+import { processWhatsAppRedesignShadowTurns } from '../src/lib/whatsapp/redesign/shadow-processor'
+import type { WhatsAppRedesignConversationStore } from '../src/lib/whatsapp/redesign/store'
 
 const BASE_TIME = '2026-09-18T12:00:00.000Z'
 
@@ -285,6 +291,181 @@ test('handoff durante o expediente continua imediato', () => {
   assert.equal(result.canonicalReply, decision.canonicalReply)
   assert.equal(result.humanHandoffTiming?.mode, 'during_open_hours')
   assert.equal(result.facts.isStoreOpenNow, true)
+})
+
+test('decisao sombra usa somente horario oficial para responder sobre expediente', () => {
+  const memory = {
+    summary: defaultConversationSummary(BASE_TIME),
+    messages: [message(1)],
+  }
+  const result = buildWhatsAppShadowDecision({
+    classification: {
+      intent: 'store_hours',
+      confidence: 0.98,
+      topicRelation: 'change_topic',
+      requestsHuman: false,
+      mentionsAttachment: false,
+      entities: { customerName: null, patientName: null, cpf: null, orderNumber: null },
+    },
+    memory,
+    now: BASE_TIME,
+    hoursFacts: {
+      is_open_now: true,
+      is_exceptional_closure: false,
+      today_schedule: '08:00 às 18:00',
+      next_open_schedule: '',
+      full_weekly_schedule: 'Segunda-feira: 08:00 - 18:00',
+    },
+    storeLocationReply: null,
+    hasCurrentTurnAttachment: false,
+  })
+
+  assert.equal(result.draft.action, 'answer_store_hours')
+  assert.match(result.draft.canonicalReply || '', /abertos agora/i)
+  assert.equal(result.draft.facts.isStoreOpenNow, true)
+})
+
+test('assunto que exige funcionario gera handoff transparente da IAra', () => {
+  const result = buildWhatsAppShadowDecision({
+    classification: {
+      intent: 'vision_exam',
+      confidence: 0.97,
+      topicRelation: 'change_topic',
+      requestsHuman: false,
+      mentionsAttachment: false,
+      entities: { customerName: null, patientName: null, cpf: null, orderNumber: null },
+    },
+    memory: {
+      summary: defaultConversationSummary(BASE_TIME),
+      messages: [message(1)],
+    },
+    now: BASE_TIME,
+    hoursFacts: {
+      is_open_now: true,
+      is_exceptional_closure: false,
+      today_schedule: '08:00 às 18:00',
+      next_open_schedule: '',
+      full_weekly_schedule: 'Segunda-feira: 08:00 - 18:00',
+    },
+    storeLocationReply: null,
+    hasCurrentTurnAttachment: false,
+  })
+
+  assert.equal(result.draft.action, 'human_handoff')
+  assert.match(result.draft.canonicalReply || '', /Sou a IAra/i)
+  assert.equal(result.draft.humanization.mustMentionHumanHandoff, true)
+})
+
+test('endereco oficial produz link de mapa sem depender da IA', () => {
+  const reply = buildOfficialStoreLocationReply({
+    street: 'Rua Principal',
+    number: '100',
+    neighborhood: 'Centro',
+    city: 'Marília',
+    state: 'SP',
+  })
+
+  assert.match(reply || '', /Rua Principal, 100/)
+  assert.match(reply || '', /google\.com\/maps\/search/)
+  assert.match(reply || '', /query=Rua\+Principal/)
+})
+
+test('processador sombra registra classificacao e decisao sem enviar mensagem', async () => {
+  const turnId = '00000000-0000-4000-8000-000000000101'
+  const customerMessage = {
+    ...message(1),
+    id: '00000000-0000-4000-8000-000000000102',
+    text: 'Vocês fazem exame de vista?',
+  }
+  const finished: Array<{ status: string; metadata: Record<string, unknown> }> = []
+  const fakeStore = {
+    listReadyTurnIds: async () => [turnId],
+    claimReadyTurn: async () => true,
+    loadTurnContext: async () => ({
+      turn: {
+        id: turnId,
+        conversation_id: 1,
+        turn_key: 'inbound:test',
+        status: 'processing',
+        opened_at: BASE_TIME,
+        closes_at: BASE_TIME,
+        processed_at: null,
+        metadata: { source: 'test' },
+        created_at: BASE_TIME,
+        updated_at: BASE_TIME,
+      },
+      conversation: {
+        id: 1,
+        tenant_id: '00000000-0000-4000-8000-000000000001',
+        store_id: 1,
+        channel_id: 1,
+        remote_phone: '5511999999999',
+        mode: 'shadow',
+        summary: defaultConversationSummary(BASE_TIME),
+        last_message_at: BASE_TIME,
+        created_at: BASE_TIME,
+        updated_at: BASE_TIME,
+      },
+      memory: { summary: defaultConversationSummary(BASE_TIME), messages: [customerMessage] },
+      turnMessages: [customerMessage],
+    }),
+    loadStore: async () => ({
+      id: 1,
+      name: 'Loja 1',
+      tenant_id: '00000000-0000-4000-8000-000000000001',
+      settings: {
+        store_hours: {
+          timezone: 'America/Sao_Paulo',
+          weekly_schedule: Array.from({ length: 7 }, (_, day) => ({
+            day,
+            is_open: true,
+            open_time: '00:00',
+            close_time: '23:59',
+          })),
+          break_windows: [],
+          special_closures: [],
+          special_openings: [],
+        },
+      },
+      street: 'Rua Principal',
+      number: '100',
+      neighborhood: 'Centro',
+      city: 'Marília',
+      state: 'SP',
+    }),
+    finishTurn: async (input: { status: string; metadata: Record<string, unknown> }) => {
+      finished.push(input)
+    },
+  } as unknown as WhatsAppRedesignConversationStore
+
+  const result = await processWhatsAppRedesignShadowTurns({
+    store: fakeStore,
+    now: new Date(BASE_TIME),
+    classifier: async () => ({
+      success: true,
+      provider: 'openai',
+      model: 'test-model',
+      keyIndex: 0,
+      data: {
+        intent: 'vision_exam',
+        confidence: 0.99,
+        topicRelation: 'change_topic',
+        requestsHuman: false,
+        mentionsAttachment: false,
+        entities: { customerName: null, patientName: null, cpf: null, orderNumber: null },
+      },
+      attempts: 1,
+      rawText: '{}',
+      latencyMs: 5,
+      promptText: 'test',
+    }),
+  })
+
+  assert.deepEqual(result, { discovered: 1, processed: 1, failed: 0, skipped: 0, sendsMessage: false })
+  assert.equal(finished[0].status, 'processed')
+  const processing = finished[0].metadata.shadowProcessing as Record<string, unknown>
+  assert.equal(processing.sendsMessage, false)
+  assert.equal((processing.decision as { action: string }).action, 'human_handoff')
 })
 
 test('persistencia exige uma chave de origem idempotente para cada mensagem', () => {

@@ -1,5 +1,11 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { z } from 'zod'
+import {
+  WhatsAppRedesignClassificationSchema,
+  type WhatsAppConversationMemory,
+  type WhatsAppConversationMessage,
+  type WhatsAppRedesignClassification,
+} from './redesign/contracts'
 
 const GEMINI_KEYS = [
   process.env.GEMINI_SECRET_KEY_1,
@@ -62,7 +68,7 @@ export type WhatsAppIntent = (typeof WHATSAPP_INTENTS)[number]
 export type WhatsAppReasoningTag = (typeof WHATSAPP_REASONING_TAGS)[number]
 export type WhatsAppReplyTone = (typeof WHATSAPP_TONES)[number]
 export type WhatsAppAiProvider = 'gemini' | 'openai'
-export type WhatsAppAiTask = 'intent_classification' | 'installment_reminder_preference_resolution' | 'post_sale_rating_resolution' | 'reply_humanization' | 'fallback_reply' | 'receipt_extraction' | 'tool_agent_plan' | 'tool_agent_reply'
+export type WhatsAppAiTask = 'intent_classification' | 'redesign_classification' | 'installment_reminder_preference_resolution' | 'post_sale_rating_resolution' | 'reply_humanization' | 'fallback_reply' | 'receipt_extraction' | 'tool_agent_plan' | 'tool_agent_reply'
 
 export type WhatsAppAiTokenUsage = {
   inputTokens: number | null
@@ -312,6 +318,12 @@ type ProviderAttemptFailure = {
   provider: WhatsAppAiProvider
   keyIndex: number
   error: string
+}
+
+export type WhatsAppRedesignClassificationInput = {
+  memory: WhatsAppConversationMemory
+  turnMessages: WhatsAppConversationMessage[]
+  elapsedSincePreviousMessageMs: number | null
 }
 
 export type WhatsAppInstallmentReminderPreferenceResolutionInput = {
@@ -821,6 +833,67 @@ function parseStructuredJson<T>(rawText: string, schema: z.ZodSchema<T>) {
   return schema.parse(parsed)
 }
 
+function buildRedesignClassificationPrompt(input: WhatsAppRedesignClassificationInput) {
+  const memoryMessages = input.memory.messages.map((message) => ({
+    role: message.role,
+    kind: message.kind,
+    text: message.text,
+    occurredAt: message.occurredAt,
+  }))
+  const turnMessages = input.turnMessages.map((message) => ({
+    role: message.role,
+    kind: message.kind,
+    text: message.text,
+    occurredAt: message.occurredAt,
+  }))
+
+  return [
+    'Voce e o classificador do novo orquestrador de WhatsApp de uma otica.',
+    'Sua unica tarefa e interpretar o turno atual considerando a memoria da conversa.',
+    'Responda SOMENTE com um objeto JSON valido, sem markdown e sem texto adicional.',
+    'Nunca escreva uma resposta para o cliente e nunca decida se uma mensagem sera enviada.',
+    'Nao invente nomes, CPF, numero de OS, fatos da loja, resolucoes ou promessas.',
+    'Identifique mudanca de assunto mesmo quando ela ocorrer dentro do mesmo turno.',
+    'requestsHuman deve ser true somente quando o cliente pedir explicitamente uma pessoa ou atendente.',
+    'mentionsAttachment deve considerar tanto o tipo da mensagem quanto referencias como foto, imagem, PDF, receita ou comprovante.',
+    '',
+    'INTENTS PERMITIDAS:',
+    'greeting, vision_exam, store_hours, store_location, product_availability, attachment, order_status, installment_status, complaint_or_adaptation, exchange_or_warranty, budget_request, human_agent_request, unknown',
+    '',
+    'RELACOES DE ASSUNTO PERMITIDAS:',
+    'continue_topic, change_topic, parallel_topic, unclear_topic',
+    '',
+    'SCHEMA EXATO:',
+    JSON.stringify({
+      intent: 'vision_exam',
+      confidence: 0.96,
+      topicRelation: 'change_topic',
+      requestsHuman: false,
+      mentionsAttachment: false,
+      entities: {
+        customerName: null,
+        patientName: null,
+        cpf: null,
+        orderNumber: null,
+      },
+    }, null, 2),
+    '',
+    'RESUMO ESTRUTURADO ANTERIOR:',
+    JSON.stringify(input.memory.summary, null, 2),
+    '',
+    'ULTIMAS MENSAGENS DA MEMORIA:',
+    JSON.stringify(memoryMessages, null, 2),
+    '',
+    'TEMPO DESDE A MENSAGEM ANTERIOR AO TURNO, EM MILISSEGUNDOS:',
+    input.elapsedSincePreviousMessageMs === null
+      ? 'desconhecido ou sem mensagem anterior'
+      : String(input.elapsedSincePreviousMessageMs),
+    '',
+    'TURNO ATUAL A CLASSIFICAR:',
+    JSON.stringify(turnMessages, null, 2),
+  ].join('\n')
+}
+
 function buildInstallmentReminderPreferenceResolutionPrompt(
   input: WhatsAppInstallmentReminderPreferenceResolutionInput
 ) {
@@ -901,6 +974,16 @@ export async function classifyWhatsAppIntent(
     'intent_classification',
     buildIntentPrompt(input),
     WhatsAppIntentClassificationSchema
+  )
+}
+
+export async function classifyWhatsAppRedesignConversation(
+  input: WhatsAppRedesignClassificationInput
+): Promise<WhatsAppAiResult<WhatsAppRedesignClassification>> {
+  return executeStructuredTask(
+    'redesign_classification',
+    buildRedesignClassificationPrompt(input),
+    WhatsAppRedesignClassificationSchema
   )
 }
 
