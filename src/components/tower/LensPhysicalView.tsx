@@ -39,17 +39,16 @@ type LensPhysicalViewProps = {
 }
 
 const BASE_PX_PER_MM = 4.1
-const VIEWPORT_FILL_RATIO = .7
-const REPORT_VERTICAL_OFFSET_RATIO = .22
+// Reserve 10% on each side; scale is derived from the actual side-view bounds.
+const VIEWPORT_FILL_RATIO = .8
 
-function setCameraFrustum(camera: Three.OrthographicCamera, width: number, height: number, activePxPerMm: number, fitToViewport: boolean) {
+function setCameraFrustum(camera: Three.OrthographicCamera, width: number, height: number, activePxPerMm: number) {
   const halfWidth = width / activePxPerMm / 2
   const halfHeight = height / activePxPerMm / 2
-  const verticalCenter = fitToViewport ? -height / activePxPerMm * REPORT_VERTICAL_OFFSET_RATIO : 0
   camera.left = -halfWidth
   camera.right = halfWidth
-  camera.top = verticalCenter + halfHeight
-  camera.bottom = verticalCenter - halfHeight
+  camera.top = halfHeight
+  camera.bottom = -halfHeight
   camera.updateProjectionMatrix()
 }
 
@@ -102,6 +101,11 @@ export function LensPhysicalView({ rim, samples, widthMm, heightMm, focalX, foca
       camera.position.set(0, -160, 0)
       camera.lookAt(0, 0, fitToViewport ? 0 : -2)
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' })
+      // setSize(..., false) updates buffer resolution, not CSS dimensions.
+      // High-DPI screens must still display the canvas at its host's size.
+      renderer.domElement.style.width = '100%'
+      renderer.domElement.style.height = '100%'
+      renderer.domElement.style.display = 'block'
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
       renderer.outputColorSpace = THREE.SRGBColorSpace
       renderer.toneMapping = THREE.ACESFilmicToneMapping
@@ -127,7 +131,7 @@ export function LensPhysicalView({ rim, samples, widthMm, heightMm, focalX, foca
         const activePxPerMm = fitToViewport
           ? fittedPxPerMm(bounds, requestedPxPerMm, currentRuntime?.contentWidthMm ?? 1, currentRuntime?.contentHeightMm ?? 1)
           : requestedPxPerMm
-        setCameraFrustum(camera, bounds.width, bounds.height, activePxPerMm, fitToViewport)
+        setCameraFrustum(camera, bounds.width, bounds.height, activePxPerMm)
         renderer.setSize(bounds.width, bounds.height, false)
         renderer.render(scene, camera)
       }
@@ -226,8 +230,8 @@ export function LensPhysicalView({ rim, samples, widthMm, heightMm, focalX, foca
     const backOutlinePoints = rim.map((sample) => new THREE.Vector3(sample.x, sample.y, -sample.displayFrontSag - sample.thickness - .025))
     lensGroup.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(backOutlinePoints), new THREE.LineBasicMaterial({ color: 0x67e8f9, transparent: true, opacity: .66 })))
     if (fitToViewport) {
-      // Recalculate from the geometry origin on every rotation. Reusing the
-      // previous offset made the side profile drift toward the canvas bottom.
+      // The lateral camera projects world x/z onto screen x/y. Bounds include
+      // the mesh and both outlines and are recalculated on every rotation.
       lensGroup.position.set(0, 0, 0)
       lensGroup.updateMatrixWorld(true)
       const contentBounds = new THREE.Box3().setFromObject(lensGroup)
@@ -242,7 +246,7 @@ export function LensPhysicalView({ rim, samples, widthMm, heightMm, focalX, foca
     const activePxPerMm = fitToViewport
       ? fittedPxPerMm(bounds, requestedPxPerMm, runtime.contentWidthMm, runtime.contentHeightMm)
       : requestedPxPerMm
-    setCameraFrustum(camera, bounds.width, bounds.height, activePxPerMm, fitToViewport)
+    setCameraFrustum(camera, bounds.width, bounds.height, activePxPerMm)
     renderer.render(scene, camera)
   }, [calibrationScale, fitToViewport, focalX, focalY, heightMm, index, ready, rim, samples, view, widthMm])
 
