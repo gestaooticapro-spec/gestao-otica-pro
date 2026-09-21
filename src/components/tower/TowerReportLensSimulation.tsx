@@ -101,6 +101,7 @@ export function TowerReportLensSimulation({
           calibrationScale={100}
           showCalibrator={false}
           view="edge"
+          fitToViewport
         />
       </div>}
 

@@ -210,6 +210,7 @@ test('publicacao de relatorio usa dispositivo, escopo, hash e expiracao sem alte
   assert.match(publicPage, /savedRotation=/)
   assert.match(publicPage, /assetCaption/)
   assert.match(lensSimulation, /LensPhysicalView/)
+  assert.match(lensSimulation, /fitToViewport/)
   assert.match(lensSimulation, /view="edge"/)
   assert.doesNotMatch(lensSimulation, /sampleCount/)
 })

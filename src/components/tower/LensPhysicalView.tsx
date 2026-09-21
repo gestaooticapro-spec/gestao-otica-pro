@@ -20,6 +20,8 @@ type Runtime = {
   resizeObserver: ResizeObserver
   lensGroup: Three.Group
   pxPerMm: number
+  contentWidthMm: number
+  contentHeightMm: number
 }
 
 type LensPhysicalViewProps = {
@@ -33,9 +35,18 @@ type LensPhysicalViewProps = {
   calibrationScale: number
   showCalibrator: boolean
   view: 'edge'
+  fitToViewport?: boolean
 }
 
 const BASE_PX_PER_MM = 4.1
+const VIEWPORT_FILL_RATIO = .7
+
+function fittedPxPerMm(bounds: { width: number; height: number }, requestedPxPerMm: number, contentWidthMm: number, contentHeightMm: number) {
+  if (bounds.width <= 0 || bounds.height <= 0) return requestedPxPerMm
+  const horizontalFit = bounds.width * VIEWPORT_FILL_RATIO / Math.max(contentWidthMm, 1)
+  const verticalFit = bounds.height * VIEWPORT_FILL_RATIO / Math.max(contentHeightMm, 1)
+  return Math.min(requestedPxPerMm, horizontalFit, verticalFit)
+}
 
 function centerSample(samples: LensPhysicalPoint[], focalX: number, focalY: number) {
   return samples
@@ -60,7 +71,7 @@ function disposeObject(object: Three.Object3D) {
 
 // Port fiel do renderizador fisico da Torre. O relatorio publico tambem usa a
 // malha 3D calculada, nunca uma aproximacao SVG da borda.
-export function LensPhysicalView({ rim, samples, widthMm, heightMm, focalX, focalY, index, calibrationScale, showCalibrator, view }: LensPhysicalViewProps) {
+export function LensPhysicalView({ rim, samples, widthMm, heightMm, focalX, focalY, index, calibrationScale, showCalibrator, view, fitToViewport = false }: LensPhysicalViewProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const runtimeRef = useRef<Runtime | null>(null)
   const [ready, setReady] = useState(false)
@@ -77,7 +88,7 @@ export function LensPhysicalView({ rim, samples, widthMm, heightMm, focalX, foca
       const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, .1, 500)
       camera.up.set(0, 0, 1)
       camera.position.set(0, -160, 0)
-      camera.lookAt(0, 0, -2)
+      camera.lookAt(0, 0, fitToViewport ? 0 : -2)
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' })
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
       renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -99,7 +110,11 @@ export function LensPhysicalView({ rim, samples, widthMm, heightMm, focalX, foca
       scene.add(lensGroup)
       const resize = () => {
         const bounds = host.getBoundingClientRect()
-        const activePxPerMm = runtimeRef.current?.pxPerMm ?? BASE_PX_PER_MM * calibrationScale / 100
+        const currentRuntime = runtimeRef.current
+        const requestedPxPerMm = currentRuntime?.pxPerMm ?? BASE_PX_PER_MM * calibrationScale / 100
+        const activePxPerMm = fitToViewport
+          ? fittedPxPerMm(bounds, requestedPxPerMm, currentRuntime?.contentWidthMm ?? 1, currentRuntime?.contentHeightMm ?? 1)
+          : requestedPxPerMm
         const halfWidth = bounds.width / activePxPerMm / 2
         const halfHeight = bounds.height / activePxPerMm / 2
         camera.left = -halfWidth
@@ -113,7 +128,7 @@ export function LensPhysicalView({ rim, samples, widthMm, heightMm, focalX, foca
       const resizeObserver = new ResizeObserver(resize)
       resizeObserver.observe(host)
       resize()
-      runtimeRef.current = { THREE, host, scene, camera, renderer, resizeObserver, lensGroup, pxPerMm: BASE_PX_PER_MM * calibrationScale / 100 }
+      runtimeRef.current = { THREE, host, scene, camera, renderer, resizeObserver, lensGroup, pxPerMm: BASE_PX_PER_MM * calibrationScale / 100, contentWidthMm: 1, contentHeightMm: 1 }
       setReady(true)
     })
 
@@ -144,7 +159,7 @@ export function LensPhysicalView({ rim, samples, widthMm, heightMm, focalX, foca
     }
     const rimMinimumX = Math.min(...rim.map((sample) => sample.x))
     const rimMaximumX = Math.max(...rim.map((sample) => sample.x))
-    lensGroup.position.x = (rimMinimumX + rimMaximumX) / 2
+    lensGroup.position.set(fitToViewport ? 0 : (rimMinimumX + rimMaximumX) / 2, 0, 0)
     const interior = samples.filter((sample) => sample.withinLens)
     const center = centerSample(interior, focalX, focalY)
     const segments = rim.length
@@ -204,15 +219,27 @@ export function LensPhysicalView({ rim, samples, widthMm, heightMm, focalX, foca
     lensGroup.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(outlinePoints), new THREE.LineBasicMaterial({ color: 0xa5f3fc, transparent: true, opacity: .45 })))
     const backOutlinePoints = rim.map((sample) => new THREE.Vector3(sample.x, sample.y, -sample.displayFrontSag - sample.thickness - .025))
     lensGroup.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(backOutlinePoints), new THREE.LineBasicMaterial({ color: 0x67e8f9, transparent: true, opacity: .66 })))
+    if (fitToViewport) {
+      lensGroup.updateMatrixWorld(true)
+      const contentBounds = new THREE.Box3().setFromObject(lensGroup)
+      const contentCenter = contentBounds.getCenter(new THREE.Vector3())
+      const contentSize = contentBounds.getSize(new THREE.Vector3())
+      lensGroup.position.set(-contentCenter.x, -contentCenter.y, -contentCenter.z)
+      runtime.contentWidthMm = Math.max(contentSize.x, 1)
+      runtime.contentHeightMm = Math.max(contentSize.z, 1)
+    }
     const bounds = host.getBoundingClientRect()
-    const activePxPerMm = BASE_PX_PER_MM * calibrationScale / 100
+    const requestedPxPerMm = BASE_PX_PER_MM * calibrationScale / 100
+    const activePxPerMm = fitToViewport
+      ? fittedPxPerMm(bounds, requestedPxPerMm, runtime.contentWidthMm, runtime.contentHeightMm)
+      : requestedPxPerMm
     camera.left = -(bounds.width / activePxPerMm / 2)
     camera.right = bounds.width / activePxPerMm / 2
     camera.top = bounds.height / activePxPerMm / 2
     camera.bottom = -(bounds.height / activePxPerMm / 2)
     camera.updateProjectionMatrix()
     renderer.render(scene, camera)
-  }, [calibrationScale, focalX, focalY, heightMm, index, ready, rim, samples, view, widthMm])
+  }, [calibrationScale, fitToViewport, focalX, focalY, heightMm, index, ready, rim, samples, view, widthMm])
 
   return <div className="relative h-full w-full overflow-hidden rounded-2xl bg-[radial-gradient(circle_at_38%_26%,rgba(34,211,238,.18),transparent_31%),linear-gradient(145deg,#071827,#020617_68%)]" role="img" aria-label="Lente tridimensional baseada na espessura calculada">
     <div ref={hostRef} className="absolute inset-0" />
