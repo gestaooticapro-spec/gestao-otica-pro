@@ -40,6 +40,18 @@ type LensPhysicalViewProps = {
 
 const BASE_PX_PER_MM = 4.1
 const VIEWPORT_FILL_RATIO = .7
+const REPORT_VERTICAL_OFFSET_RATIO = .22
+
+function setCameraFrustum(camera: Three.OrthographicCamera, width: number, height: number, activePxPerMm: number, fitToViewport: boolean) {
+  const halfWidth = width / activePxPerMm / 2
+  const halfHeight = height / activePxPerMm / 2
+  const verticalCenter = fitToViewport ? -height / activePxPerMm * REPORT_VERTICAL_OFFSET_RATIO : 0
+  camera.left = -halfWidth
+  camera.right = halfWidth
+  camera.top = verticalCenter + halfHeight
+  camera.bottom = verticalCenter - halfHeight
+  camera.updateProjectionMatrix()
+}
 
 function fittedPxPerMm(bounds: { width: number; height: number }, requestedPxPerMm: number, contentWidthMm: number, contentHeightMm: number) {
   if (bounds.width <= 0 || bounds.height <= 0) return requestedPxPerMm
@@ -115,13 +127,7 @@ export function LensPhysicalView({ rim, samples, widthMm, heightMm, focalX, foca
         const activePxPerMm = fitToViewport
           ? fittedPxPerMm(bounds, requestedPxPerMm, currentRuntime?.contentWidthMm ?? 1, currentRuntime?.contentHeightMm ?? 1)
           : requestedPxPerMm
-        const halfWidth = bounds.width / activePxPerMm / 2
-        const halfHeight = bounds.height / activePxPerMm / 2
-        camera.left = -halfWidth
-        camera.right = halfWidth
-        camera.top = halfHeight
-        camera.bottom = -halfHeight
-        camera.updateProjectionMatrix()
+        setCameraFrustum(camera, bounds.width, bounds.height, activePxPerMm, fitToViewport)
         renderer.setSize(bounds.width, bounds.height, false)
         renderer.render(scene, camera)
       }
@@ -236,11 +242,7 @@ export function LensPhysicalView({ rim, samples, widthMm, heightMm, focalX, foca
     const activePxPerMm = fitToViewport
       ? fittedPxPerMm(bounds, requestedPxPerMm, runtime.contentWidthMm, runtime.contentHeightMm)
       : requestedPxPerMm
-    camera.left = -(bounds.width / activePxPerMm / 2)
-    camera.right = bounds.width / activePxPerMm / 2
-    camera.top = bounds.height / activePxPerMm / 2
-    camera.bottom = -(bounds.height / activePxPerMm / 2)
-    camera.updateProjectionMatrix()
+    setCameraFrustum(camera, bounds.width, bounds.height, activePxPerMm, fitToViewport)
     renderer.render(scene, camera)
   }, [calibrationScale, fitToViewport, focalX, focalY, heightMm, index, ready, rim, samples, view, widthMm])
 
