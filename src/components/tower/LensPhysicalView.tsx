@@ -86,11 +86,9 @@ export function LensPhysicalView({ rim, samples, widthMm, heightMm, focalX, foca
       if (cancelled || !host) return
       const scene = new THREE.Scene()
       const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, .1, 500)
-      // The lens is modeled on the x/y plane; z is its physical thickness.
-      // Looking along -z keeps the report view frontal instead of showing the
-      // edge of the lens and pushing it outside the canvas.
-      camera.position.set(0, 0, 160)
-      camera.lookAt(0, 0, 0)
+      camera.up.set(0, 0, 1)
+      camera.position.set(0, -160, 0)
+      camera.lookAt(0, 0, fitToViewport ? 0 : -2)
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' })
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
       renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -222,13 +220,16 @@ export function LensPhysicalView({ rim, samples, widthMm, heightMm, focalX, foca
     const backOutlinePoints = rim.map((sample) => new THREE.Vector3(sample.x, sample.y, -sample.displayFrontSag - sample.thickness - .025))
     lensGroup.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(backOutlinePoints), new THREE.LineBasicMaterial({ color: 0x67e8f9, transparent: true, opacity: .66 })))
     if (fitToViewport) {
+      // Recalculate from the geometry origin on every rotation. Reusing the
+      // previous offset made the side profile drift toward the canvas bottom.
+      lensGroup.position.set(0, 0, 0)
       lensGroup.updateMatrixWorld(true)
       const contentBounds = new THREE.Box3().setFromObject(lensGroup)
       const contentCenter = contentBounds.getCenter(new THREE.Vector3())
       const contentSize = contentBounds.getSize(new THREE.Vector3())
       lensGroup.position.set(-contentCenter.x, -contentCenter.y, -contentCenter.z)
       runtime.contentWidthMm = Math.max(contentSize.x, 1)
-      runtime.contentHeightMm = Math.max(contentSize.y, 1)
+      runtime.contentHeightMm = Math.max(contentSize.z, 1)
     }
     const bounds = host.getBoundingClientRect()
     const requestedPxPerMm = BASE_PX_PER_MM * calibrationScale / 100
