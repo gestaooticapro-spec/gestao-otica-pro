@@ -6,6 +6,7 @@ import {
 } from '../ai'
 import { evaluateStoreHours } from '../store-hours-logic'
 import {
+  WhatsAppRedesignModeSchema,
   WhatsAppRedesignClassificationSchema,
   WhatsAppSystemDecisionSchema,
   type WhatsAppRedesignClassification,
@@ -54,15 +55,25 @@ function errorMessage(error: unknown) {
   return message.slice(0, 500)
 }
 
+function isStoreCurrentlyInShadowMode(settings: Json | null) {
+  const root = jsonRecord(settings)
+  const automation = jsonRecord(root.whatsapp_automation as Json | null)
+  const redesign = jsonRecord(automation.ai_redesign as Json | null)
+  const mode = WhatsAppRedesignModeSchema.safeParse(redesign.mode)
+  return mode.success && mode.data === 'shadow'
+}
+
 async function processClaimedTurn(input: {
   context: WhatsAppRedesignTurnContext
   now: Date
   store: WhatsAppRedesignConversationStore
   classifier: RedesignClassifier
-}) {
+}): Promise<'processed' | 'inactive'> {
   const { context } = input
   const existingMetadata = jsonRecord(context.turn.metadata)
   const storeProfile = await input.store.loadStore(context.conversation.store_id)
+  if (!isStoreCurrentlyInShadowMode(storeProfile.settings)) return 'inactive'
+
   const settings = (jsonRecord(storeProfile.settings) as StoreSettings)
   const hoursFacts = settings.store_hours
     ? evaluateStoreHours(settings.store_hours, input.now)
@@ -122,6 +133,7 @@ async function processClaimedTurn(input: {
       },
     },
   })
+  return 'processed'
 }
 
 export async function processWhatsAppRedesignShadowTurns(
@@ -150,9 +162,18 @@ export async function processWhatsAppRedesignShadowTurns(
     try {
       context = await store.loadTurnContext(turnId)
       if (context.conversation.mode !== 'shadow') {
-        throw new Error('turno_fora_do_modo_sombra')
+        const released = await store.releaseClaimedTurn(turnId)
+        if (!released) throw new Error('nao_foi_possivel_liberar_turno_fora_do_modo_sombra')
+        result.skipped += 1
+        continue
       }
-      await processClaimedTurn({ context, now, store, classifier })
+      const outcome = await processClaimedTurn({ context, now, store, classifier })
+      if (outcome === 'inactive') {
+        const released = await store.releaseClaimedTurn(turnId)
+        if (!released) throw new Error('nao_foi_possivel_liberar_turno_com_loja_fora_do_modo_sombra')
+        result.skipped += 1
+        continue
+      }
       result.processed += 1
     } catch (error) {
       const existingMetadata = context ? jsonRecord(context.turn.metadata) : {}

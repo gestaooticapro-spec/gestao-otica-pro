@@ -218,6 +218,20 @@ export class WhatsAppRedesignConversationStore {
     return Boolean(data)
   }
 
+  async releaseClaimedTurn(turnId: string): Promise<boolean> {
+    const timestamp = new Date().toISOString()
+    const { data, error } = await (this.client
+      .from('whatsapp_conversation_turns') as any)
+      .update({ status: 'ready', updated_at: timestamp })
+      .eq('id', turnId)
+      .eq('status', 'processing')
+      .select('id')
+      .maybeSingle()
+
+    if (error) throw error
+    return Boolean(data)
+  }
+
   async loadTurnContext(turnId: string): Promise<WhatsAppRedesignTurnContext> {
     const { data: turn, error: turnError } = await (this.client
       .from('whatsapp_conversation_turns') as any)

@@ -2078,3 +2078,7 @@ real, cliente, resposta automática e funcionário.
 - os três turnos terminaram em `processed`, sem falha e com
   `sendsMessage: false`. Antes de concluir esta etapa, ainda serão validados os
   cenários reais de mudança de assunto e de anexo.
+- após a pausa do piloto, a Loja 1 voltou para `legacy`. Mesmo que uma conversa
+  antiga ainda esteja marcada como `shadow`, o processador consulta o modo
+  atual configurado para a loja antes de chamar a IA; se não estiver em
+  `shadow`, libera o turno sem classificá-lo nem alterá-lo para `failed`.

@@ -38,3 +38,6 @@ registrado no `WHATSAPP_IA_REDESIGN_PLAN.md`.
   foram processados sem falha e com `sendsMessage: false` (dois de horário e um
   de exame de vista). A etapa continua em andamento até validar mudança de
   assunto e anexo.
+- 22/09/2026: proteção adicionada para a pausa do piloto. Um turno de conversa
+  antiga em `shadow` é liberado sem classificação se a loja já voltou para
+  `legacy`.

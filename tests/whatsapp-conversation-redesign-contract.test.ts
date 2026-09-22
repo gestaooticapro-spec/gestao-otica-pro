@@ -414,6 +414,9 @@ test('processador sombra registra classificacao e decisao sem enviar mensagem', 
       name: 'Loja 1',
       tenant_id: '00000000-0000-4000-8000-000000000001',
       settings: {
+        whatsapp_automation: {
+          ai_redesign: { mode: 'shadow' },
+        },
         store_hours: {
           timezone: 'America/Sao_Paulo',
           weekly_schedule: Array.from({ length: 7 }, (_, day) => ({
@@ -466,6 +469,80 @@ test('processador sombra registra classificacao e decisao sem enviar mensagem', 
   const processing = finished[0].metadata.shadowProcessing as Record<string, unknown>
   assert.equal(processing.sendsMessage, false)
   assert.equal((processing.decision as { action: string }).action, 'human_handoff')
+})
+
+test('processador libera turno sem classificar quando a loja voltou para legacy', async () => {
+  const turnId = '00000000-0000-4000-8000-000000000201'
+  const customerMessage = {
+    ...message(1),
+    id: '00000000-0000-4000-8000-000000000202',
+    text: 'Vocês fazem exame de vista?',
+  }
+  let releaseCount = 0
+  let classifierCalled = false
+  const fakeStore = {
+    listReadyTurnIds: async () => [turnId],
+    claimReadyTurn: async () => true,
+    releaseClaimedTurn: async () => {
+      releaseCount += 1
+      return true
+    },
+    loadTurnContext: async () => ({
+      turn: {
+        id: turnId,
+        conversation_id: 1,
+        turn_key: 'inbound:legacy-store',
+        status: 'processing',
+        opened_at: BASE_TIME,
+        closes_at: BASE_TIME,
+        processed_at: null,
+        metadata: {},
+        created_at: BASE_TIME,
+        updated_at: BASE_TIME,
+      },
+      conversation: {
+        id: 1,
+        tenant_id: '00000000-0000-4000-8000-000000000001',
+        store_id: 1,
+        channel_id: 1,
+        remote_phone: '5511999999999',
+        mode: 'shadow',
+        summary: defaultConversationSummary(BASE_TIME),
+        last_message_at: BASE_TIME,
+        created_at: BASE_TIME,
+        updated_at: BASE_TIME,
+      },
+      memory: { summary: defaultConversationSummary(BASE_TIME), messages: [customerMessage] },
+      turnMessages: [customerMessage],
+    }),
+    loadStore: async () => ({
+      id: 1,
+      name: 'Loja 1',
+      tenant_id: '00000000-0000-4000-8000-000000000001',
+      settings: { whatsapp_automation: { ai_redesign: { mode: 'legacy' } } },
+      street: null,
+      number: null,
+      neighborhood: null,
+      city: null,
+      state: null,
+    }),
+    finishTurn: async () => {
+      throw new Error('turno legacy nao deve ser finalizado')
+    },
+  } as unknown as WhatsAppRedesignConversationStore
+
+  const result = await processWhatsAppRedesignShadowTurns({
+    store: fakeStore,
+    now: new Date(BASE_TIME),
+    classifier: async () => {
+      classifierCalled = true
+      throw new Error('classificador nao deve ser chamado')
+    },
+  })
+
+  assert.deepEqual(result, { discovered: 1, processed: 0, failed: 0, skipped: 1, sendsMessage: false })
+  assert.equal(releaseCount, 1)
+  assert.equal(classifierCalled, false)
 })
 
 test('persistencia exige uma chave de origem idempotente para cada mensagem', () => {
