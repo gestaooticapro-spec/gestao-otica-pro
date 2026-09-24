@@ -13,6 +13,7 @@ export const PENDING_RELEASE_CHANGES: readonly string[] = [
   'O modo sombra do WhatsApp passou a encaminhar anexos, pedidos de atendente e dúvidas com baixa confiança antes de propor respostas automáticas.',
   'O perfil lateral da lente no relatório do cliente passou a ser centralizado e ajustado ao quadro, sem exigir tamanho físico real.',
   'O modo sombra do redesign do WhatsApp passou a classificar turnos e registrar a decisão proposta para auditoria, sem enviar mensagens ao cliente.',
+  'Turnos do WhatsApp em modo shadow interrompidos durante o processamento voltam automaticamente para a fila, sem enviar mensagens.',
   'Incluída documentação operacional para preparar a importação histórica de dados da loja.',
   'A protecao de conectividade e a recuperacao de mensagens do WhatsApp passaram a acompanhar todas as lojas com canal ativo.',
   'O salvamento de medidas no tablet alerta para ponte ou DNP fora do padrao e bloqueia pontes com desvio critico, orientando refazer a foto quando o rosto estiver desalinhado.',

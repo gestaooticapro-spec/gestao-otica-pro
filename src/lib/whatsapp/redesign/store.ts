@@ -35,6 +35,8 @@ type MessageRow = Database['public']['Tables']['whatsapp_conversation_messages']
 type TurnRow = Database['public']['Tables']['whatsapp_conversation_turns']['Row']
 type StoreRow = Database['public']['Tables']['stores']['Row']
 
+export const WHATSAPP_SHADOW_STALE_PROCESSING_MS = 10 * 60 * 1000
+
 export type WhatsAppRedesignTurnContext = {
   turn: TurnRow
   conversation: ConversationRow
@@ -214,6 +216,37 @@ export class WhatsAppRedesignConversationStore {
 
     if (error) throw error
     return (data ?? []).map((row: { id: string }) => row.id)
+  }
+
+  async recoverStaleProcessingTurns(
+    now = new Date().toISOString(),
+    storeId?: number
+  ): Promise<number> {
+    const nowMs = Date.parse(now)
+    if (!Number.isFinite(nowMs)) throw new Error('Horario de recuperacao invalido.')
+    const staleBefore = new Date(nowMs - WHATSAPP_SHADOW_STALE_PROCESSING_MS).toISOString()
+
+    let conversationQuery = (this.client
+      .from('whatsapp_conversation_memory') as any)
+      .select('id')
+      .eq('mode', 'shadow')
+    if (storeId) conversationQuery = conversationQuery.eq('store_id', storeId)
+    const { data: conversations, error: conversationsError } = await conversationQuery
+    if (conversationsError) throw conversationsError
+
+    const conversationIds = (conversations ?? []).map((row: { id: number }) => row.id)
+    if (!conversationIds.length) return 0
+
+    const { data, error } = await (this.client
+      .from('whatsapp_conversation_turns') as any)
+      .update({ status: 'ready', updated_at: now })
+      .in('conversation_id', conversationIds)
+      .eq('status', 'processing')
+      .lte('updated_at', staleBefore)
+      .select('id')
+
+    if (error) throw error
+    return (data ?? []).length
   }
 
   async claimReadyTurn(turnId: string): Promise<boolean> {

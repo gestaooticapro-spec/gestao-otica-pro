@@ -243,6 +243,45 @@ test('store finaliza turno processado por RPC e registra evento humano por RPC',
   assert.equal(calls[1].args.p_message_id, '00000000-0000-4000-8000-000000000102')
 })
 
+test('store recupera somente turnos shadow em processamento ha mais de dez minutos', async () => {
+  const calls: Array<{ table: string; method: string; args: unknown[] }> = []
+  const client = {
+    from: (table: string) => {
+      const result = table === 'whatsapp_conversation_memory'
+        ? { data: [{ id: 42 }], error: null }
+        : { data: [{ id: 'stale-turn' }, { id: 'another-stale-turn' }], error: null }
+      const builder: any = {}
+      for (const method of ['select', 'eq', 'in', 'lte']) {
+        builder[method] = (...args: unknown[]) => {
+          calls.push({ table, method, args })
+          return builder
+        }
+      }
+      builder.update = (...args: unknown[]) => {
+        calls.push({ table, method: 'update', args })
+        return builder
+      }
+      builder.then = (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) =>
+        Promise.resolve(result).then(resolve, reject)
+      return builder
+    },
+  }
+  const store = new WhatsAppRedesignConversationStore(client as any)
+  const recovered = await store.recoverStaleProcessingTurns('2026-09-18T12:20:00.000Z', 1)
+
+  assert.equal(recovered, 2)
+  assert.ok(calls.some((call) => call.table === 'whatsapp_conversation_memory'
+    && call.method === 'eq' && call.args[0] === 'mode' && call.args[1] === 'shadow'))
+  assert.ok(calls.some((call) => call.table === 'whatsapp_conversation_turns'
+    && call.method === 'update'
+    && (call.args[0] as { status: string }).status === 'ready'))
+  assert.ok(calls.some((call) => call.table === 'whatsapp_conversation_turns'
+    && call.method === 'eq' && call.args[0] === 'status' && call.args[1] === 'processing'))
+  assert.ok(calls.some((call) => call.table === 'whatsapp_conversation_turns'
+    && call.method === 'lte' && call.args[0] === 'updated_at'
+    && call.args[1] === '2026-09-18T12:10:00.000Z'))
+})
+
 test('mensagem humana posterior ao turno nao contamina contexto anterior', () => {
   assert.throws(() => reconcileConfirmedHumanActivity({
     summary: defaultConversationSummary(BASE_TIME),
@@ -713,6 +752,7 @@ test('processador sombra registra classificacao e decisao sem enviar mensagem', 
   }
   const finished: Array<{ status: string; metadata: Record<string, unknown> }> = []
   const fakeStore = {
+    recoverStaleProcessingTurns: async () => 1,
     listReadyTurnIds: async () => [turnId],
     claimReadyTurn: async () => true,
     loadTurnContext: async () => ({
@@ -798,7 +838,7 @@ test('processador sombra registra classificacao e decisao sem enviar mensagem', 
     }),
   })
 
-  assert.deepEqual(result, { discovered: 1, processed: 1, failed: 0, skipped: 0, sendsMessage: false })
+  assert.deepEqual(result, { discovered: 1, recovered: 1, processed: 1, failed: 0, skipped: 0, sendsMessage: false })
   assert.equal(finished[0].status, 'processed')
   const processing = finished[0].metadata.shadowProcessing as Record<string, unknown>
   assert.equal(processing.sendsMessage, false)
@@ -876,7 +916,7 @@ test('processador libera turno sem classificar quando a loja voltou para legacy'
     },
   })
 
-  assert.deepEqual(result, { discovered: 1, processed: 0, failed: 0, skipped: 1, sendsMessage: false })
+  assert.deepEqual(result, { discovered: 1, recovered: 0, processed: 0, failed: 0, skipped: 1, sendsMessage: false })
   assert.equal(releaseCount, 1)
   assert.equal(classifierCalled, false)
 })

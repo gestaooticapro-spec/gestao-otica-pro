@@ -31,6 +31,7 @@ export type ProcessShadowTurnsOptions = {
 
 export type ProcessShadowTurnsResult = {
   discovered: number
+  recovered: number
   processed: number
   failed: number
   skipped: number
@@ -152,9 +153,13 @@ export async function processWhatsAppRedesignShadowTurns(
   const store = options.store ?? new WhatsAppRedesignConversationStore()
   const classifier = options.classifier ?? classifyWhatsAppRedesignConversation
   const now = options.now ?? new Date()
+  const recovered = typeof store.recoverStaleProcessingTurns === 'function'
+    ? await store.recoverStaleProcessingTurns(now.toISOString(), options.storeId)
+    : 0
   const turnIds = await store.listReadyTurnIds(options.limit ?? 10, now.toISOString(), options.storeId)
   const result: ProcessShadowTurnsResult = {
     discovered: turnIds.length,
+    recovered,
     processed: 0,
     failed: 0,
     skipped: 0,
