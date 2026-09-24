@@ -1,12 +1,15 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/lib/database.types'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getPhoneVariants } from '../phone'
 import {
   WhatsAppConversationSummarySchema,
+  WhatsAppRedesignClassificationSchema,
   defaultConversationSummary,
   type WhatsAppConversationMemory,
   type WhatsAppConversationMessage,
   type WhatsAppConversationSummary,
+  type WhatsAppRedesignClassification,
 } from './contracts'
 import {
   WhatsAppConversationIdentitySchema,
@@ -18,6 +21,13 @@ import {
   type WhatsAppConversationTurnDraft,
   type WhatsAppStoredMessageInput,
 } from './persistence'
+import {
+  applyConfirmedControlEvent,
+  reconcileConfirmedHumanActivity,
+  reconcileLegacyManualPause,
+  replayWhatsAppConversationSummary,
+  type WhatsAppProcessedTurnForSummary,
+} from './memory-consolidation'
 
 type RedesignStoreClient = SupabaseClient<Database>
 type ConversationRow = Database['public']['Tables']['whatsapp_conversation_memory']['Row']
@@ -131,24 +141,26 @@ export class WhatsAppRedesignConversationStore {
     return buildConversationMemory(conversation, messages ?? [])
   }
 
-  async saveSummary(
-    identityInput: WhatsAppConversationIdentity,
-    summaryInput: WhatsAppConversationSummary
-  ): Promise<WhatsAppConversationSummary> {
-    const identity = WhatsAppConversationIdentitySchema.parse(identityInput)
-    const summary = WhatsAppConversationSummarySchema.parse(summaryInput)
-    const conversation = await this.getOrCreateConversation(identity)
-    const { error } = await (this.client
-      .from('whatsapp_conversation_memory') as any)
-      .update({
-        mode: identity.mode,
-        summary: asJson(summary),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', conversation.id)
-
+  async recordControlEvent(input: {
+    conversationId: number
+    eventKey: string
+    action: 'assume' | 'release' | 'handoff_sent'
+    occurredAt: string
+    actor: string
+    messageId?: string | null
+    reason?: string | null
+  }): Promise<WhatsAppConversationSummary> {
+    const { data, error } = await (this.client as any).rpc('record_whatsapp_conversation_control_event', {
+      p_conversation_id: input.conversationId,
+      p_event_key: input.eventKey,
+      p_action: input.action,
+      p_occurred_at: input.occurredAt,
+      p_actor: input.actor,
+      p_message_id: input.messageId ?? null,
+      p_reason: input.reason ?? null,
+    })
     if (error) throw error
-    return summary
+    return WhatsAppConversationSummarySchema.parse(data)
   }
 
   async createReadyTurn(input: {
@@ -259,6 +271,29 @@ export class WhatsAppRedesignConversationStore {
       .limit(10)
     if (recentError) throw recentError
 
+    const { data: latestHuman, error: humanError } = await (this.client
+      .from('whatsapp_conversation_messages') as any)
+      .select('occurred_at')
+      .eq('conversation_id', conversation.id)
+      .eq('role', 'human')
+      .lte('occurred_at', turn.closes_at)
+      .order('occurred_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (humanError) throw humanError
+
+    const phoneVariants = [...getPhoneVariants(conversation.remote_phone)]
+    const { data: legacyStates, error: legacyError } = await (this.client
+      .from('whatsapp_conversation_states') as any)
+      .select('state, updated_at, expires_at, metadata')
+      .eq('channel_id', conversation.channel_id)
+      .in('remote_phone', phoneVariants)
+      .lte('updated_at', turn.closes_at)
+      .gt('expires_at', turn.closes_at)
+      .order('updated_at', { ascending: false })
+      .limit(5)
+    if (legacyError) throw legacyError
+
     const { data: links, error: linksError } = await (this.client
       .from('whatsapp_conversation_turn_messages') as any)
       .select('message_id, position')
@@ -279,12 +314,157 @@ export class WhatsAppRedesignConversationStore {
     const orderedRows = messageIds.map((id: string) => rowsById.get(id)).filter(Boolean) as MessageRow[]
     if (orderedRows.length !== messageIds.length) throw new Error('Mensagem vinculada ao turno nao localizada.')
 
+    const historicalSummary = await this.loadSummaryAtTurn(conversation, turn.closes_at)
+    const memory = buildConversationMemory({
+      ...conversation,
+      summary: asJson(historicalSummary),
+    }, recentRows ?? [])
+    const capturedSummary = reconcileConfirmedHumanActivity({
+      summary: memory.summary,
+      humanMessageAt: latestHuman?.occurred_at ?? null,
+      asOf: turn.closes_at,
+    })
+    const legacyManualState = (legacyStates ?? []).find((row: {
+      state: string
+      metadata: Json | null
+    }) => {
+      const metadata = row.metadata && typeof row.metadata === 'object'
+        && !Array.isArray(row.metadata) ? row.metadata as Record<string, Json> : {}
+      return row.state === 'human_pause'
+        && (metadata.reason === 'store_initiated' || metadata.reason === 'app_manual_send')
+    })
+    const legacyMetadata = legacyManualState?.metadata
+      && typeof legacyManualState.metadata === 'object'
+      && !Array.isArray(legacyManualState.metadata)
+      ? legacyManualState.metadata as Record<string, Json>
+      : {}
+    const legacySummary = reconcileLegacyManualPause({
+      summary: capturedSummary,
+      legacyState: legacyManualState ? {
+        state: legacyManualState.state,
+        reason: typeof legacyMetadata.reason === 'string' ? legacyMetadata.reason : null,
+        updatedAt: legacyManualState.updated_at,
+        expiresAt: legacyManualState.expires_at,
+      } : null,
+      asOf: turn.closes_at,
+    })
+
+    const { data: latestControlEvent, error: controlError } = await (this.client
+      .from('whatsapp_conversation_control_events') as any)
+      .select('action, occurred_at, reason')
+      .eq('conversation_id', conversation.id)
+      .lte('occurred_at', turn.closes_at)
+      .order('occurred_at', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (controlError) throw controlError
+    const controlEventIsOlderThanHuman = Boolean(
+      latestControlEvent && latestHuman
+      && Date.parse(latestHuman.occurred_at) > Date.parse(latestControlEvent.occurred_at)
+    )
+    const summary = applyConfirmedControlEvent({
+      summary: legacySummary,
+      event: latestControlEvent && !controlEventIsOlderThanHuman ? {
+        action: latestControlEvent.action,
+        occurredAt: latestControlEvent.occurred_at,
+        reason: latestControlEvent.reason,
+      } : null,
+      asOf: turn.closes_at,
+    })
+
     return {
       turn,
       conversation,
-      memory: buildConversationMemory(conversation, recentRows ?? []),
+      memory: { ...memory, summary },
       turnMessages: orderedRows.map(toConversationMessage),
     }
+  }
+
+  private async loadSummaryAtTurn(
+    conversation: ConversationRow,
+    closesAt: string
+  ): Promise<WhatsAppConversationSummary> {
+    const priorTurns: Array<{ id: string; opened_at: string; closes_at: string; metadata: Json }> = []
+    for (let offset = 0; ; offset += 500) {
+      const { data, error } = await (this.client
+        .from('whatsapp_conversation_turns') as any)
+        .select('id, opened_at, closes_at, metadata')
+        .eq('conversation_id', conversation.id)
+        .eq('status', 'processed')
+        .lte('closes_at', closesAt)
+        .order('opened_at', { ascending: true })
+        .order('closes_at', { ascending: true })
+        .order('id', { ascending: true })
+        .range(offset, offset + 499)
+      if (error) throw error
+      priorTurns.push(...(data ?? []))
+      if ((data ?? []).length < 500) break
+    }
+
+    const selectedTurns: Array<{
+      row: { id: string; opened_at: string; closes_at: string; metadata: Json }
+      classification: WhatsAppRedesignClassification
+    }> = (priorTurns ?? []).flatMap((row: {
+      id: string; opened_at: string; closes_at: string; metadata: Json
+    }) => {
+      const metadata = row.metadata && typeof row.metadata === 'object'
+        && !Array.isArray(row.metadata) ? row.metadata as Record<string, unknown> : {}
+      const processing = metadata.shadowProcessing && typeof metadata.shadowProcessing === 'object'
+        && !Array.isArray(metadata.shadowProcessing)
+        ? metadata.shadowProcessing as Record<string, unknown> : {}
+      if (processing.sendsMessage !== false) return []
+      const classification = WhatsAppRedesignClassificationSchema.parse(processing.classification)
+      return [{ row, classification }]
+    })
+
+    const linkedKinds = new Map<string, string[]>()
+    for (let offset = 0; offset < selectedTurns.length; offset += 10) {
+      const batch = selectedTurns.slice(offset, offset + 10)
+      const { data: links, error: linksError } = await (this.client
+        .from('whatsapp_conversation_turn_messages') as any)
+        .select('turn_id, message_id')
+        .in('turn_id', batch.map(({ row }) => row.id))
+      if (linksError) throw linksError
+      const messageIds = (links ?? []).map((link: { message_id: string }) => link.message_id)
+      if (!messageIds.length) throw new Error('Turno processado sem mensagens vinculadas.')
+      const kindsById = new Map<string, string>()
+      for (let messageOffset = 0; messageOffset < messageIds.length; messageOffset += 200) {
+        const { data: messages, error: messagesError } = await (this.client
+          .from('whatsapp_conversation_messages') as any)
+          .select('id, message_kind')
+          .in('id', messageIds.slice(messageOffset, messageOffset + 200))
+        if (messagesError) throw messagesError
+        for (const message of messages ?? []) kindsById.set(message.id, message.message_kind)
+      }
+      for (const link of links ?? []) {
+        const kind = kindsById.get(link.message_id)
+        if (!kind) throw new Error('Mensagem de turno processado nao localizada.')
+        linkedKinds.set(link.turn_id, [...(linkedKinds.get(link.turn_id) ?? []), kind])
+      }
+    }
+
+    const processedTurns: WhatsAppProcessedTurnForSummary[] = selectedTurns.map(({ row, classification }) => ({
+      id: row.id,
+      openedAt: new Date(row.opened_at).toISOString(),
+      closesAt: new Date(row.closes_at).toISOString(),
+      classification,
+      turnMessages: (linkedKinds.get(row.id) ?? []).map((kind, index) => ({
+        id: `${row.id}:${index}`,
+        providerMessageId: null,
+        role: 'customer' as const,
+        kind: kind as WhatsAppConversationMessage['kind'],
+        text: null,
+        occurredAt: new Date(row.closes_at).toISOString(),
+      })),
+    }))
+
+    const canonical = buildConversationMemory(conversation, []).summary
+    const base = {
+      ...defaultConversationSummary(conversation.created_at),
+      customerControlMode: canonical.customerControlMode,
+    }
+    return replayWhatsAppConversationSummary({ summary: base, processedTurns })
   }
 
   async loadStore(storeId: number): Promise<StoreRow> {
@@ -302,6 +482,15 @@ export class WhatsAppRedesignConversationStore {
     status: 'processed' | 'failed'
     metadata: Record<string, unknown>
   }) {
+    if (input.status === 'processed') {
+      const { error } = await (this.client as any).rpc('finish_whatsapp_redesign_shadow_turn', {
+        p_turn_id: input.turnId,
+        p_metadata: asJson(input.metadata),
+      })
+      if (error) throw error
+      return
+    }
+
     const timestamp = new Date().toISOString()
     const { error } = await (this.client
       .from('whatsapp_conversation_turns') as any)

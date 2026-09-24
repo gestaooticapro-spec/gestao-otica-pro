@@ -295,10 +295,11 @@ export async function captureWhatsAppShadowOutbound(input: WhatsAppShadowOutboun
     if (mode === 'legacy') return { captured: false, reason: 'legacy_mode' as const }
 
     const store = new WhatsAppRedesignConversationStore()
-    await store.recordMessage(identity(input.channel, input.remotePhone, mode), {
+    const role = inferShadowOutboundRole(input.messageType, input.payload)
+    const storedMessage = await store.recordMessage(identity(input.channel, input.remotePhone, mode), {
       sourceKey: `outbound:${input.outboundMessageId}`,
       providerMessageId: input.providerMessageId,
-      role: inferShadowOutboundRole(input.messageType, input.payload),
+      role,
       kind: 'text',
       text: input.messageText,
       occurredAt: input.sentAt,
@@ -307,6 +308,16 @@ export async function captureWhatsAppShadowOutbound(input: WhatsAppShadowOutboun
         deliveryStatus: 'sent',
       },
     })
+    if (role === 'human') {
+      await store.recordControlEvent({
+        conversationId: storedMessage.conversation_id,
+        eventKey: `outbound:${input.outboundMessageId}:assume`,
+        action: 'assume',
+        occurredAt: storedMessage.occurred_at,
+        actor: 'confirmed_outbound',
+        messageId: storedMessage.id,
+      })
+    }
     return { captured: true, count: 1 }
   })
   return result.success ? result.value : { captured: false, reason: 'capture_failed' as const }

@@ -852,6 +852,34 @@ export interface Database {
         }
       }
 
+      whatsapp_conversation_control_events: {
+        Row: {
+          id: number
+          conversation_id: number
+          event_key: string
+          action: 'assume' | 'release' | 'handoff_sent'
+          occurred_at: string
+          actor: string
+          message_id: string | null
+          reason: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          conversation_id: number
+          event_key: string
+          action: 'assume' | 'release' | 'handoff_sent'
+          occurred_at: string
+          actor: string
+          message_id?: string | null
+          reason?: string | null
+          created_at?: string
+        }
+        Update: {
+          reason?: string | null
+        }
+      }
+
       whatsapp_status_publications: {
         Row: {
           id: number
@@ -2411,6 +2439,22 @@ export interface Database {
       [_ in never]: never
     }
     Functions: {
+      finish_whatsapp_redesign_shadow_turn: {
+        Args: { p_turn_id: string; p_metadata: Json }
+        Returns: Json
+      }
+      record_whatsapp_conversation_control_event: {
+        Args: {
+          p_conversation_id: number
+          p_event_key: string
+          p_action: 'assume' | 'release' | 'handoff_sent'
+          p_occurred_at: string
+          p_actor: string
+          p_message_id?: string | null
+          p_reason?: string | null
+        }
+        Returns: Json
+      }
       create_whatsapp_conversation_turn: {
         Args: {
           p_conversation_id: number

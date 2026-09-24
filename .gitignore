@@ -74,6 +74,7 @@ CollectionAPIPixSicredi.json
 /backup.sql
 !supabase_migration_*.sql
 !supabase/migrations/*.sql
+!supabase/tests/whatsapp_redesign_stage2_validation.sql
 !src/lib/database/*.sql
 
 # System & Local Logs

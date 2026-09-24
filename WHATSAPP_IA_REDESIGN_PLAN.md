@@ -2076,9 +2076,64 @@ real, cliente, resposta automática e funcionário.
   `answer_store_hours`; um foi classificado como `vision_exam`, com confiança de
   0,98, e recebeu a proposta `human_handoff`;
 - os três turnos terminaram em `processed`, sem falha e com
-  `sendsMessage: false`. Antes de concluir esta etapa, ainda serão validados os
-  cenários reais de mudança de assunto e de anexo.
+  `sendsMessage: false`;
 - após a pausa do piloto, a Loja 1 voltou para `legacy`. Mesmo que uma conversa
   antiga ainda esteja marcada como `shadow`, o processador consulta o modo
   atual configurado para a loja antes de chamar a IA; se não estiver em
   `shadow`, libera o turno sem classificá-lo nem alterá-lo para `failed`.
+- em 23/09/2026, a Loja 1 voltou a `shadow` para validar mudança de assunto e
+  anexo sem trocar o responsável pelas respostas. O decisor local passou a
+  priorizar pedido de atendente, anexo e baixa confiança antes de propor
+  respostas de horário ou endereço.
+- a primeira pergunta real sobre horário nessa retomada foi capturada e
+  processada como `store_hours`/`answer_store_hours`, sem envio pelo redesign.
+  O legado registrou o inbound como ignorado porque o número estava em
+  `human_pause` após mensagem enviada pelo celular da loja. A memória nova
+  ainda não refletia essa atividade anterior; sua sincronização pertence à
+  etapa 2.
+- a pergunta real sobre endereço e a foto com legenda foram processadas como
+  turnos distintos, respectivamente `store_location`/`change_topic` com proposta
+  de resposta oficial e `attachment`/`change_topic` com proposta de handoff;
+  ambos sem falhas e sem envio pelo redesign;
+- em três turnos reais, o legado gravou saídas depois do fechamento do turno e
+  antes de seu processamento em sombra. O contexto carregado para cada turno
+  continha somente mensagens até o respectivo fechamento. Com isso, a etapa 1
+  foi concluída e a etapa 2 foi iniciada;
+- a primeira parte da etapa 2 calcula uma proposta pura de atualização de
+  assunto ativo, assuntos secundários e anexo recebido. Ela ainda não persiste
+  o resumo nem transforma uma proposta de handoff em pendência real: isso exige
+  distinguir decisão simulada, mensagem enviada e assunção humana confirmada.
+- o carregamento do turno passou a buscar a última saída capturada como `human`
+  até o fechamento, inclusive quando ela saiu da janela de 10 mensagens. A
+  pausa renovável de duas horas é reconstruída apenas com essa evidência; o
+  instante do fechamento governa o controle humano e a avaliação da agenda.
+  A proposta de resumo fica no metadata do turno. A pausa legada de origem
+  comprovadamente manual também é reconciliada quando seu registro ainda
+  existe e já estava ativo no instante do turno. A validação local com os
+  turnos reais da Loja 1 passou a recuperar `human_active`, sem alterar o
+  estado legado. Ainda não há escrita no resumo canônico nem recuperação de
+  eventos antigos já removidos da tabela; decisões simuladas não criam
+  pendência humana real.
+- o replay determinístico de turnos processados foi preparado para reconstruir
+  assunto ativo, assuntos secundários e anexo mesmo quando o processamento
+  ocorre fora de ordem ou é repetido. Ele preserva os campos de controle humano
+  recebidos e ainda não escreve em `whatsapp_conversation_memory.summary`.
+  Um roteiro de validação local e somente leitura ficou em
+  `docs/whatsapp-redesign-stage2-validation.md`.
+- em 23/09/2026, foi preparada localmente a persistência transacional do
+  resumo derivado de turnos em sombra. O banco serializa a finalização por
+  conversa e reconstitui assuntos e anexos em ordem cronológica, preservando
+  controle humano e pendências reais. Uma tabela separada registra eventos
+  confirmados de assunção, liberação e handoff enviado; a captura de saída
+  humana confirmada registra sua assunção. Ao processar um turno antigo, o
+  contexto é reconstruído até o fechamento do turno. Typecheck e testes locais
+  passaram; a aplicação e a validação funcional no banco são acompanhadas no
+  registro de 23/09/2026 abaixo.
+- Em 23/09/2026, o usuário aplicou no Supabase a migration de resumo/eventos e
+  a migration corretiva da guarda `sendsMessage`; a consulta no banco confirmou
+  a definição atualizada e permissões restritas a `service_role`. Typecheck e
+  42 testes determinísticos locais passaram. Foi preparado um roteiro SQL
+  transacional com rollback para validar no banco consolidação, eventos de
+  assunção/liberação/handoff e idempotência. O usuário executou o roteiro e
+  recebeu `VALIDACAO_ETAPA_2_OK`; os fixtures foram revertidos, sem chamada de
+  IA ou envio de mensagem. Etapa 2 concluída; etapa 3 pendente.

@@ -12,6 +12,7 @@ import {
   type WhatsAppRedesignClassification,
 } from './contracts'
 import { applyStoreAvailabilityToDecision } from './store-availability-policy'
+import { proposeWhatsAppConversationSummary } from './memory-consolidation'
 import { WhatsAppRedesignConversationStore, type WhatsAppRedesignTurnContext } from './store'
 import { buildOfficialStoreLocationReply, buildWhatsAppShadowDecision } from './system-decision'
 
@@ -74,9 +75,11 @@ async function processClaimedTurn(input: {
   const storeProfile = await input.store.loadStore(context.conversation.store_id)
   if (!isStoreCurrentlyInShadowMode(storeProfile.settings)) return 'inactive'
 
+  const decisionAt = new Date(context.turn.closes_at)
+  if (Number.isNaN(decisionAt.getTime())) throw new Error('fechamento_do_turno_invalido')
   const settings = (jsonRecord(storeProfile.settings) as StoreSettings)
   const hoursFacts = settings.store_hours
-    ? evaluateStoreHours(settings.store_hours, input.now)
+    ? evaluateStoreHours(settings.store_hours, decisionAt)
     : null
 
   const classificationResult = await input.classifier({
@@ -92,7 +95,7 @@ async function processClaimedTurn(input: {
   const decisionResult = buildWhatsAppShadowDecision({
     classification,
     memory: context.memory,
-    now: input.now.toISOString(),
+    now: decisionAt.toISOString(),
     hoursFacts,
     storeLocationReply: buildOfficialStoreLocationReply(storeProfile),
     hasCurrentTurnAttachment: context.turnMessages.some((message) => message.kind !== 'text'),
@@ -105,6 +108,12 @@ async function processClaimedTurn(input: {
   const decision = hoursFacts
     ? applyStoreAvailabilityToDecision(decisionResult.draft, hoursFacts)
     : WhatsAppSystemDecisionSchema.parse(decisionResult.draft)
+  const summaryProposal = proposeWhatsAppConversationSummary({
+    summary: context.memory.summary,
+    classification,
+    turnMessages: context.turnMessages,
+    at: decisionAt.toISOString(),
+  })
 
   await input.store.finishTurn({
     turnId: context.turn.id,
@@ -117,6 +126,7 @@ async function processClaimedTurn(input: {
         classification,
         decision,
         decisionReason: decisionResult.reason,
+        summaryProposal,
         context: {
           memoryMessageCount: context.memory.messages.length,
           turnMessageIds: context.turnMessages.map((message) => message.id),

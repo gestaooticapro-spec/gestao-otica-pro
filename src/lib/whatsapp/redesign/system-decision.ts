@@ -82,7 +82,33 @@ export function buildWhatsAppShadowDecision(
   }
 
   const { classification } = input
-  if (classification.intent === 'store_hours' && input.hoursFacts) {
+  if (classification.requestsHuman) {
+    return {
+      reason: 'customer_requests_human',
+      draft: handoffDraft(
+        classification,
+        input.memory,
+        'Sou a IAra, uma assistente virtual. Vou chamar um atendente para continuar com você.',
+        'customer_requests_human'
+      ),
+    }
+  }
+
+  const hasAttachment = classification.mentionsAttachment || input.hasCurrentTurnAttachment
+  if (hasAttachment) {
+    return {
+      reason: 'attachment_requires_human_review',
+      draft: handoffDraft(
+        classification,
+        input.memory,
+        'Recebi o arquivo. Sou a IAra, uma assistente virtual, e vou chamar um atendente para verificar isso para você.',
+        'attachment_requires_human_review'
+      ),
+    }
+  }
+
+  if (classification.intent === 'store_hours' && input.hoursFacts
+    && classification.confidence >= WHATSAPP_REDESIGN_MIN_CONFIDENCE) {
     const canonicalReply = input.hoursFacts.is_open_now
       ? `Sim, estamos abertos agora. O horário de hoje é ${input.hoursFacts.today_schedule}.`
       : `No momento estamos fechados. A próxima abertura será ${input.hoursFacts.next_open_schedule}.`
@@ -103,7 +129,8 @@ export function buildWhatsAppShadowDecision(
     }
   }
 
-  if (classification.intent === 'store_location' && input.storeLocationReply) {
+  if (classification.intent === 'store_location' && input.storeLocationReply
+    && classification.confidence >= WHATSAPP_REDESIGN_MIN_CONFIDENCE) {
     return {
       reason: 'official_store_location_available',
       draft: WhatsAppSystemDecisionDraftSchema.parse({
@@ -126,19 +153,6 @@ export function buildWhatsAppShadowDecision(
         humanHandoffTiming: null,
         humanization: humanization(false),
       }),
-    }
-  }
-
-  const hasAttachment = classification.mentionsAttachment || input.hasCurrentTurnAttachment
-  if (hasAttachment) {
-    return {
-      reason: 'attachment_requires_human_review',
-      draft: handoffDraft(
-        classification,
-        input.memory,
-        'Recebi o arquivo. Sou a IAra, uma assistente virtual, e vou chamar um atendente para verificar isso para você.',
-        'attachment_requires_human_review'
-      ),
     }
   }
 

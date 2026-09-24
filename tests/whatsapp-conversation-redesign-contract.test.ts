@@ -34,7 +34,14 @@ import {
   buildWhatsAppShadowDecision,
 } from '../src/lib/whatsapp/redesign/system-decision'
 import { processWhatsAppRedesignShadowTurns } from '../src/lib/whatsapp/redesign/shadow-processor'
-import type { WhatsAppRedesignConversationStore } from '../src/lib/whatsapp/redesign/store'
+import {
+  applyConfirmedControlEvent,
+  proposeWhatsAppConversationSummary,
+  reconcileConfirmedHumanActivity,
+  reconcileLegacyManualPause,
+  replayWhatsAppConversationSummary,
+} from '../src/lib/whatsapp/redesign/memory-consolidation'
+import { WhatsAppRedesignConversationStore } from '../src/lib/whatsapp/redesign/store'
 
 const BASE_TIME = '2026-09-18T12:00:00.000Z'
 
@@ -48,6 +55,264 @@ function message(index: number, role: WhatsAppConversationMessage['role'] = 'cus
     occurredAt: new Date(Date.parse(BASE_TIME) + index * 1000).toISOString(),
   }
 }
+
+test('consolidacao proposta preserva historico de assuntos sem efetivar handoff em sombra', () => {
+  const summary = defaultConversationSummary(BASE_TIME)
+  const classification = {
+    intent: 'store_location' as const,
+    confidence: 0.98,
+    topicRelation: 'change_topic' as const,
+    requestsHuman: false,
+    mentionsAttachment: false,
+    entities: { customerName: null, patientName: null, cpf: null, orderNumber: null },
+  }
+  const afterHours = proposeWhatsAppConversationSummary({
+    summary,
+    classification: { ...classification, intent: 'store_hours' },
+    turnMessages: [message(1)],
+    at: BASE_TIME,
+  })
+  const afterLocation = proposeWhatsAppConversationSummary({
+    summary: afterHours,
+    classification,
+    turnMessages: [message(2)],
+    at: BASE_TIME,
+  })
+  const afterPhoto = proposeWhatsAppConversationSummary({
+    summary: afterLocation,
+    classification: { ...classification, intent: 'attachment', mentionsAttachment: true },
+    turnMessages: [{ ...message(3), kind: 'image', text: 'Receberam esta foto?' }],
+    at: BASE_TIME,
+  })
+
+  assert.equal(afterPhoto.activeTopic, 'attachment')
+  assert.deepEqual(afterPhoto.secondaryTopics, ['store_location', 'store_hours'])
+  assert.equal(afterPhoto.attachmentStatus, 'received')
+  assert.equal(afterPhoto.humanControl, 'ai_active')
+  assert.equal(afterPhoto.pendingAction, 'none')
+})
+
+test('assunto paralelo nao substitui o assunto ativo nem duplica o historico', () => {
+  const summary = {
+    ...defaultConversationSummary(BASE_TIME),
+    activeTopic: 'order_status' as const,
+    secondaryTopics: ['store_hours' as const],
+  }
+  const next = proposeWhatsAppConversationSummary({
+    summary,
+    classification: {
+      intent: 'store_hours', confidence: 0.9, topicRelation: 'parallel_topic',
+      requestsHuman: false, mentionsAttachment: false,
+      entities: { customerName: null, patientName: null, cpf: null, orderNumber: null },
+    },
+    turnMessages: [message(1)],
+    at: BASE_TIME,
+  })
+  assert.equal(next.activeTopic, 'order_status')
+  assert.deepEqual(next.secondaryTopics, ['store_hours'])
+})
+
+test('consolidacao proposta nao libera atendimento humano nem cria pendencia por simulacao', () => {
+  const active = registerHumanActivity(defaultConversationSummary(BASE_TIME), BASE_TIME)
+  const next = proposeWhatsAppConversationSummary({
+    summary: active,
+    classification: {
+      intent: 'attachment', confidence: 0.95, topicRelation: 'change_topic',
+      requestsHuman: true, mentionsAttachment: true,
+      entities: { customerName: null, patientName: null, cpf: null, orderNumber: null },
+    },
+    turnMessages: [{ ...message(1), kind: 'image' }],
+    at: '2026-09-18T12:01:00.000Z',
+  })
+  assert.equal(next.humanControl, 'human_active')
+  assert.equal(next.humanActiveUntil, active.humanActiveUntil)
+  assert.equal(next.pendingAction, 'none')
+  assert.equal(next.attachmentStatus, 'received')
+})
+
+test('somente atividade humana confirmada ativa e renova a pausa de duas horas', () => {
+  const firstAt = '2026-09-18T12:00:00.000Z'
+  const secondAt = '2026-09-18T13:00:00.000Z'
+  const first = reconcileConfirmedHumanActivity({
+    summary: defaultConversationSummary(BASE_TIME),
+    humanMessageAt: firstAt,
+    asOf: '2026-09-18T12:30:00.000Z',
+  })
+  assert.equal(first.humanControl, 'human_active')
+  assert.equal(first.humanActiveUntil, '2026-09-18T14:00:00.000Z')
+
+  const renewed = reconcileConfirmedHumanActivity({
+    summary: first,
+    humanMessageAt: secondAt,
+    asOf: '2026-09-18T13:30:00.000Z',
+  })
+  assert.equal(renewed.humanActiveUntil, '2026-09-18T15:00:00.000Z')
+  assert.equal(reconcileConfirmedHumanActivity({
+    summary: renewed,
+    humanMessageAt: secondAt,
+    asOf: '2026-09-18T14:59:59.999Z',
+  }).humanControl, 'human_active')
+  const released = reconcileConfirmedHumanActivity({
+    summary: renewed,
+    humanMessageAt: secondAt,
+    asOf: '2026-09-18T15:00:00.000Z',
+  })
+  assert.equal(released.humanControl, 'human_released')
+  assert.equal(reconcileConfirmedHumanActivity({
+    summary: released,
+    humanMessageAt: secondAt,
+    asOf: '2026-09-18T15:10:00.000Z',
+  }).humanControl, 'human_released')
+})
+
+test('liberacao explicita vence a mensagem humana anterior sem apagar o assunto', () => {
+  const active = {
+    ...registerHumanActivity(defaultConversationSummary(BASE_TIME), BASE_TIME),
+    activeTopic: 'order_status' as const,
+  }
+  const released = applyConfirmedControlEvent({
+    summary: active,
+    event: { action: 'release', occurredAt: '2026-09-18T12:30:00.000Z', reason: null },
+    asOf: '2026-09-18T12:31:00.000Z',
+  })
+  assert.equal(released.humanControl, 'human_released')
+  assert.equal(released.humanActiveUntil, null)
+  assert.equal(released.activeTopic, 'order_status')
+  assert.equal(released.lastHumanActivityAt, BASE_TIME)
+  assert.throws(() => applyConfirmedControlEvent({
+    summary: active,
+    event: { action: 'release', occurredAt: '2026-09-18T13:00:00.000Z', reason: null },
+    asOf: '2026-09-18T12:31:00.000Z',
+  }), /fora do contexto/)
+})
+
+test('nova resposta humana depois da liberacao inicia outra janela de duas horas', () => {
+  const first = registerHumanActivity(defaultConversationSummary(BASE_TIME), BASE_TIME)
+  const released = applyConfirmedControlEvent({
+    summary: first,
+    event: { action: 'release', occurredAt: '2026-09-18T12:30:00.000Z', reason: null },
+    asOf: '2026-09-18T12:30:00.000Z',
+  })
+  const resumedByHuman = reconcileConfirmedHumanActivity({
+    summary: released,
+    humanMessageAt: '2026-09-18T12:31:00.000Z',
+    asOf: '2026-09-18T12:31:00.000Z',
+  })
+  assert.equal(resumedByHuman.humanControl, 'human_active')
+  assert.equal(resumedByHuman.humanActiveUntil, '2026-09-18T14:31:00.000Z')
+  assert.equal(releaseExpiredHumanControl(resumedByHuman, '2026-09-18T14:31:00.000Z').humanControl, 'human_released')
+})
+
+test('handoff confirmado gera pendencia sem iniciar bloqueio humano', () => {
+  const pending = applyConfirmedControlEvent({
+    summary: defaultConversationSummary(BASE_TIME),
+    event: { action: 'handoff_sent', occurredAt: BASE_TIME, reason: 'anexo' },
+    asOf: BASE_TIME,
+  })
+  assert.equal(pending.humanControl, 'human_pending')
+  assert.equal(pending.pendingAction, 'awaiting_human')
+  assert.equal(pending.humanActiveUntil, null)
+})
+
+test('store finaliza turno processado por RPC e registra evento humano por RPC', async () => {
+  const calls: Array<{ name: string; args: Record<string, unknown> }> = []
+  const fakeClient = {
+    rpc: async (name: string, args: Record<string, unknown>) => {
+      calls.push({ name, args })
+      return { data: defaultConversationSummary(BASE_TIME), error: null }
+    },
+  }
+  const store = new WhatsAppRedesignConversationStore(fakeClient as any)
+  await store.finishTurn({
+    turnId: '00000000-0000-4000-8000-000000000101',
+    status: 'processed',
+    metadata: { shadowProcessing: { sendsMessage: false } },
+  })
+  await store.recordControlEvent({
+    conversationId: 1,
+    eventKey: 'outbound:1:assume',
+    action: 'assume',
+    occurredAt: BASE_TIME,
+    actor: 'confirmed_outbound',
+    messageId: '00000000-0000-4000-8000-000000000102',
+  })
+  assert.deepEqual(calls.map((call) => call.name), [
+    'finish_whatsapp_redesign_shadow_turn',
+    'record_whatsapp_conversation_control_event',
+  ])
+  assert.equal(calls[1].args.p_message_id, '00000000-0000-4000-8000-000000000102')
+})
+
+test('mensagem humana posterior ao turno nao contamina contexto anterior', () => {
+  assert.throws(() => reconcileConfirmedHumanActivity({
+    summary: defaultConversationSummary(BASE_TIME),
+    humanMessageAt: '2026-09-18T13:00:00.000Z',
+    asOf: BASE_TIME,
+  }), /atividade humana invalida/)
+})
+
+test('pausa legada manual anterior a sombra e reconciliada sem aceitar handoff automatico', () => {
+  const base = defaultConversationSummary(BASE_TIME)
+  const manualState = {
+    state: 'human_pause', reason: 'store_initiated',
+    updatedAt: '2026-09-18T12:00:00.000Z',
+    expiresAt: '2026-09-19T00:00:00.000Z',
+  }
+  const active = reconcileLegacyManualPause({
+    summary: base, legacyState: manualState,
+    asOf: '2026-09-18T12:30:00.000Z',
+  })
+  assert.equal(active.humanControl, 'human_active')
+  assert.equal(active.humanActiveUntil, '2026-09-18T14:00:00.000Z')
+
+  const previouslyReleased = reconcileConfirmedHumanActivity({
+    summary: base,
+    humanMessageAt: '2026-09-17T10:00:00.000Z',
+    asOf: '2026-09-18T12:30:00.000Z',
+  })
+  assert.equal(reconcileLegacyManualPause({
+    summary: previouslyReleased, legacyState: manualState,
+    asOf: '2026-09-18T12:30:00.000Z',
+  }).humanControl, 'human_active')
+
+  const automatic = reconcileLegacyManualPause({
+    summary: base,
+    legacyState: { ...manualState, reason: 'audio_received_silent_handoff' },
+    asOf: '2026-09-18T12:30:00.000Z',
+  })
+  assert.equal(automatic.humanControl, 'ai_active')
+  assert.equal(reconcileLegacyManualPause({
+    summary: base, legacyState: manualState,
+    asOf: '2026-09-18T11:59:59.999Z',
+  }).humanControl, 'ai_active')
+  assert.equal(reconcileLegacyManualPause({
+    summary: base, legacyState: manualState,
+    asOf: '2026-09-19T00:00:00.000Z',
+  }).humanControl, 'ai_active')
+})
+
+test('replay ordenado corrige chegada fora de ordem sem apagar controle humano', () => {
+  const human = registerHumanActivity(defaultConversationSummary('2026-09-18T13:00:00.000Z'), '2026-09-18T13:00:00.000Z')
+  const classification = (intent: 'store_hours' | 'store_location' | 'attachment') => ({
+    intent, confidence: 0.99, topicRelation: 'change_topic' as const,
+    requestsHuman: false, mentionsAttachment: intent === 'attachment',
+    entities: { customerName: null, patientName: null, cpf: null, orderNumber: null },
+  })
+  const turns = [
+    { id: 'hours', openedAt: '2026-09-18T12:00:00.000Z', closesAt: '2026-09-18T12:00:20.000Z', classification: classification('store_hours'), turnMessages: [message(1)] },
+    { id: 'address', openedAt: '2026-09-18T12:02:00.000Z', closesAt: '2026-09-18T12:02:20.000Z', classification: classification('store_location'), turnMessages: [message(2)] },
+    { id: 'photo', openedAt: '2026-09-18T12:04:00.000Z', closesAt: '2026-09-18T12:04:20.000Z', classification: classification('attachment'), turnMessages: [{ ...message(3), kind: 'image' as const }] },
+  ]
+  const result = replayWhatsAppConversationSummary({ summary: human, processedTurns: [turns[2], turns[0], turns[1]] })
+  assert.equal(result.activeTopic, 'attachment')
+  assert.deepEqual(result.secondaryTopics, ['store_location', 'store_hours'])
+  assert.equal(result.attachmentStatus, 'received')
+  assert.equal(result.humanControl, 'human_active')
+  assert.equal(result.humanActiveUntil, human.humanActiveUntil)
+  assert.equal(result.updatedAt, human.updatedAt)
+  assert.deepEqual(result, replayWhatsAppConversationSummary({ summary: result, processedTurns: turns }))
+  assert.throws(() => replayWhatsAppConversationSummary({ summary: human, processedTurns: [turns[0], turns[0]] }), /Turno repetido/)
+})
 
 test('preserva somente as 10 mensagens literais mais recentes em ordem cronologica', () => {
   const result = retainRecentConversationMessages([
@@ -325,6 +590,75 @@ test('decisao sombra usa somente horario oficial para responder sobre expediente
   assert.equal(result.draft.facts.isStoreOpenNow, true)
 })
 
+test('decisao sombra nao propoe resposta enquanto o humano confirmado esta ativo', () => {
+  const summary = reconcileConfirmedHumanActivity({
+    summary: defaultConversationSummary(BASE_TIME),
+    humanMessageAt: BASE_TIME,
+    asOf: '2026-09-18T12:30:00.000Z',
+  })
+  const result = buildWhatsAppShadowDecision({
+    classification: {
+      intent: 'store_hours', confidence: 0.99, topicRelation: 'change_topic',
+      requestsHuman: false, mentionsAttachment: false,
+      entities: { customerName: null, patientName: null, cpf: null, orderNumber: null },
+    },
+    memory: { summary, messages: [message(1)] },
+    now: '2026-09-18T12:30:00.000Z',
+    hoursFacts: {
+      is_open_now: true, is_exceptional_closure: false,
+      today_schedule: '08:00 às 18:00', next_open_schedule: '',
+      full_weekly_schedule: 'Segunda-feira: 08:00 - 18:00',
+    },
+    storeLocationReply: null,
+    hasCurrentTurnAttachment: false,
+  })
+  assert.equal(result.draft.action, 'no_reply')
+  assert.equal(result.reason, 'human_control_blocks_ai')
+})
+
+test('anexo, pedido de atendente e baixa confianca prevalecem sobre resposta de horario', () => {
+  const classification = {
+    intent: 'store_hours' as const,
+    confidence: 0.98,
+    topicRelation: 'change_topic' as const,
+    requestsHuman: false,
+    mentionsAttachment: false,
+    entities: { customerName: null, patientName: null, cpf: null, orderNumber: null },
+  }
+  const input = {
+    classification,
+    memory: { summary: defaultConversationSummary(BASE_TIME), messages: [message(1)] },
+    now: BASE_TIME,
+    hoursFacts: {
+      is_open_now: true,
+      is_exceptional_closure: false,
+      today_schedule: '08:00 as 18:00',
+      next_open_schedule: '',
+      full_weekly_schedule: 'Segunda-feira: 08:00 - 18:00',
+    },
+    storeLocationReply: null,
+    hasCurrentTurnAttachment: false,
+  }
+
+  const withAttachment = buildWhatsAppShadowDecision({ ...input, hasCurrentTurnAttachment: true })
+  assert.equal(withAttachment.draft.action, 'human_handoff')
+  assert.equal(withAttachment.reason, 'attachment_requires_human_review')
+
+  const withHumanRequest = buildWhatsAppShadowDecision({
+    ...input,
+    classification: { ...classification, requestsHuman: true },
+  })
+  assert.equal(withHumanRequest.draft.action, 'human_handoff')
+  assert.equal(withHumanRequest.reason, 'customer_requests_human')
+
+  const withLowConfidence = buildWhatsAppShadowDecision({
+    ...input,
+    classification: { ...classification, confidence: 0.2 },
+  })
+  assert.equal(withLowConfidence.draft.action, 'human_handoff')
+  assert.equal(withLowConfidence.reason, 'classification_below_safe_confidence')
+})
+
 test('assunto que exige funcionario gera handoff transparente da IAra', () => {
   const result = buildWhatsAppShadowDecision({
     classification: {
@@ -469,6 +803,8 @@ test('processador sombra registra classificacao e decisao sem enviar mensagem', 
   const processing = finished[0].metadata.shadowProcessing as Record<string, unknown>
   assert.equal(processing.sendsMessage, false)
   assert.equal((processing.decision as { action: string }).action, 'human_handoff')
+  assert.equal((processing.summaryProposal as { activeTopic: string }).activeTopic, 'vision_exam')
+  assert.equal((processing.summaryProposal as { humanControl: string }).humanControl, 'ai_active')
 })
 
 test('processador libera turno sem classificar quando a loja voltou para legacy', async () => {
