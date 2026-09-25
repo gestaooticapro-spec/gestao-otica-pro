@@ -9,6 +9,7 @@ export type Release = {
 // altera o Dashboard ou o modal de histórico.
 export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'A liberação da pausa humana passa a considerar os formatos equivalentes do telefone, evitando que uma pausa antiga continue bloqueando respostas.',
   'As respostas automáticas seguras do WhatsApp no piloto passaram a acompanhar o idioma detectado na conversa (português, espanhol ou inglês), inclusive saudações como “Buenos días”, horários, endereço, encaminhamentos, avisos de fechamento e chave Pix oficial.',
   'Perguntas em português ou espanhol sobre o horário de amanhã passam a receber o horário oficial do dia solicitado, em vez do horário de hoje.',
   'Respostas do WhatsApp pendentes apos uma falha de comunicacao voltam a ser encontradas e enviadas pela recuperacao automatica da VPS.',

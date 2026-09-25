@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { Database, Json } from '@/lib/database.types'
 import { describeOpenOs, WhatsAppOsStatusCode } from './os-status'
 import { digitsOnly, getPhoneVariants, phonesMatch, phonesMatchLast8, toEvolutionNumber } from './phone'
+import { resolveConversationStateCandidates } from './conversation-state-matching'
 import type { StoreSettings } from '@/lib/store-modules'
 import { evaluateStoreHours } from './store-hours-logic'
 import {
@@ -116,7 +117,9 @@ type ConversationStateRow = {
   remote_phone: string
   state: ConversationState
   expires_at: string
+  updated_at: string
   metadata: Json | null
+  matchingIds?: number[]
 }
 
 type LastOutboundStatusRow = {
@@ -1852,28 +1855,26 @@ async function findConversationState(channelId: number, phone: string): Promise<
   const phoneVariants = [...getPhoneVariants(phone)]
   if (!phoneVariants.length) return null
   const { data, error } = await (supabase.from('whatsapp_conversation_states') as any)
-    .select('id, remote_phone, state, expires_at, metadata')
+    .select('id, remote_phone, state, expires_at, updated_at, metadata')
     .eq('channel_id', channelId)
     .in('remote_phone', phoneVariants)
 
   if (error) throw error
   const candidates = (data ?? []) as ConversationStateRow[]
-  const now = Date.now()
-  const expiredIds = candidates
-    .filter((item) => new Date(item.expires_at).getTime() <= now)
-    .map((item) => item.id)
+  const resolution = resolveConversationStateCandidates({
+    candidates,
+    phone,
+    nowMs: Date.now(),
+  })
+  const expiredIds = resolution.expiredIds
   if (expiredIds.length) {
     await (supabase.from('whatsapp_conversation_states') as any)
       .delete()
       .in('id', expiredIds)
   }
 
-  const activeCandidates = candidates.filter((item) => !expiredIds.includes(item.id))
-  const exact = activeCandidates.find((item) => item.remote_phone === phone)
-  const matching = exact || activeCandidates.find((item) => phonesMatch(item.remote_phone, phone))
-  if (!matching) return null
-
-  return matching
+  if (!resolution.selected) return null
+  return { ...resolution.selected, matchingIds: resolution.matchingIds }
 }
 
 async function loadPersistedConversationHistory(
@@ -1941,11 +1942,11 @@ async function loadPersistedConversationHistory(
   return formatWhatsAppPersistedConversationHistory(entries)
 }
 
-async function clearConversationStateById(id: number) {
+async function clearConversationStateById(id: number, matchingIds: number[] = [id]) {
   const supabase = createAdminClient()
   const { error } = await (supabase.from('whatsapp_conversation_states') as any)
     .delete()
-    .eq('id', id)
+    .in('id', [...new Set([id, ...matchingIds])])
 
   if (error) throw error
 }
@@ -2084,7 +2085,6 @@ async function setConversationState(
     tenant_id: channel.tenant_id,
     store_id: channel.store_id,
     channel_id: channel.id,
-    remote_phone: phone,
     state,
     metadata: preparedMetadata,
     expires_at: expiresIn(ms),
@@ -2099,13 +2099,13 @@ async function setConversationState(
   if (existingState?.id) {
     const { error } = await (supabase.from('whatsapp_conversation_states') as any)
       .update(values)
-      .eq('id', existingState.id)
+      .in('id', existingState.matchingIds?.length ? existingState.matchingIds : [existingState.id])
     if (error) throw error
     return true
   }
 
   const { error } = await (supabase.from('whatsapp_conversation_states') as any)
-    .upsert(values, { onConflict: 'channel_id,remote_phone' })
+    .upsert({ ...values, remote_phone: phone }, { onConflict: 'channel_id,remote_phone' })
 
   if (error) throw error
   return true
@@ -2607,7 +2607,7 @@ export async function resolveCustomerStatus(
   })
 
   if (shouldReleaseClosedTrap && state?.id) {
-    await clearConversationStateById(state.id)
+    await clearConversationStateById(state.id, state.matchingIds)
     state = null
   }
 

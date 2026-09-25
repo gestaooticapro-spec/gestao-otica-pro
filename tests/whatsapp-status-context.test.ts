@@ -10,6 +10,7 @@ import {
   continueExperimentalConversationAfterAutomatedHandoff,
   decidePreAiRoute,
 } from '../src/lib/whatsapp/routing-heuristics'
+import { resolveConversationStateCandidates } from '../src/lib/whatsapp/conversation-state-matching'
 
 test('silencia apenas uma repeticao literal de status', () => {
   assert.equal(isSimpleRepeatedStatusQuestion('Como t\u00e1 meu \u00f3culos?'), true)
@@ -33,6 +34,44 @@ test('mantem o contexto disponivel enquanto aguarda a primeira resposta humana',
 
   assert.equal(decidePreAiRoute({ ...baseInput, state: 'awaiting_human' }), 'continue_to_ai_or_menu')
   assert.equal(decidePreAiRoute({ ...baseInput, state: 'human_pause' }), 'ignore_human_pause')
+})
+
+test('liberacao considera todas as variantes de telefone e elimina pausa duplicada antiga', () => {
+  const resolution = resolveConversationStateCandidates({
+    phone: '5544999261487',
+    nowMs: Date.parse('2026-09-25T12:00:00.000Z'),
+    candidates: [
+      {
+        id: 10, remote_phone: '5544999261487', state: 'ai_session',
+        expires_at: '2026-09-25T14:00:00.000Z', updated_at: '2026-09-25T11:30:00.000Z',
+      },
+      {
+        id: 11, remote_phone: '44999261487', state: 'human_pause',
+        expires_at: '2026-09-25T23:00:00.000Z', updated_at: '2026-09-25T11:45:00.000Z',
+      },
+      {
+        id: 12, remote_phone: '554499261487', state: 'human_pause',
+        expires_at: '2026-09-25T11:00:00.000Z', updated_at: '2026-09-25T10:00:00.000Z',
+      },
+    ],
+  })
+
+  assert.deepEqual(resolution.expiredIds, [12])
+  assert.deepEqual(resolution.matchingIds, [11, 10])
+  assert.equal(resolution.selected?.id, 11)
+})
+
+test('pausa confirmada continua bloqueando; estado expirado permite retomada', () => {
+  const baseInput = {
+    option: null,
+    hasAttachment: false,
+    messageText: 'Quero continuar',
+    metadata: {},
+    humanHandoffWindowMs: 60 * 60 * 1000,
+    identifierWindowMs: 20 * 60 * 1000,
+  }
+  assert.equal(decidePreAiRoute({ ...baseInput, state: 'human_pause' }), 'ignore_human_pause')
+  assert.equal(decidePreAiRoute({ ...baseInput, state: null }), 'continue_to_ai_or_menu')
 })
 
 test('recupera contexto da equipe e de comprovante sem confirmar a baixa', () => {
