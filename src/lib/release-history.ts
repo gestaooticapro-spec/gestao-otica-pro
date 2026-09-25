@@ -9,6 +9,8 @@ export type Release = {
 // altera o Dashboard ou o modal de histórico.
 export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'O piloto do novo WhatsApp da Loja 1 foi preparado para responder horario, endereco/mapa e chave Pix oficial, com ativacao por loja e retorno imediato ao fluxo anterior.',
+  'O modo sombra do WhatsApp ganhou uma auditoria agregada que compara as decisões do redesign com o resultado real do fluxo atual sem exibir dados dos clientes.',
   'O acompanhamento em sombra do novo WhatsApp passou a consolidar assuntos e anexos na memória da conversa e a reconhecer a assunção humana confirmada, sem interferir no atendimento atual.',
   'O modo sombra do WhatsApp passou a encaminhar anexos, pedidos de atendente e dúvidas com baixa confiança antes de propor respostas automáticas.',
   'O perfil lateral da lente no relatório do cliente passou a ser centralizado e ajustado ao quadro, sem exigir tamanho físico real.',

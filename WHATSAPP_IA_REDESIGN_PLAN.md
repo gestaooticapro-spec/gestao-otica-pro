@@ -2137,3 +2137,20 @@ real, cliente, resposta automática e funcionário.
   assunção/liberação/handoff e idempotência. O usuário executou o roteiro e
   recebeu `VALIDACAO_ETAPA_2_OK`; os fixtures foram revertidos, sem chamada de
   IA ou envio de mensagem. Etapa 2 concluída; etapa 3 pendente.
+
+### Etapas 3 e 4 — situação em 24/09/2026
+
+A etapa 3 foi concluída com auditoria agregada e validações reais de horário,
+endereço, anexo e pedido de atendente na Loja 1. O relatório está em
+`docs/whatsapp-redesign-stage3-validation.md`; nenhuma resposta do redesign
+foi enviada durante essa etapa.
+
+A etapa 4 foi autorizada. O piloto de respostas seguras está sendo preparado
+somente para a Loja 1, preservando `shadow` e o roteador atual para os assuntos
+fora do escopo. Horário e endereço/mapa vêm das configurações oficiais da
+loja; a chave Pix vem exclusivamente de `stores.pix_key` e só é enviada para
+pedido isolado pela chave. O acionamento é explícito por
+`whatsapp_automation.ai_redesign.safe_replies_enabled`; desligar essa flag
+devolve as próximas mensagens ao fluxo anterior. O roteiro de ativação e
+reversão está em `docs/whatsapp-redesign-stage4-pilot.md`. Ainda é necessário
+publicar o código e validar o piloto em produção antes de concluir a etapa.

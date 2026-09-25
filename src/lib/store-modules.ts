@@ -70,6 +70,8 @@ export type WhatsAppAiResponderSettings = {
 
 export type WhatsAppAiRedesignSettings = {
   mode?: 'legacy' | 'shadow' | 'redesign'
+  /** Piloto da Loja 1: desativar restaura integralmente o roteador anterior. */
+  safe_replies_enabled?: boolean
 }
 
 export type WhatsAppAutomationSettings = {

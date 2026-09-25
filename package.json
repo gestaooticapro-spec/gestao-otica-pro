@@ -23,6 +23,7 @@
     "test:whatsapp-redesign": "tsx --test tests/whatsapp-conversation-redesign-contract.test.ts",
     "check:whatsapp-redesign": "npm run typecheck && npm run test:whatsapp-redesign",
     "check:whatsapp-redesign:db": "tsx scripts/check-whatsapp-redesign-stage2.ts",
+    "check:whatsapp-redesign:stage3": "tsx scripts/check-whatsapp-redesign-stage3.ts",
     "test:sicredi-pix-auth": "tsx scripts/test_sicredi_pix_auth.ts",
     "test:sicredi-pix-contracts": "node --test tests/sicredi-pix-contracts.test.mjs",
     "test:sale-financial-boundary": "node --test tests/sale-financial-boundary.test.mjs",

@@ -8,6 +8,7 @@ import type { StoreSettings } from '@/lib/store-modules'
 import { evaluateStoreHours } from './store-hours-logic'
 import {
   classifyWhatsAppIntent,
+  classifyWhatsAppRedesignConversation,
   resolveWhatsAppInstallmentReminderPreference,
   resolveWhatsAppPostSaleRating,
   humanizeWhatsAppReply,
@@ -59,6 +60,10 @@ import {
   captureWhatsAppShadowInbound,
   captureWhatsAppShadowOutbound,
 } from './redesign/shadow-ingestion'
+import { WhatsAppRedesignConversationStore } from './redesign/store'
+import { buildOfficialStoreLocationReply, buildWhatsAppShadowDecision } from './redesign/system-decision'
+import { applyStoreAvailabilityToDecision } from './redesign/store-availability-policy'
+import { isStoreOneSafeRepliesPilotEnabled, selectStoreOnePilotSafeReply } from './redesign/safe-replies-pilot'
 
 const SAME_STATUS_SILENCE_WINDOW_MS = 2 * 60 * 60 * 1000
 const HUMAN_PAUSE_MS = 60 * 60 * 1000
@@ -2515,7 +2520,7 @@ export async function resolveCustomerStatus(
   if (inboundError && inboundError.code !== '23505') throw inboundError
   if (!inbound) throw new Error('Inbound do WhatsApp nao foi criado nem recuperado.')
 
-  await captureWhatsAppShadowInbound({
+  const shadowCapture = await captureWhatsAppShadowInbound({
     channel,
     remotePhone: normalizedPhone,
     providerMessageId: input.providerMessageId,
@@ -2602,6 +2607,64 @@ export async function resolveCustomerStatus(
   if (shouldReleaseClosedTrap && state?.id) {
     await clearConversationStateById(state.id)
     state = null
+  }
+
+  if (isStoreOneSafeRepliesPilotEnabled(channel.store_id, automationSettings)
+    && shadowCapture.captured && 'turnId' in shadowCapture
+    && typeof shadowCapture.turnId === 'string'
+    && controlMode !== 'force_human'
+    && !['human_pause', 'awaiting_human', 'waiting_human_after_attachment', 'silent'].includes(state?.state ?? '')) {
+    let pilotReply: ReturnType<typeof selectStoreOnePilotSafeReply> = null
+    try {
+      const turnContext = await new WhatsAppRedesignConversationStore().loadTurnContext(shadowCapture.turnId)
+      const humanControl = turnContext.memory.summary.humanControl
+      const classificationResult = humanControl === 'human_active' || humanControl === 'human_pending'
+        ? null : await classifyWhatsAppRedesignConversation({
+          memory: turnContext.memory,
+          turnMessages: turnContext.turnMessages,
+          elapsedSincePreviousMessageMs: null,
+        })
+      if (classificationResult?.success) {
+        const decisionAt = new Date()
+        const decisionHours = settings.store_hours
+          ? evaluateStoreHours(settings.store_hours, decisionAt)
+          : null
+        const proposal = buildWhatsAppShadowDecision({
+          classification: classificationResult.data,
+          memory: turnContext.memory,
+          now: decisionAt.toISOString(),
+          hoursFacts: decisionHours,
+          storeLocationReply: storeProfile.street?.trim() && storeProfile.number?.trim()
+            && storeProfile.city?.trim() && storeProfile.state?.trim()
+            ? buildOfficialStoreLocationReply(storeProfile)
+            : null,
+          hasCurrentTurnAttachment: turnContext.turnMessages.some((message) => message.kind !== 'text'),
+        })
+        const decision = decisionHours
+          ? applyStoreAvailabilityToDecision(proposal.draft, decisionHours)
+          : proposal.draft
+        pilotReply = selectStoreOnePilotSafeReply({
+          classification: classificationResult.data,
+          decision,
+          turnMessages: turnContext.turnMessages,
+          officialPixKey: storeProfile.pix_key ?? null,
+          officialPixHolder: storeProfile.razao_social || storeProfile.name,
+        })
+      }
+    } catch {
+      // Falha no piloto preserva o roteador anterior sem revelar mensagens ou chaves em logs.
+      console.warn('[WhatsApp redesign pilot] Decisao indisponivel; fluxo anterior preservado.')
+    }
+
+    if (pilotReply) {
+      return createOutbound(channel, inbound.id, normalizedPhone, pilotReply.text, pilotReply.messageType,
+        buildWhatsAppCanonicalPayload({
+          intent: pilotReply.action === 'answer_official_pix' ? 'payment_info' : pilotReply.action === 'answer_store_hours' ? 'store_hours' : 'store_location',
+          action: pilotReply.action,
+          outboundType: pilotReply.messageType,
+          canonicalReply: pilotReply.text,
+        }), inbound.id)
+    }
   }
 
   const effectiveState = effectiveStateForControl(state, controlMode)

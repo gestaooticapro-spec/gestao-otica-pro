@@ -42,8 +42,71 @@ import {
   replayWhatsAppConversationSummary,
 } from '../src/lib/whatsapp/redesign/memory-consolidation'
 import { WhatsAppRedesignConversationStore } from '../src/lib/whatsapp/redesign/store'
+import {
+  compareWhatsAppShadowWithLegacy,
+  extractWhatsAppLegacyCanonicalEvidence,
+  extractWhatsAppShadowDecisionEvidence,
+} from '../src/lib/whatsapp/redesign/shadow-comparison'
 
 const BASE_TIME = '2026-09-18T12:00:00.000Z'
+
+test('comparacao da etapa 3 extrai somente evidencias estruturadas', () => {
+  const shadow = extractWhatsAppShadowDecisionEvidence({
+    shadowProcessing: {
+      classification: { intent: 'store_hours', mentionsAttachment: false },
+      decision: { action: 'answer_store_hours', canonicalReply: 'conteudo privado' },
+    },
+  })
+  const legacy = extractWhatsAppLegacyCanonicalEvidence({
+    canonical: {
+      intent: 'store_hours',
+      action: 'auto_reply',
+      outboundType: 'store_hours',
+      canonicalReply: 'outro conteudo privado',
+      facts: { storeName: 'privado' },
+    },
+  })
+
+  assert.deepEqual(shadow, {
+    action: 'answer_store_hours',
+    intent: 'store_hours',
+    mentionsAttachment: false,
+  })
+  assert.deepEqual(legacy, {
+    canonicalAction: 'auto_reply',
+    canonicalOutboundType: 'store_hours',
+    canonicalIntent: 'store_hours',
+  })
+})
+
+test('comparacao da etapa 3 distingue alinhamento, seguranca e divergencia', () => {
+  const hoursShadow = {
+    action: 'answer_store_hours' as const,
+    intent: 'store_hours' as const,
+    mentionsAttachment: false,
+  }
+  assert.equal(compareWhatsAppShadowWithLegacy(hoursShadow, {
+    inboundStatus: 'processed', outboundStatus: 'sent', messageType: 'store_hours',
+    canonicalAction: 'auto_reply', canonicalOutboundType: 'store_hours', canonicalIntent: 'store_hours',
+  }).verdict, 'aligned')
+
+  assert.equal(compareWhatsAppShadowWithLegacy({
+    action: 'human_handoff', intent: 'attachment', mentionsAttachment: true,
+  }, {
+    inboundStatus: 'processed', outboundStatus: 'sent', messageType: 'human_handoff',
+    canonicalAction: 'human_handoff', canonicalOutboundType: 'human_handoff', canonicalIntent: null,
+  }).verdict, 'safety_aligned')
+
+  assert.equal(compareWhatsAppShadowWithLegacy(hoursShadow, {
+    inboundStatus: 'ignored', outboundStatus: null, messageType: null,
+    canonicalAction: null, canonicalOutboundType: null, canonicalIntent: null,
+  }).verdict, 'divergent')
+
+  assert.equal(compareWhatsAppShadowWithLegacy(hoursShadow, {
+    inboundStatus: 'received', outboundStatus: null, messageType: null,
+    canonicalAction: null, canonicalOutboundType: null, canonicalIntent: null,
+  }).verdict, 'inconclusive')
+})
 
 function message(index: number, role: WhatsAppConversationMessage['role'] = 'customer'): WhatsAppConversationMessage {
   return {

@@ -21,9 +21,9 @@ registrado no `WHATSAPP_IA_REDESIGN_PLAN.md`.
    mensagem ao cliente.~~
 2. **CONCLUÍDA — Consolidar memoria e controle humano.** Atualizar assunto,
    pendencias, anexos, handoff e pausa humana renovavel de duas horas.
-3. **PENDENTE — Validar decisoes em sombra.** Comparar redesign e legado na
-   Loja 1 com conversas reais e cenarios de teste, sem trocar quem responde.
-4. **PENDENTE — Ativar respostas seguras no piloto.** Liberar horario,
+3. ~~**CONCLUÍDA — Validar decisões em sombra.** Comparar redesign e legado na
+  Loja 1 com conversas reais e cenarios de teste, sem trocar quem responde.~~
+4. **EM ANDAMENTO — Ativar respostas seguras no piloto.** Liberar horario,
    endereco/mapa e Pix oficial somente na Loja 1, com reversao simples.
 5. **PENDENTE — Implementar fluxos sensiveis.** Tratar OS/retirada, parcelas,
    anexos/comprovantes, produtos, exame de vista, reclamacao, troca e garantia.
@@ -106,3 +106,42 @@ registrado no `WHATSAPP_IA_REDESIGN_PLAN.md`.
   recebeu a linha de resultado `VALIDACAO_ETAPA_2_OK`; a transação de teste
   terminou em `ROLLBACK`. Etapa 2 concluída. A etapa 3 permanece pendente e
   ainda não foi iniciada.
+- 24/09/2026: etapa 3 autorizada e iniciada com uma auditoria somente leitura.
+  O comparador usa a decisão canônica realmente registrada pelo legado e a
+  decisão proposta pelo redesign, produzindo apenas contagens agregadas sem
+  imprimir identificadores, telefones, mensagens, payloads ou credenciais.
+- 24/09/2026: primeira auditoria agregada executada sobre 50 turnos reais da
+  Loja 1. Foram encontrados 28 alinhamentos e 22 divergências; 18 divergências
+  são propostas de handoff do redesign diante de silêncio do legado. A etapa
+  segue em andamento para validar cenários controlados de horário, endereço,
+  anexo e pedido explícito de atendente.
+- 24/09/2026: cenário controlado de horário validado na Loja 1. Após confirmar
+  separadamente que a pausa humana bloqueia ambos os fluxos, a conversa de
+  teste foi liberada: o legado enviou `store_hours` e o redesign propôs
+  `answer_store_hours` com motivo `official_store_hours_available`, mantendo
+  `sendsMessage: false`. Resultado alinhado.
+- 24/09/2026: cenário controlado de endereço validado na Loja 1. O legado
+  respondeu com `store_location` e o redesign propôs `answer_store_location`
+  com motivo `official_store_location_available`. Resultado alinhado; o
+  silêncio temporário criado pelo legado para a conversa de teste foi removido.
+- 24/09/2026: cenário controlado de pedido explícito de atendente validado.
+  O redesign propôs `human_handoff` (`customer_requests_human`), enquanto o
+  legado respondeu com horário de abertura por a loja estar fechada. A diferença
+  confirma que o redesign prioriza o pedido explícito de atendimento humano;
+  a pausa temporária dessa conversa de teste foi removida.
+- 24/09/2026: cenário controlado de anexo validado. O redesign detectou o
+  arquivo e propôs handoff para quando a loja abrir; o legado enviou uma
+  resposta classificada como horário. A diferença confirma o tratamento
+  conservador de anexos pelo redesign; a pausa temporária dessa conversa de teste
+  foi removida.
+- 24/09/2026: etapa 3 concluída após comparar 50 turnos reais anonimizados
+  (27 alinhados, 23 divergentes) e validar quatro cenários controlados. Horário
+  e endereço alinharam com o legado. Pedido explícito de atendente e anexo
+  produziram divergências esperadas: o redesign encaminha para a equipe e
+  informa a próxima abertura; o fluxo atual priorizou horário. Nenhuma resposta
+  do redesign foi enviada. Etapa 4 permanece pendente de autorização.
+- 24/09/2026: etapa 4 autorizada. O caminho de resposta do piloto foi preparado
+  para a Loja 1, limitado a horario, endereco/mapa e pedido literal pela chave
+  Pix oficial. Continua desligado por padrao ate publicar o codigo e ativar
+  `whatsapp_automation.ai_redesign.safe_replies_enabled` na loja. Os demais
+  assuntos continuam no fluxo anterior; desativar a flag reverte o piloto.
