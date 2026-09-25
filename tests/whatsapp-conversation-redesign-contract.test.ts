@@ -32,6 +32,7 @@ import { applyStoreAvailabilityToDecision } from '../src/lib/whatsapp/redesign/s
 import {
   buildOfficialStoreLocationReply,
   buildWhatsAppShadowDecision,
+  isExplicitOfficialPixRequest,
 } from '../src/lib/whatsapp/redesign/system-decision'
 import { processWhatsAppRedesignShadowTurns } from '../src/lib/whatsapp/redesign/shadow-processor'
 import {
@@ -700,6 +701,9 @@ test('decisao sombra usa somente horario oficial para responder sobre expediente
 })
 
 test('pedido literal da chave Pix vira acao registrada sem gravar o valor da chave no turno', () => {
+  assert.equal(isExplicitOfficialPixRequest('Qual é a chave Pix da loja?'), true)
+  assert.equal(isExplicitOfficialPixRequest('Me passa a chave Pix da ótica, por favor'), true)
+
   const result = buildWhatsAppShadowDecision({
     classification: {
       intent: 'unknown', confidence: 0.98, topicRelation: 'continue_topic',
