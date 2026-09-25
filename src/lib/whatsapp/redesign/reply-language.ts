@@ -14,17 +14,19 @@ const MARKERS: Record<WhatsAppRedesignReplyLanguage, readonly string[]> = {
   'pt-BR': [
     'amanha', 'hoje', 'loja', 'aberta', 'aberto', 'abrem', 'onde', 'quero', 'preciso',
     'obrigado', 'obrigada', 'ola', 'oi', 'voces', 'tem', 'qual', 'horario', 'endereco',
-    'atendente', 'posso', 'pix', 'me passa', 'me envia',
+    'atendente', 'posso', 'pix', 'me passa', 'me envia', 'bom dia', 'boa tarde', 'boa noite',
+    'tudo bem', 'como vai',
   ],
   es: [
     'manana', 'hoy', 'tienda', 'abierta', 'abierto', 'abren', 'donde', 'quiero', 'necesito',
     'gracias', 'hola', 'tienen', 'cual', 'horario', 'direccion', 'atencion', 'puedo',
-    'envia', 'pasa', 'clave pix', 'llave pix',
+    'envia', 'pasa', 'clave pix', 'llave pix', 'buenos dias', 'buenas tardes',
+    'buenas noches', 'como estas', 'como estan', 'que tal',
   ],
   en: [
     'tomorrow', 'today', 'store', 'shop', 'open', 'closed', 'where', 'want', 'need', 'thanks',
     'thank you', 'hello', 'hi', 'do you have', 'which', 'hours', 'address', 'attendant',
-    'staff', 'pix key',
+    'staff', 'pix key', 'good morning', 'good afternoon', 'good evening', 'how are you',
   ],
 }
 

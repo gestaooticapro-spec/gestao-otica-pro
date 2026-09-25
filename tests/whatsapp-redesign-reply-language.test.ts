@@ -22,6 +22,11 @@ test('detecta idioma da mensagem atual e usa contexto recente somente quando nec
   assert.equal(detectWhatsAppRedesignReplyLanguage(['¿La tienda estará abierta mañana?']), 'es')
   assert.equal(detectWhatsAppRedesignReplyLanguage(['Will the store be open tomorrow?']), 'en')
   assert.equal(detectWhatsAppRedesignReplyLanguage(['A loja abre amanhã?']), 'pt-BR')
+  assert.equal(detectWhatsAppRedesignReplyLanguage(
+    ['Buenos días, ¿cómo están?'], ['Will the store be open today?', 'Where is the store?']
+  ), 'es')
+  assert.equal(detectWhatsAppRedesignReplyLanguage(['Good morning, how are you?']), 'en')
+  assert.equal(detectWhatsAppRedesignReplyLanguage(['Bom dia, tudo bem?']), 'pt-BR')
   assert.equal(detectWhatsAppRedesignReplyLanguage(['???'], ['Hola, ¿cuál es la dirección?']), 'es')
   assert.equal(detectWhatsAppRedesignReplyLanguage(['Oi, ¿la tienda está abierta?']), 'es')
 })
