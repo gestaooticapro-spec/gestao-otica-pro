@@ -1,5 +1,5 @@
 import { StoreHoursConfig } from '@/lib/store-modules'
-import { formatInTimeZone } from 'date-fns-tz'
+import { formatInTimeZone, fromZonedTime } from 'date-fns-tz'
 import { addDays } from 'date-fns'
 
 export type StoreHoursFacts = {
@@ -188,4 +188,18 @@ export function evaluateStoreHours(config: StoreHoursConfig, referenceDateInput:
         next_open_schedule: nextOpenScheduleStr,
         full_weekly_schedule: fullWeeklySchedule
     }
+}
+
+export function evaluateNextLocalDayStoreHours(
+    config: StoreHoursConfig,
+    referenceDateInput: Date
+): StoreHoursFacts {
+    const timezone = config.timezone || 'America/Sao_Paulo'
+    const localDate = formatInTimeZone(referenceDateInput, timezone, 'yyyy-MM-dd')
+    const [year, month, day] = localDate.split('-').map(Number)
+    const nextLocalDate = new Date(Date.UTC(year, month - 1, day + 1, 12))
+        .toISOString()
+        .slice(0, 10)
+    const referenceAtLocalNoon = fromZonedTime(`${nextLocalDate}T12:00:00`, timezone)
+    return evaluateStoreHours(config, referenceAtLocalNoon)
 }

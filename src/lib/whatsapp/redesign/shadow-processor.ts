@@ -4,7 +4,7 @@ import {
   classifyWhatsAppRedesignConversation,
   type WhatsAppAiResult,
 } from '../ai'
-import { evaluateStoreHours } from '../store-hours-logic'
+import { evaluateNextLocalDayStoreHours, evaluateStoreHours } from '../store-hours-logic'
 import {
   WhatsAppRedesignModeSchema,
   WhatsAppRedesignClassificationSchema,
@@ -88,6 +88,9 @@ async function processClaimedTurn(input: {
   const hoursFacts = settings.store_hours
     ? evaluateStoreHours(settings.store_hours, decisionAt)
     : null
+  const tomorrowHoursFacts = settings.store_hours
+    ? evaluateNextLocalDayStoreHours(settings.store_hours, decisionAt)
+    : null
 
   const classificationResult = await input.classifier({
     memory: context.memory,
@@ -104,6 +107,11 @@ async function processClaimedTurn(input: {
     memory: context.memory,
     now: decisionAt.toISOString(),
     hoursFacts,
+    tomorrowHoursFacts,
+    currentTurnTexts: context.turnMessages
+      .filter((message) => message.role === 'customer' && message.kind === 'text')
+      .map((message) => message.text ?? '')
+      .filter(Boolean),
     storeLocationReply: buildOfficialStoreLocationReply(storeProfile),
     hasCurrentTurnAttachment: context.turnMessages.some((message) => message.kind !== 'text'),
     explicitOfficialPixRequest: context.turnMessages.length === 1

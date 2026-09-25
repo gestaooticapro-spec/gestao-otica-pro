@@ -55,10 +55,49 @@ export type WhatsAppShadowDecisionInput = {
   memory: WhatsAppConversationMemory
   now: string
   hoursFacts: StoreHoursFacts | null
+  tomorrowHoursFacts?: StoreHoursFacts | null
+  currentTurnTexts?: string[]
   storeLocationReply: string | null
   hasCurrentTurnAttachment: boolean
   explicitOfficialPixRequest?: boolean
   hasOfficialPixKey?: boolean
+}
+
+function normalizeText(value: string) {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR')
+}
+
+function requestedHoursDay(texts: string[]) {
+  const normalized = normalizeText(texts.join(' '))
+  return /\b(?:amanha|manana|tomorrow)\b/.test(normalized) ? 'tomorrow' : 'current'
+}
+
+function requestedHoursLanguage(texts: string[]) {
+  const normalized = normalizeText(texts.join(' '))
+  return /\b(?:manana|hoy|abren|abierto|abierta|tienda|estara)\b/.test(normalized)
+    ? 'es'
+    : 'pt'
+}
+
+function canonicalTomorrowHoursReply(facts: StoreHoursFacts, language: 'es' | 'pt') {
+  const schedule = facts.today_schedule.trim()
+  const isClosed = /^fechado(?: excepcionalmente)?$/i.test(schedule)
+  if (isClosed) {
+    return language === 'es'
+      ? 'Mañana la tienda estará cerrada.'
+      : 'Amanhã a loja estará fechada.'
+  }
+
+  const times = [...schedule.matchAll(/\b\d{1,2}:\d{2}\b/g)].map((match) => match[0])
+  if (times.length < 2) {
+    return language === 'es'
+      ? `El horario previsto para mañana es: ${schedule}.`
+      : `O horário previsto para amanhã é: ${schedule}.`
+  }
+
+  return language === 'es'
+    ? `Sí, mañana abrimos de ${times[0]} a ${times[1]}.`
+    : `Sim, amanhã abriremos das ${times[0]} às ${times[1]}.`
 }
 
 export type WhatsAppShadowDecisionResult = {
@@ -127,6 +166,25 @@ export function buildWhatsAppShadowDecision(
 
   if (classification.intent === 'store_hours' && input.hoursFacts
     && classification.confidence >= WHATSAPP_REDESIGN_MIN_CONFIDENCE) {
+    const requestedDay = requestedHoursDay(input.currentTurnTexts ?? [])
+    if (requestedDay === 'tomorrow' && input.tomorrowHoursFacts) {
+      const language = requestedHoursLanguage(input.currentTurnTexts ?? [])
+      return {
+        reason: 'official_store_hours_requested_day',
+        draft: WhatsAppSystemDecisionDraftSchema.parse({
+          action: 'answer_store_hours',
+          canonicalReply: canonicalTomorrowHoursReply(input.tomorrowHoursFacts, language),
+          facts: {
+            requestedDay,
+            tomorrowSchedule: input.tomorrowHoursFacts.today_schedule,
+            tomorrowIsExceptionalClosure: input.tomorrowHoursFacts.is_exceptional_closure,
+          },
+          humanHandoffTiming: null,
+          humanization: humanization(false),
+        }),
+      }
+    }
+
     const canonicalReply = input.hoursFacts.is_open_now
       ? `Sim, estamos abertos agora. O horário de hoje é ${input.hoursFacts.today_schedule}.`
       : `No momento estamos fechados. A próxima abertura será ${input.hoursFacts.next_open_schedule}.`

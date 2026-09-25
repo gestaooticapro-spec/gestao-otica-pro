@@ -177,3 +177,11 @@ registrado no `WHATSAPP_IA_REDESIGN_PLAN.md`.
   `force_human`/`force_ai` preservam o roteamento de controle existente. Typecheck
   e 48 testes focados passaram; falta publicar e repetir as validacoes reais de
   pedido humano/anexo, alem de conferir ausencia de duplicidade.
+- 25/09/2026: leitura agregada de duas conversas reais confirmou que o decisor
+  respondia perguntas de expediente com os fatos de hoje mesmo quando o cliente
+  perguntava por amanha. O decisor passou a identificar o dia explicitamente
+  solicitado e responder no idioma espanhol quando detectado, usando a agenda
+  oficial daquele dia. Em outra conversa, a classificacao reconheceu a
+  continuacao do assunto de disponibilidade de produto e encaminhou para a
+  equipe; a consulta de produtos continua pertencendo a etapa 5. Nao foram
+  alteradas conversas nem enviados testes ao WhatsApp.

@@ -35,6 +35,7 @@ import {
   isExplicitOfficialPixRequest,
 } from '../src/lib/whatsapp/redesign/system-decision'
 import { processWhatsAppRedesignShadowTurns } from '../src/lib/whatsapp/redesign/shadow-processor'
+import { evaluateNextLocalDayStoreHours } from '../src/lib/whatsapp/store-hours-logic'
 import {
   applyConfirmedControlEvent,
   proposeWhatsAppConversationSummary,
@@ -698,6 +699,82 @@ test('decisao sombra usa somente horario oficial para responder sobre expediente
   assert.equal(result.draft.action, 'answer_store_hours')
   assert.match(result.draft.canonicalReply || '', /abertos agora/i)
   assert.equal(result.draft.facts.isStoreOpenNow, true)
+})
+
+test('pergunta em espanhol sobre amanha responde no idioma e no dia solicitado', () => {
+  const result = buildWhatsAppShadowDecision({
+    classification: {
+      intent: 'store_hours', confidence: 0.98, topicRelation: 'continue_topic',
+      requestsHuman: false, mentionsAttachment: false,
+      entities: { customerName: null, patientName: null, cpf: null, orderNumber: null },
+    },
+    memory: { summary: defaultConversationSummary(BASE_TIME), messages: [message(1)] },
+    now: BASE_TIME,
+    hoursFacts: {
+      is_open_now: false, is_exceptional_closure: false,
+      today_schedule: '08:30 Ã s 18:00', next_open_schedule: 'AmanhÃ£ Ã s 08:30',
+      full_weekly_schedule: 'Quinta-feira: 08:30 - 18:00',
+    },
+    tomorrowHoursFacts: {
+      is_open_now: false, is_exceptional_closure: false,
+      today_schedule: '08:30 Ã s 18:00', next_open_schedule: 'Sexta-feira Ã s 08:30',
+      full_weekly_schedule: 'Sexta-feira: 08:30 - 18:00',
+    },
+    currentTurnTexts: ['¿La tienda estará abierta mañana?'],
+    storeLocationReply: null,
+    hasCurrentTurnAttachment: false,
+  })
+
+  assert.equal(result.reason, 'official_store_hours_requested_day')
+  assert.equal(result.draft.action, 'answer_store_hours')
+  assert.equal(result.draft.canonicalReply, 'Sí, mañana abrimos de 08:30 a 18:00.')
+  assert.equal(result.draft.facts.requestedDay, 'tomorrow')
+})
+
+test('pergunta sobre amanha informa fechamento excepcional sem reaproveitar o horario de hoje', () => {
+  const result = buildWhatsAppShadowDecision({
+    classification: {
+      intent: 'store_hours', confidence: 0.98, topicRelation: 'continue_topic',
+      requestsHuman: false, mentionsAttachment: false,
+      entities: { customerName: null, patientName: null, cpf: null, orderNumber: null },
+    },
+    memory: { summary: defaultConversationSummary(BASE_TIME), messages: [message(1)] },
+    now: BASE_TIME,
+    hoursFacts: {
+      is_open_now: false, is_exceptional_closure: false,
+      today_schedule: 'Fechado', next_open_schedule: 'AmanhÃ£ Ã s 08:30',
+      full_weekly_schedule: 'Quarta-feira: Fechado',
+    },
+    tomorrowHoursFacts: {
+      is_open_now: false, is_exceptional_closure: true,
+      today_schedule: 'Fechado excepcionalmente', next_open_schedule: 'Quinta-feira Ã s 08:30',
+      full_weekly_schedule: 'Quinta-feira: Fechado',
+    },
+    currentTurnTexts: ['A loja abre amanhã?'],
+    storeLocationReply: null,
+    hasCurrentTurnAttachment: false,
+  })
+
+  assert.equal(result.draft.canonicalReply, 'Amanhã a loja estará fechada.')
+  assert.equal(result.draft.facts.tomorrowIsExceptionalClosure, true)
+})
+
+test('agenda de amanha usa o calendario local da loja mesmo perto da meia-noite UTC', () => {
+  const facts = evaluateNextLocalDayStoreHours({
+    timezone: 'America/Sao_Paulo',
+    weekly_schedule: Object.fromEntries(Array.from({ length: 7 }, (_, day) => [day, {
+      day,
+      is_open: true,
+      open_time: '08:30',
+      close_time: '18:00',
+    }])),
+    break_windows: [],
+    special_closures: [{ id: 'closed-tomorrow', date: '2026-09-25', reason: 'Fechamento especial' }],
+    special_openings: [],
+  }, new Date('2026-09-25T02:00:00.000Z'))
+
+  assert.equal(facts.today_schedule, 'Fechado excepcionalmente')
+  assert.equal(facts.is_exceptional_closure, true)
 })
 
 test('pedido literal da chave Pix vira acao registrada sem gravar o valor da chave no turno', () => {
