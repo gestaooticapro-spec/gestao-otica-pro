@@ -84,6 +84,8 @@ export function selectStoreOnePilotSafeReply(input: Parameters<typeof selectStor
   const holder = input.officialPixHolder?.trim() ?? null
   const facts: WhatsAppRedesignReplyInput['facts'] = {
     ...input.decision.facts,
+    mustIdentifyIara: input.decision.humanization.mustIdentifyIara,
+    mustMentionHumanHandoff: input.decision.humanization.mustMentionHumanHandoff,
     ...(input.decision.humanHandoffTiming ? {
       humanHandoffMode: input.decision.humanHandoffTiming.mode,
       nextOpenSchedule: input.decision.humanHandoffTiming.nextOpenSchedule,
@@ -130,6 +132,11 @@ export function resolveStoreOnePilotReplyText(
   const replyText = result.data.reply_text.trim()
   const normalizedReply = normalizeForComparison(replyText)
   const productMention = candidate.replyInput.facts.productMention
+  if (candidate.replyInput.facts.mustIdentifyIara === true
+    && !/\b(?:eu sou |sou |aqui e |soy |yo soy |i am |i m |this is )(?:a |la )?(?:assistente virtual )?iara\b/u.test(normalizedReply)) {
+    return { text: candidate.fallbackText, generatedBy: 'fallback' as const, fallbackReason: 'assistant_identity_omitted' as const }
+  }
+
   if (candidate.replyInput.intent === 'product_availability'
     && typeof productMention === 'string'
     && !normalizedReply.includes(normalizeForComparison(productMention))) {

@@ -72,6 +72,7 @@ test('geracao contextual preserva a marca e nunca afirma disponibilidade em esto
     fallbackReply: 'Fallback de contingência para lentes Varilux.',
     facts: { handoffReason: 'product_availability', productMention: 'lentes Varilux' },
     humanHandoffTiming: { mode: 'during_open_hours', nextOpenSchedule: null },
+    humanization: { ...decision.humanization, mustIdentifyIara: true, mustMentionHumanHandoff: true },
   })
   const candidate = selectStoreOnePilotSafeReply({
     classification: productClassification,
@@ -86,27 +87,38 @@ test('geracao contextual preserva a marca e nunca afirma disponibilidade em esto
   const prompt = buildWhatsAppRedesignReplyPrompt(candidate.replyInput)
   assert.match(prompt, /escreva uma resposta nova e contextual/)
   assert.match(prompt, /nunca confirme nem sugira disponibilidade em estoque/)
+  assert.match(prompt, /identifique-se explicitamente pelo nome IAra/)
   assert.match(prompt, /lentes Varilux/)
   assert.doesNotMatch(prompt, /Fallback de contingência para lentes Varilux/)
 
   assert.equal(resolveStoreOnePilotReplyText(candidate, {
     success: true,
-    data: { reply_text: 'Vou pedir para a equipe verificar as lentes Varilux para você.' },
+    data: { reply_text: 'Sou a IAra e vou pedir para a equipe verificar as lentes Varilux para você.' },
   }).generatedBy, 'ai')
   const unsafeStockClaim = resolveStoreOnePilotReplyText(candidate, {
     success: true,
-    data: { reply_text: 'Temos lentes Varilux disponíveis em estoque.' },
+    data: { reply_text: 'Sou a IAra e temos lentes Varilux disponíveis em estoque.' },
   })
   assert.equal(unsafeStockClaim.generatedBy, 'fallback')
   assert.equal(unsafeStockClaim.fallbackReason, 'unsafe_stock_claim')
   const missingProduct = resolveStoreOnePilotReplyText(candidate, {
     success: true,
-    data: { reply_text: 'Vou pedir para a equipe consultar a disponibilidade.' },
+    data: { reply_text: 'Sou a IAra e vou pedir para a equipe consultar a disponibilidade.' },
   })
   assert.equal(missingProduct.generatedBy, 'fallback')
   assert.equal(missingProduct.fallbackReason, 'required_product_omitted')
   assert.equal(missingProduct.text, candidate.fallbackText)
   assert.equal(resolveStoreOnePilotReplyText(candidate, { success: false }).fallbackReason, 'provider_failure')
+
+  const missingIdentity = resolveStoreOnePilotReplyText(candidate, {
+    success: true,
+    data: { reply_text: 'Vou pedir para a equipe verificar as lentes Varilux para você.' },
+  })
+  assert.equal(missingIdentity.fallbackReason, 'assistant_identity_omitted')
+  assert.equal(resolveStoreOnePilotReplyText(candidate, {
+    success: true,
+    data: { reply_text: 'Sou a IAra e vou pedir para a equipe verificar as lentes Varilux para você.' },
+  }).generatedBy, 'ai')
 })
 
 test('handoff gerado precisa preservar o encaminhamento humano', () => {
@@ -115,6 +127,7 @@ test('handoff gerado precisa preservar o encaminhamento humano', () => {
     action: 'human_handoff',
     fallbackReply: 'Fallback: vou chamar um atendente.',
     humanHandoffTiming: { mode: 'during_open_hours', nextOpenSchedule: null },
+    humanization: { ...decision.humanization, mustIdentifyIara: true, mustMentionHumanHandoff: true },
   })
   const candidate = selectStoreOnePilotSafeReply({
     classification: { ...classification, intent: 'human_agent_request', requestsHuman: true },
@@ -125,7 +138,7 @@ test('handoff gerado precisa preservar o encaminhamento humano', () => {
   })!
   const missingHandoff = resolveStoreOnePilotReplyText(candidate, {
     success: true,
-    data: { reply_text: 'Claro, vou ajudar você com isso.' },
+    data: { reply_text: 'Sou a IAra, claro, vou ajudar você com isso.' },
   })
   assert.equal(missingHandoff.generatedBy, 'fallback')
   assert.equal(missingHandoff.fallbackReason, 'handoff_omitted')

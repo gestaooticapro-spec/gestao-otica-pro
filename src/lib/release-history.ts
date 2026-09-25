@@ -10,6 +10,7 @@ export type Release = {
 export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
   'As respostas do novo atendimento por WhatsApp passaram a ser redigidas pela IA com base na conversa e nos dados oficiais da loja; textos prontos são usados somente quando a geração falha ou produz uma resposta insegura ou incompleta.',
+  'A IAra passa a se identificar antes de encaminhar a conversa a um atendente ou quando não tiver segurança para responder.',
   'A liberação da pausa humana passa a considerar os formatos equivalentes do telefone, evitando que uma pausa antiga continue bloqueando respostas.',
   'As respostas automáticas seguras do WhatsApp no piloto passaram a acompanhar o idioma detectado na conversa (português, espanhol ou inglês), inclusive saudações como “Buenos días”, horários, endereço, encaminhamentos, avisos de fechamento e chave Pix oficial.',
   'Perguntas em português ou espanhol sobre o horário de amanhã passam a receber o horário oficial do dia solicitado, em vez do horário de hoje.',

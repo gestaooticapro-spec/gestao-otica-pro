@@ -868,6 +868,7 @@ test('anexo, pedido de atendente e baixa confianca prevalecem sobre resposta de 
   })
   assert.equal(withLowConfidence.draft.action, 'human_handoff')
   assert.equal(withLowConfidence.reason, 'classification_below_safe_confidence')
+  assert.equal(withLowConfidence.draft.humanization.mustIdentifyIara, true)
 })
 
 test('assunto que exige funcionario gera handoff transparente da IAra', () => {

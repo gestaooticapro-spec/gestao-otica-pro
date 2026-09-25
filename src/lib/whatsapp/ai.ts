@@ -857,6 +857,7 @@ export function buildWhatsAppRedesignReplyPrompt(input: WhatsAppRedesignReplyInp
     'Use somente os fatos estruturados fornecidos. Nao invente nem altere horarios, endereco, chave Pix, estoque, pagamentos, status, prazos ou promessas.',
     'Responda no idioma da mensagem atual do cliente. Se o idioma nao estiver claro, use portugues do Brasil.',
     'Use o historico apenas para entender referencias e continuidade; nao repita apresentacoes nem mensagens anteriores sem necessidade.',
+    'Se facts.mustIdentifyIara for true, identifique-se explicitamente pelo nome IAra de forma natural. Isso e obrigatorio em todo encaminhamento humano ou quando a decisao indicar incerteza; varie a construcao conforme a conversa, sem copiar uma abertura fixa.',
     'Para product_availability, nunca confirme nem sugira disponibilidade em estoque: informe naturalmente que vai chamar um atendente para verificar e preserve a marca ou produto exato em productMention quando existir.',
     'Para human_handoff ou repeat_handoff, seja acolhedor, contextual e claro sobre o encaminhamento; nao diga que a equipe ja respondeu ou ja verificou algo.',
     'Para answer_official_pix, inclua a chave Pix oficial exatamente como fornecida e nao altere caracteres.',
