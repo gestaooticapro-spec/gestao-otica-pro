@@ -83,7 +83,12 @@ node --import tsx scripts/manage-whatsapp-redesign-stage4.ts disable
   não foi lido nessa auditoria, portanto isso não prova perda de resposta.
 - A revisão de código detectou uma corrida rara no reprocessamento tardio. A
   proteção local acrescenta idempotência no fluxo e índice único por inbound,
-  acompanhado de teste SQL aprovado dentro de uma transação revertida; nenhum
-  dado foi persistido. Ainda falta aplicar a migration e publicar o código para
-  ativar a proteção em produção.
-- A reversão do piloto permanece pendente enquanto os testes ao vivo continuam.
+  acompanhado de teste SQL aprovado dentro de uma transação revertida. O usuário
+  informou deploy Ready e aplicação da migration; a presença do índice foi
+  confirmada no banco e o teste passou com rollback. A proteção está ativa em
+  produção. Nenhuma mensagem de teste foi enviada nessa validação.
+- A primeira entrada conferida após esse deploy gerou exatamente uma resposta
+  enviada e a decisão sombra concordou. A resposta de horário foi confirmada
+  como correta para o momento local; não havia pausa humana ativa.
+- O usuário decidiu manter o piloto ativo e adotá-lo como padrão após a
+  validação. Desligar a flag e testar reversão não são critérios de saída.

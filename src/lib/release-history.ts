@@ -9,6 +9,7 @@ export type Release = {
 // altera o Dashboard ou o modal de histórico.
 export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'O atendimento do WhatsApp consulta o status real de OS/retirada quando identifica o pedido com segurança, pede o número da OS quando há mais de um pedido e usa a IA para redigir a resposta com base no estágio cadastrado.',
   'Mensagens repetidas recebidas pelo WhatsApp passam a gerar no máximo uma resposta automática.',
   'As respostas do novo atendimento por WhatsApp passaram a ser redigidas pela IA com base na conversa e nos dados oficiais da loja; textos prontos são usados somente quando a geração falha ou produz uma resposta insegura ou incompleta.',
   'A IAra passa a se identificar antes de encaminhar a conversa a um atendente ou quando não tiver segurança para responder.',

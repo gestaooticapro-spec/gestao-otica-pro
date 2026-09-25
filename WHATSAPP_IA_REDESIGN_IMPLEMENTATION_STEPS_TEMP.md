@@ -24,15 +24,18 @@ registrado no `WHATSAPP_IA_REDESIGN_PLAN.md`.
    pendencias, anexos, handoff e pausa humana renovavel de duas horas.
 3. ~~**CONCLUÍDA — Validar decisões em sombra.** Comparar redesign e legado na
   Loja 1 com conversas reais e cenarios de teste, sem trocar quem responde.~~
-4. **EM ANDAMENTO — Usar a decisao canonica no piloto ao vivo.** Validar na
+4. ~~**CONCLUIDA — Usar a decisao canonica no piloto ao vivo.** Validar na
    Loja 1 respostas e handoffs reais, mudanca de assunto, origem IA/fallback,
-   anexos, ausencia de duplicidade e reversao do piloto. O resumo e os criterios
-   de saida estao em `WHATSAPP_IA_REDESIGN_PLAN.md`.
-5. **PENDENTE — Implementar consultas operacionais aprovadas.** Avaliar
-   OS/retirada, parcelas, exame de vista, reclamacao, troca e garantia com dados
-   verificados e limites de seguranca. Consulta automatica de produtos/estoque
-   esta fora do escopo atual: esses pedidos devem sempre ser encaminhados a um
-   atendente ate decisao futura explicita.
+   anexos, ausencia de duplicidade e idempotencia pos-deploy. O piloto fica
+   ativo por decisao do usuario; reversao nao e requisito.~~
+5. **EM ANDAMENTO — OS/retirada.** A decisao confiavel do piloto passa a
+   consultar o estagio real da OS pelo telefone; se a busca falhar, pede um
+   identificador, e se houver mais de uma OS pede o numero do pedido para
+   desambiguar. A resposta segue pela redacao final com IA baseada nos fatos da
+   OS. Consulta automatica de produtos/estoque continua fora do escopo: sempre
+   encaminhar a atendente. Parcelas, exame, reclamacao, troca e garantia ficam
+   para depois. A conclusao desta etapa depende de deploy Ready e validacao ao
+   vivo do caminho por telefone, identificador e ambiguidade quando aplicavel.
 6. **PENDENTE — Operacao completa e migracao.** Exibir contexto e decisoes na
    Central, integrar disparos automaticos, migrar loja por loja e aposentar o
    roteador legado quando a equivalencia estiver comprovada.
@@ -227,3 +230,15 @@ registrado no `WHATSAPP_IA_REDESIGN_PLAN.md`.
   idempotente; o teste SQL passou em transacao revertida, sem persistir a
   migration ou os fixtures. Typecheck e 69 testes focados passaram. A protecao
   aguarda aplicacao da migration/deploy; reversao do piloto permanece pendente.
+- 25/09/2026: o usuario confirmou que o deploy ficou Ready e aplicou a migration.
+  O indice foi verificado no banco e o teste transacional passou com rollback.
+  A primeira entrada pos-deploy teve exatamente uma resposta, concordante com
+  shadow. Por decisao do usuario, o piloto permanece ativo e a reversao nao e
+  requisito. Etapa 4 concluida; Etapa 5 e a proxima.
+- 25/09/2026: iniciada a Etapa 5 pelo escopo aprovado de OS/retirada. A decisao
+  confiavel do piloto reutiliza a classificacao sombra para consultar o status
+  pelo telefone, pede identificador quando nao localiza cadastro/OS e pede o
+  numero da OS para desambiguar multiplos pedidos. O estagio real e redigido
+  pelo escritor final com IA; nao se altera o roteamento de produtos/estoque,
+  que continua com atendente. Typecheck e 70 testes focados passaram. Aguardar
+  deploy e validar ao vivo antes de fechar a etapa.

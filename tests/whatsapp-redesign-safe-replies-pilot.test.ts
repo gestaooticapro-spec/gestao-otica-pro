@@ -8,6 +8,7 @@ import {
   isStoreOneSafeRepliesPilotEnabled,
   resolveStoreOnePilotReplyText,
   selectStoreOnePilotSafeReply,
+  shouldLookupOrderStatusInStoreOnePilot,
 } from '../src/lib/whatsapp/redesign/safe-replies-pilot'
 import { buildWhatsAppRedesignReplyPrompt } from '../src/lib/whatsapp/ai'
 
@@ -31,6 +32,33 @@ test('piloto exige Loja 1, modo sombra e ativacao explicita', () => {
   assert.equal(isStoreOneSafeRepliesPilotEnabled(2, settings), false)
   assert.equal(isStoreOneSafeRepliesPilotEnabled(1, { ai_redesign: { mode: 'shadow' } }), false)
   assert.equal(isStoreOneSafeRepliesPilotEnabled(1, { ai_redesign: { mode: 'legacy', safe_replies_enabled: true } }), false)
+})
+
+test('piloto consulta OS apenas com intencao confiavel e sem pedido humano ou anexo', () => {
+  const orderClassification = WhatsAppRedesignClassificationSchema.parse({
+    ...classification,
+    intent: 'order_status',
+    confidence: 0.94,
+  })
+  const orderDecision = WhatsAppSystemDecisionSchema.parse({
+    ...decision,
+    action: 'human_handoff',
+    fallbackReply: 'Fallback: vou chamar um atendente para consultar a OS.',
+    facts: { decisionReason: 'topic_requires_human:order_status' },
+    humanHandoffTiming: { mode: 'during_open_hours', nextOpenSchedule: null },
+    humanization: { ...decision.humanization, mustIdentifyIara: true, mustMentionHumanHandoff: true },
+  })
+
+  assert.equal(shouldLookupOrderStatusInStoreOnePilot({ classification: orderClassification, decision: orderDecision }), true)
+  assert.equal(shouldLookupOrderStatusInStoreOnePilot({
+    classification: { ...orderClassification, confidence: 0.5 }, decision: orderDecision,
+  }), false)
+  assert.equal(shouldLookupOrderStatusInStoreOnePilot({
+    classification: { ...orderClassification, requestsHuman: true }, decision: orderDecision,
+  }), false)
+  assert.equal(shouldLookupOrderStatusInStoreOnePilot({
+    classification: { ...orderClassification, mentionsAttachment: true }, decision: orderDecision,
+  }), false)
 })
 
 test('selecao do piloto prepara texto fixo somente como fallback, nunca como texto ao vivo', () => {

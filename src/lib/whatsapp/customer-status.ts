@@ -71,6 +71,7 @@ import {
   isStoreOneSafeRepliesPilotEnabled,
   resolveStoreOnePilotReplyText,
   selectStoreOnePilotSafeReply,
+  shouldLookupOrderStatusInStoreOnePilot,
 } from './redesign/safe-replies-pilot'
 
 const SAME_STATUS_SILENCE_WINDOW_MS = 2 * 60 * 60 * 1000
@@ -1694,6 +1695,20 @@ async function findOpenOsByNumber(storeId: number, value: string): Promise<{ cus
   }
 }
 
+async function findOpenOsByOrderNumberOnly(storeId: number, message: string | undefined) {
+  const digits = digitsOnly(message)
+  if (!digits || digits.length >= 11) return null
+
+  for (const candidate of numberCandidates(message)) {
+    const candidateDigits = digitsOnly(candidate)
+    if (!candidateDigits || candidateDigits.length >= 11) continue
+    const result = await findOpenOsByNumber(storeId, candidateDigits)
+    if (result) return result
+  }
+
+  return null
+}
+
 async function findOpenOsByIdentifier(
   storeId: number,
   message: string | undefined
@@ -2359,28 +2374,33 @@ async function handleStatusByPhone(
 
   await upsertCustomerLink(channel, phone, customer.id, 'phone_match')
 
-  const serviceOrder = await findLatestOpenOs(channel.store_id, customer.id)
-  if (!serviceOrder) {
-    const text = identifierPromptText()
+  const openOrders = await findOpenOsForCustomer(channel.store_id, customer.id, 2)
+  if (openOrders.length !== 1) {
+    const hasMultipleOrders = openOrders.length > 1
+    const text = hasMultipleOrders
+      ? 'Encontrei mais de um pedido em aberto. Para eu consultar o correto sem confundir os pedidos, envie o numero da OS/pedido.'
+      : identifierPromptText()
     await setConversationState(channel, phone, 'waiting_identifier', IDENTIFIER_WAIT_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
+      reason: hasMultipleOrders ? 'multiple_open_orders_identifier_requested' : 'order_identifier_requested',
       ...buildDecisionMetadata({
         intent: 'order_status',
         confidence: intentConfidence,
         action: 'request_identifier',
-        outboundType: 'identifier_prompt',
+        outboundType: hasMultipleOrders ? 'order_disambiguation_prompt' : 'identifier_prompt',
       }),
     }), 'assistant', text))
     return createAutomatedStatusOutbound(text, 'identifier_prompt', {
       ...buildWhatsAppCanonicalPayload({
         intent: 'order_status',
         action: 'request_identifier',
-        outboundType: 'identifier_prompt',
+        outboundType: hasMultipleOrders ? 'order_disambiguation_prompt' : 'identifier_prompt',
         canonicalReply: text,
+        facts: { multipleOpenOrders: hasMultipleOrders },
       }),
     })
   }
 
-  return createStatusReply(channel, inboundMessageId, phone, customer, serviceOrder, baseMetadata, intentConfidence, finalWriter)
+  return createStatusReply(channel, inboundMessageId, phone, customer, openOrders[0], baseMetadata, intentConfidence, finalWriter)
 }
 
 async function simulateStatusReply(
@@ -2656,7 +2676,7 @@ export async function resolveCustomerStatus(
     && typeof shadowCapture.turnId === 'string'
     && controlMode !== 'force_human'
     && controlMode !== 'force_ai'
-    && !['human_pause', 'awaiting_human', 'waiting_human_after_attachment', 'silent'].includes(state?.state ?? '')) {
+    && !['human_pause', 'awaiting_human', 'waiting_human_after_attachment', 'waiting_identifier', 'silent'].includes(state?.state ?? '')) {
     let pilotReply: ReturnType<typeof selectStoreOnePilotSafeReply> = null
     let pilotConversationHistory: string[] = []
     try {
@@ -2690,6 +2710,23 @@ export async function resolveCustomerStatus(
           .filter((message) => !currentTurnMessageIds.has(message.id))
           .map((message) => `${message.role === 'customer' ? 'Cliente' : message.role === 'human' ? 'Atendente' : 'IA'}: ${message.text || `[${message.kind}]`}`)
           .slice(-8)
+
+        if (shouldLookupOrderStatusInStoreOnePilot({ classification, decision })) {
+          return await handleStatusByPhone(
+            channel,
+            inbound.id,
+            normalizedPhone,
+            appendAiSessionMessage(mergeMetadata(state?.metadata, inboundContextMetadata), 'customer', effectiveMessageText),
+            classification.confidence,
+            {
+              enabled: WHATSAPP_AI_FINAL_WRITER_ENABLED && isWhatsAppAiResponderEnabled(automationSettings),
+              storeName: storeProfile.name,
+              userMessageText: effectiveMessageText,
+              conversationHistory: pilotConversationHistory,
+              onResult: async (result) => { await logAiResult(channel, inbound.id, 'reply_humanization', result) },
+            }
+          )
+        }
 
         // O caminho ao vivo usa a mesma decisão já persistida para auditoria; não
         // faz uma segunda chamada de classificação nem espera o cron de sombra.
@@ -3405,7 +3442,10 @@ export async function resolveCustomerStatus(
       })
     }
 
-    const result = await findOpenOsByIdentifier(channel.store_id, effectiveMessageText || undefined)
+    const isDisambiguatingOpenOrders = toMetadataRecord(state?.metadata).reason === 'multiple_open_orders_identifier_requested'
+    const result = isDisambiguatingOpenOrders
+      ? await findOpenOsByOrderNumberOnly(channel.store_id, effectiveMessageText || undefined)
+      : await findOpenOsByIdentifier(channel.store_id, effectiveMessageText || undefined)
     if (result) {
       await consumeForceAiOverrideIfNeeded()
       return createStatusReply(channel, inbound.id, normalizedPhone, result.customer, result.serviceOrder, baseMetadata, null, finalWriterContext)
@@ -3413,7 +3453,10 @@ export async function resolveCustomerStatus(
   }
 
   if (preAiRoute === 'waiting_identifier_lookup') {
-    const paymentLookup = await findOpenInstallmentsByIdentifier(channel.store_id, effectiveMessageText || undefined)
+    const isDisambiguatingOpenOrders = toMetadataRecord(state?.metadata).reason === 'multiple_open_orders_identifier_requested'
+    const paymentLookup = isDisambiguatingOpenOrders
+      ? null
+      : await findOpenInstallmentsByIdentifier(channel.store_id, effectiveMessageText || undefined)
     if (paymentLookup) {
       await consumeForceAiOverrideIfNeeded()
       const text = formatPaymentFollowupText(paymentLookup.customer.full_name, paymentLookup.installments)
@@ -3439,7 +3482,9 @@ export async function resolveCustomerStatus(
       })
     }
 
-    const result = await findOpenOsByIdentifier(channel.store_id, effectiveMessageText || undefined)
+    const result = isDisambiguatingOpenOrders
+      ? await findOpenOsByOrderNumberOnly(channel.store_id, effectiveMessageText || undefined)
+      : await findOpenOsByIdentifier(channel.store_id, effectiveMessageText || undefined)
     if (result) {
       await consumeForceAiOverrideIfNeeded()
       return createStatusReply(channel, inbound.id, normalizedPhone, result.customer, result.serviceOrder, baseMetadata, null, finalWriterContext)

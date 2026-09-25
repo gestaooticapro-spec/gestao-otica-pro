@@ -16,13 +16,15 @@
 - A revisão de código encontrou uma corrida rara no reprocessamento tardio de
   webhooks. A proteção local agora consulta outbounds existentes, suprime uma
   segunda resposta e trata a corrida com índice único por inbound. Foi incluído
-  teste SQL que passou dentro de uma transação revertida, sem persistir a
-  migration nem os fixtures. A proteção ainda não está em produção: depende de
-  aplicar a migration e publicar o código.
+  teste SQL que passou dentro de uma transação revertida. O usuário confirmou o
+  deploy como Ready e aplicou a migration; o índice foi confirmado no banco e
+  o teste SQL passou novamente com rollback. A proteção contra duas saídas para
+  o mesmo inbound está ativa em produção. Nenhuma mensagem de teste foi enviada
+  para esta validação.
 - O pedido explícito de atendente e a retomada após liberar a pausa humana foram
   validados ao vivo. A auditoria observacional não substitui teste de corrida.
-  A reversão da flag do piloto continua pendente, pois os testes ao vivo seguem
-  em andamento.
+  O usuário decidiu manter o piloto ativo e adotá-lo como padrão após concluir
+  a validação; testar o desligamento da flag não é requisito de saída.
 
 ## Roteiro consolidado e situação atual — 25/09/2026
 
@@ -31,17 +33,17 @@ Este é o roteiro canônico do redesign. As etapas são as acompanhadas em
 ou documentos de infraestrutura da VPS não substituem nem renumeram estas
 etapas. As decisões e o escopo detalhado deste plano permanecem preservados.
 
-**Estamos na Etapa 4, em andamento: piloto ao vivo da decisão canônica na Loja
-1.** As Etapas 1, 2 e 3 estão concluídas conforme as validações registradas
-neste plano e nos documentos das Etapas 2 e 3.
+**Etapas 1 a 4 concluídas; Etapa 5 em andamento (OS/retirada).** O
+piloto da Loja 1 permanece ativo por decisão do usuário e servirá de base para
+a expansão gradual prevista na Etapa 6.
 
 | Etapa | Situação | Escopo e critério de saída |
 |---|---|---|
 | 1. Processar turnos em sombra | Concluída | Classificar turnos e registrar decisões sem enviar resposta pelo redesign. |
 | 2. Consolidar memória e controle humano | Concluída | Persistir assuntos, anexos e eventos de controle; validação SQL transacional aprovada. |
 | 3. Validar decisões em sombra | Concluída | Comparação agregada e cenários controlados sem trocar o fluxo que responde. |
-| 4. Usar a decisão canônica no piloto ao vivo | **Em andamento** | Validar respostas e handoffs reais, origem IA/fallback, mudança de assunto, anexos, controle humano e reversão da flag. |
-| 5. Implementar consultas operacionais | Pendente | Acrescentar somente consultas aprovadas com dados verificáveis. Consulta automática de produtos/estoque está fora do escopo atual: esses pedidos sempre vão para um atendente até decisão futura explícita. |
+| 4. Usar a decisão canônica no piloto ao vivo | **Concluída** | Validar respostas e handoffs reais, origem IA/fallback, mudança de assunto, anexos, controle humano e idempotência pós-deploy. O piloto permanece ativo; desligá-lo não é requisito. |
+| 5. Implementar consultas operacionais | **Em andamento — OS/retirada** | Acrescentar somente consultas aprovadas com dados verificáveis. A implementação atual conecta a decisão do piloto à busca existente de OS, sem selecionar silenciosamente entre múltiplos pedidos. Consulta automática de produtos/estoque está fora do escopo atual: esses pedidos sempre vão para um atendente até decisão futura explícita. |
 | 6. Operação completa e migração | Pendente | Completar a operação, migrar gradualmente loja por loja e aposentar o legado somente após equivalência comprovada. |
 
 ### Evidências já observadas no piloto ao vivo
@@ -85,21 +87,25 @@ neste plano e nos documentos das Etapas 2 e 3.
   não se pode concluir que houve falha de resposta.
 - A revisão do código encontrou uma corrida rara no reprocessamento tardio. A
   proteção local consulta saídas existentes e acrescenta índice único por
-  inbound, com teste SQL transacional. Só ficará ativa após migration e deploy.
+  inbound, com teste SQL transacional. Deploy e migration foram concluídos; o
+  índice está presente e a primeira entrada pós-deploy teve uma única saída.
+- Na primeira entrada conferida após esse deploy, a pergunta sobre o horário
+  de hoje gerou uma resposta enviada e a decisão em sombra também foi
+  `answer_store_hours`. O usuário confirmou a resposta como correta para o
+  horário local do teste; não havia pausa humana ativa.
 
-### Próximos itens da Etapa 4
+### Saída da Etapa 4
 
-1. Publicar o código e aplicar a migration de idempotência; a proteção contra a
-   corrida concorrente ainda não está ativa no banco de produção.
-2. Pedido explícito de atendente, Varilux, saudação após handoff, imagem e
-   continuação “Recebeu?” já foram confirmados pelo usuário. A auditoria dos
-   registros não encontrou duplicatas, mas não substitui validação pós-deploy.
-3. Testar a reversão operacional desligando a flag do piloto. Não fazer isso
-   enquanto os testes ao vivo estiverem em andamento sem combinar com o usuário.
+1. **Concluído:** código publicado (Ready) e migration aplicada; índice
+   confirmado no banco e teste transacional de unicidade aprovado com rollback.
+2. **Concluído:** primeira entrada pós-deploy conferida; uma única resposta
+   enviada, com decisão sombra concordante.
+3. **Decisão do usuário:** manter o piloto ativo; teste de reversão não é
+   necessário.
 
-Só depois desses critérios a Etapa 4 pode ser marcada como concluída e a Etapa
-5 iniciada. O histórico detalhado continua no checklist; este resumo é a
-referência rápida para saber onde estamos.
+Etapa 4 concluída; iniciar a Etapa 5 somente dentro das consultas operacionais
+previstas no plano. A expansão gradual para outras lojas continua pertencendo à
+Etapa 6, após as consultas priorizadas e os critérios operacionais definidos.
 
 ## Status do documento
 

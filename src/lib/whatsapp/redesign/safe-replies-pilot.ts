@@ -1,6 +1,10 @@
 import type { WhatsAppAutomationSettings } from '@/lib/store-modules'
 import type { WhatsAppRedesignReplyInput } from '../ai'
-import type { WhatsAppRedesignClassification, WhatsAppSystemDecisionDraft } from './contracts'
+import {
+  WHATSAPP_REDESIGN_MIN_CONFIDENCE,
+  type WhatsAppRedesignClassification,
+  type WhatsAppSystemDecisionDraft,
+} from './contracts'
 import { isExplicitOfficialPixRequest } from './system-decision'
 import { detectWhatsAppRedesignReplyLanguage, localizedPixReply } from './reply-language'
 
@@ -27,6 +31,18 @@ export function isStoreOneSafeRepliesPilotEnabled(
   return storeId === 1
     && settings?.ai_redesign?.mode === 'shadow'
     && settings.ai_redesign.safe_replies_enabled === true
+}
+
+export function shouldLookupOrderStatusInStoreOnePilot(input: {
+  classification: WhatsAppRedesignClassification
+  decision: WhatsAppSystemDecisionDraft
+}) {
+  return input.classification.intent === 'order_status'
+    && input.classification.confidence >= WHATSAPP_REDESIGN_MIN_CONFIDENCE
+    && !input.classification.requestsHuman
+    && !input.classification.mentionsAttachment
+    && input.decision.action === 'human_handoff'
+    && input.decision.facts.decisionReason === 'topic_requires_human:order_status'
 }
 
 function selectStoreOnePilotSafeReplyBase(input: {

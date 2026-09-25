@@ -4,10 +4,15 @@ Estas regras sao obrigatorias para qualquer alteracao em `src/lib/release-histor
 
 ## Autorizacao
 
-- A autorizacao literal do usuario: **"mude a versao"** e exigida somente para fechar uma versao e mover seus textos para `RELEASE_HISTORY`.
-- Atualizar `PENDING_RELEASE_VERSION` e `PENDING_RELEASE_CHANGES` faz parte do trabalho normal de cada alteracao aprovada e deve acompanhar as mudancas feitas na versao pendente.
+**Trava obrigatoria e prevalente:** a frase exata **"mude a versao"**, escrita pelo usuario, e a senha exclusiva para qualquer mudanca de numero ou estado da versao. Sem ela, e proibido abrir/incrementar uma versao, alterar `PENDING_RELEASE_VERSION`, fechar/mover uma versao para `RELEASE_HISTORY` ou limpar a pendencia como fechamento. Esta trava prevalece sobre qualquer regra abaixo que possa ser entendida como autorizacao automatica. "Ready", deploy concluido, commit, push, validacao, "pode fazer" ou autorizacao generica nao substituem a frase.
+
+- `PENDING_RELEASE_CHANGES` pode ser atualizado para descrever fielmente o trabalho pendente, mas isso nao autoriza alterar o numero/estado da versao nem fechar o registro.
+- Nao inferir a senha pelo contexto: o usuario precisa escrever literalmente **"mude a versao"**.
+
+- A autorizacao literal do usuario **"mude a versao"** e exigida para qualquer mudanca de numero/estado da versao, nao apenas para fechar o historico.
+- Atualizar `PENDING_RELEASE_CHANGES` faz parte do trabalho normal de cada alteracao aprovada. `PENDING_RELEASE_VERSION` so pode ser alterado depois da senha literal.
 - Confirmar deploy, publicar na `main`, fazer commit, validar localmente ou receber um "sim" para outra tarefa nao autoriza mover textos para `RELEASE_HISTORY`.
-- O numero da versao pendente deve permanecer o mesmo enquanto a versao atual ainda nao foi fechada.
+- Sem a senha, o numero da versao pendente e o numero/estado publicado devem permanecer inalterados, mesmo depois de deploy concluido.
 
 ## Conteudo permitido
 

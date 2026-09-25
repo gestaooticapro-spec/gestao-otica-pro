@@ -8,10 +8,12 @@
 
 ## Implementacoes e deploy
 
-- A primeira implementacao depois de um deploy deve abrir o proximo patch em `PENDING_RELEASE_VERSION` e registrar a mudanca em `PENDING_RELEASE_CHANGES`; implementacoes seguintes completam essa mesma versao pendente.
+**Autorizacao de versao:** a frase exata **"mude a versao"**, escrita pelo usuario, e obrigatoria antes de qualquer alteracao de numero/estado de versao, inclusive abrir/incrementar `PENDING_RELEASE_VERSION` ou mover/fechar um registro em `RELEASE_HISTORY`. Sem essa frase, nao execute essas operacoes, mesmo se um deploy estiver Ready ou concluido. Essa regra prevalece sobre qualquer instrucao abaixo; atualizar apenas `PENDING_RELEASE_CHANGES` nao autoriza mudar a versao.
+
+- A primeira implementacao depois de um deploy registra a mudanca em `PENDING_RELEASE_CHANGES`; nao abra nem altere o numero em `PENDING_RELEASE_VERSION` sem a frase literal do usuario **"mude a versao"**.
 - Se uma implementacao pendente for removida, revertida ou substituida antes do deploy, remova ou corrija seu registro em `PENDING_RELEASE_CHANGES`; a lista deve descrever somente o que sera entregue.
-- Apenas depois de um deploy concluido, incremente uma unica vez o ultimo bloco da versao, salvo solicitacao expressa para alterar a linha minor. Exemplo: `1.02.01` para `1.02.02`.
-- No deploy, insira a versao pendente no inicio de `RELEASE_HISTORY`, com a data atual e as mudancas acumuladas em `PENDING_RELEASE_CHANGES`; depois limpe `PENDING_RELEASE_VERSION` e a lista pendente.
+- Qualquer incremento ou mudanca de numero/estado da versao exige que o usuario escreva exatamente **"mude a versao"**. Deploy concluido ou "Ready" nao substitui essa autorizacao.
+- Somente depois dessa frase e de um deploy concluido, mova o registro autorizado para `RELEASE_HISTORY`; nao feche nem limpe a pendencia por inferencia.
 - Preserve todo o historico de deploys. O modal carrega inicialmente tres versoes e revela as anteriores progressivamente.
 - O que estiver registrado em `PENDING_RELEASE_CHANGES` deve corresponder ao que sera entregue no proximo deploy.
 
