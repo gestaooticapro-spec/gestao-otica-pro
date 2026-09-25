@@ -5,6 +5,7 @@ import {
   type WhatsAppSystemDecisionDraft,
   type WhatsAppSystemDecision,
 } from './contracts'
+import { localizeNextOpenSchedule } from './reply-language'
 
 function lowerFirst(value: string) {
   if (!value) return value
@@ -54,9 +55,21 @@ export function applyStoreAvailabilityToDecision(
 
   const timingNotice = `Como a loja está fechada agora, um funcionário continuará com você quando ela abrir, ${lowerFirst(nextOpenSchedule)}.`
 
+  const replyLanguage = parsedDecision.facts.replyLanguage
+  const localizedNextOpen = replyLanguage === 'es'
+    ? localizeNextOpenSchedule(nextOpenSchedule, 'es')
+    : replyLanguage === 'en'
+      ? localizeNextOpenSchedule(nextOpenSchedule, 'en')
+      : nextOpenSchedule
+  const localizedNotice = replyLanguage === 'es'
+    ? `La tienda está cerrada ahora. Un asesor continuará contigo cuando abra, ${lowerFirst(localizedNextOpen)}.`
+    : replyLanguage === 'en'
+      ? `The store is currently closed. A team member will continue helping you when it opens, ${lowerFirst(localizedNextOpen)}.`
+      : timingNotice
+
   return WhatsAppSystemDecisionSchema.parse({
     ...parsedDecision,
-    canonicalReply: `${parsedDecision.canonicalReply} ${timingNotice}`,
+    canonicalReply: `${parsedDecision.canonicalReply} ${localizedNotice}`,
     facts: {
       ...parsedDecision.facts,
       isStoreOpenNow: false,

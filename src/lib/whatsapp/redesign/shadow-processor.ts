@@ -5,6 +5,7 @@ import {
   type WhatsAppAiResult,
 } from '../ai'
 import { evaluateNextLocalDayStoreHours, evaluateStoreHours } from '../store-hours-logic'
+import { detectWhatsAppRedesignReplyLanguage, localizeWhatsAppRedesignDecision } from './reply-language'
 import {
   WhatsAppRedesignModeSchema,
   WhatsAppRedesignClassificationSchema,
@@ -102,16 +103,23 @@ async function processClaimedTurn(input: {
   }
 
   const classification = WhatsAppRedesignClassificationSchema.parse(classificationResult.data)
+  const currentTurnTexts = context.turnMessages
+    .filter((message) => message.role === 'customer' && message.kind === 'text')
+    .map((message) => message.text ?? '')
+    .filter(Boolean)
+  const replyLanguage = detectWhatsAppRedesignReplyLanguage(
+    currentTurnTexts,
+    context.memory.messages
+      .filter((message) => message.role === 'customer')
+      .map((message) => message.text ?? '')
+  )
   const decisionResult = buildWhatsAppShadowDecision({
     classification,
     memory: context.memory,
     now: decisionAt.toISOString(),
     hoursFacts,
     tomorrowHoursFacts,
-    currentTurnTexts: context.turnMessages
-      .filter((message) => message.role === 'customer' && message.kind === 'text')
-      .map((message) => message.text ?? '')
-      .filter(Boolean),
+    currentTurnTexts,
     storeLocationReply: buildOfficialStoreLocationReply(storeProfile),
     hasCurrentTurnAttachment: context.turnMessages.some((message) => message.kind !== 'text'),
     explicitOfficialPixRequest: context.turnMessages.length === 1
@@ -119,14 +127,19 @@ async function processClaimedTurn(input: {
       && isExplicitOfficialPixRequest(context.turnMessages[0].text),
     hasOfficialPixKey: Boolean(storeProfile.pix_key?.trim()),
   })
-  const requiresHandoff = decisionResult.draft.action === 'human_handoff'
-    || decisionResult.draft.action === 'repeat_handoff'
+  const localizedDraft = localizeWhatsAppRedesignDecision(
+    decisionResult.draft,
+    classification,
+    replyLanguage
+  )
+  const requiresHandoff = localizedDraft.action === 'human_handoff'
+    || localizedDraft.action === 'repeat_handoff'
   if (requiresHandoff && !hoursFacts) {
     throw new Error('agenda_da_loja_ausente_para_handoff')
   }
   const decision = hoursFacts
-    ? applyStoreAvailabilityToDecision(decisionResult.draft, hoursFacts)
-    : WhatsAppSystemDecisionSchema.parse(decisionResult.draft)
+    ? applyStoreAvailabilityToDecision(localizedDraft, hoursFacts)
+    : WhatsAppSystemDecisionSchema.parse(localizedDraft)
   const summaryProposal = proposeWhatsAppConversationSummary({
     summary: context.memory.summary,
     classification,

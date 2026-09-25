@@ -1,6 +1,7 @@
 import type { WhatsAppAutomationSettings } from '@/lib/store-modules'
 import type { WhatsAppRedesignClassification, WhatsAppSystemDecisionDraft } from './contracts'
 import { isExplicitOfficialPixRequest } from './system-decision'
+import { detectWhatsAppRedesignReplyLanguage, localizedPixReply } from './reply-language'
 
 export type PilotSafeReply = {
   action: 'answer_store_hours' | 'answer_store_location' | 'answer_official_pix'
@@ -20,7 +21,7 @@ export function isStoreOneSafeRepliesPilotEnabled(
     && settings.ai_redesign.safe_replies_enabled === true
 }
 
-export function selectStoreOnePilotSafeReply(input: {
+function selectStoreOnePilotSafeReplyBase(input: {
   classification: WhatsAppRedesignClassification
   decision: WhatsAppSystemDecisionDraft
   turnMessages: Array<{ kind: string; text: string | null }>
@@ -64,4 +65,21 @@ export function selectStoreOnePilotSafeReply(input: {
   }
 
   return null
+}
+
+export function selectStoreOnePilotSafeReply(input: Parameters<typeof selectStoreOnePilotSafeReplyBase>[0]) {
+  const reply = selectStoreOnePilotSafeReplyBase(input)
+  if (reply?.action !== 'answer_official_pix') return reply
+
+  const text = input.turnMessages.length === 1 && input.turnMessages[0].kind === 'text'
+    ? input.turnMessages[0].text?.trim() ?? '' : ''
+  const language = detectWhatsAppRedesignReplyLanguage(text ? [text] : [])
+  return {
+    ...reply,
+    text: localizedPixReply({
+      key: input.officialPixKey?.trim() ?? '',
+      holder: input.officialPixHolder,
+      language,
+    }),
+  }
 }

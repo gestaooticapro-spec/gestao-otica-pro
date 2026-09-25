@@ -271,7 +271,8 @@ export type StoreLocationSource = {
 export function isExplicitOfficialPixRequest(text: string | null | undefined) {
   const normalized = (text ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
-  return /^(?:qual (?:e |seria )?(?:a )?chave pix|(?:me |nos )?(?:passa|passe|manda|mande|envia|envie|informa|informe) (?:a |sua |o )?(?:chave )?pix|(?:pode |poderia )?(?:me )?(?:passar|mandar|enviar|informar) (?:a |sua |o )?(?:chave )?pix|(?:chave )?pix)(?: da (?:loja|otica))?(?: por favor)?$/.test(normalized)
+  const spanishOrEnglish = /^(?:(?:cual es|cual seria) (?:la )?clave pix|(?:me )?(?:pasas|pasa|envias|envia|dices|dime) (?:la )?clave pix|clave pix|what is (?:the )?pix key|(?:send|share|give) (?:me )?(?:the )?pix key|pix key)(?: de (?:la )?tienda| from (?:the )?store)?(?: por favor| please)?$/.test(normalized)
+  return spanishOrEnglish || /^(?:qual (?:e |seria )?(?:a )?chave pix|(?:me |nos )?(?:passa|passe|manda|mande|envia|envie|informa|informe) (?:a |sua |o )?(?:chave )?pix|(?:pode |poderia )?(?:me )?(?:passar|mandar|enviar|informar) (?:a |sua |o )?(?:chave )?pix|(?:chave )?pix)(?: da (?:loja|otica))?(?: por favor)?$/.test(normalized)
 }
 
 export function buildOfficialStoreLocationReply(store: StoreLocationSource) {
