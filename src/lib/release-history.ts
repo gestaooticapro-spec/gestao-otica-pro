@@ -9,6 +9,7 @@ export type Release = {
 // altera o Dashboard ou o modal de histórico.
 export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'Respostas do WhatsApp pendentes apos uma falha de comunicacao voltam a ser encontradas e enviadas pela recuperacao automatica da VPS.',
   'A pergunta pela chave Pix oficial da loja passou a ser reconhecida de forma deterministica, evitando encaminhamento incorreto para atendente por classificacao ambigua.',
   'O piloto da Loja 1 passou a usar imediatamente a mesma decisao canonica registrada pelo redesign, cobrindo respostas seguras e encaminhamento humano com pausa operacional; o cron permanece apenas como auditoria e contingencia.',
   'O piloto do novo WhatsApp da Loja 1 foi preparado para responder horario, endereco/mapa e chave Pix oficial, com ativacao por loja e retorno imediato ao fluxo anterior.',

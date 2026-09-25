@@ -1257,13 +1257,19 @@ async function reconcileChannel(channel) {
   const recentRecords = allRecords
     .filter((record) => record?.key?.fromMe === false)
     .filter((record) => evolutionRecordTimestampMs(record) >= cutoff)
-    .filter((record) => record?.key?.id && !recentlyObservedProviderIds.has(observedProviderKey(instanceKey, record.key.id)))
+    .filter((record) => record?.key?.id)
     .sort((left, right) => evolutionRecordTimestampMs(left) - evolutionRecordTimestampMs(right))
   const { knownIds, pendingReplies } = await knownInboundProviderIds(
     instanceKey,
     recentRecords.map((record) => String(record.key.id))
   )
-  const candidates = recentRecords.filter((record) => !knownIds.has(String(record.key.id)))
+  // Mesmo uma mensagem ja vista pode ter uma resposta pendente depois de uma
+  // falha entre o app e a VPS. Consulte todas para recuperar essas respostas;
+  // o cache local continua evitando o reprocessamento de mensagens novas.
+  const candidates = recentRecords.filter((record) =>
+    !knownIds.has(String(record.key.id))
+    && !recentlyObservedProviderIds.has(observedProviderKey(instanceKey, record.key.id))
+  )
 
   console.log(`[reconciliation] scan store=${storeId} instance=${instanceKey} records=${allRecords.length} recent=${recentRecords.length} missing=${candidates.length} pending_replies=${pendingReplies.length} total=${response.total} pages=${response.pages}`)
 
