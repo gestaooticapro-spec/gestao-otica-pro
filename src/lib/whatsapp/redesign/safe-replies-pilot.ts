@@ -1,10 +1,14 @@
 import type { WhatsAppAutomationSettings } from '@/lib/store-modules'
 import type { WhatsAppRedesignClassification, WhatsAppSystemDecisionDraft } from './contracts'
+import { isExplicitOfficialPixRequest } from './system-decision'
 
 export type PilotSafeReply = {
   action: 'answer_store_hours' | 'answer_store_location' | 'answer_official_pix'
+    | 'human_handoff' | 'repeat_handoff' | 'acknowledge_attachment'
+    | 'recognize_continuation' | 'conservative_fallback'
   text: string
   messageType: 'store_hours' | 'store_location' | 'payment_pix_info'
+    | 'human_handoff' | 'attachment_handoff' | 'ai_clarification' | 'ai_greeting'
 }
 
 export function isStoreOneSafeRepliesPilotEnabled(
@@ -16,12 +20,6 @@ export function isStoreOneSafeRepliesPilotEnabled(
     && settings.ai_redesign.safe_replies_enabled === true
 }
 
-function isExplicitKeyOnlyRequest(text: string) {
-  const normalized = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
-  return /^(?:qual (?:e |seria )?(?:a )?chave pix|(?:me |nos )?(?:passa|passe|manda|mande|envia|envie|informa|informe) (?:a |sua |o )?(?:chave )?pix|(?:pode |poderia )?(?:me )?(?:passar|mandar|enviar|informar) (?:a |sua |o )?(?:chave )?pix|(?:chave )?pix (?:da loja|da otica)?)(?: por favor)?$/.test(normalized)
-}
-
 export function selectStoreOnePilotSafeReply(input: {
   classification: WhatsAppRedesignClassification
   decision: WhatsAppSystemDecisionDraft
@@ -30,16 +28,13 @@ export function selectStoreOnePilotSafeReply(input: {
   officialPixHolder: string | null
 }): PilotSafeReply | null {
   const { classification, decision, turnMessages } = input
-  if (classification.requestsHuman || classification.mentionsAttachment
-    || turnMessages.length !== 1 || turnMessages[0].kind !== 'text') return null
-
-  const text = turnMessages[0].text?.trim() ?? ''
-  if (!text) return null
 
   // O classificador nao possui ainda intent Pix. A excecao exige uma pergunta
   // literal e exclusiva pela chave; valores, parcelas e comprovantes seguem no legado.
-  if (decision.action !== 'no_reply' && classification.confidence >= 0.78
-    && isExplicitKeyOnlyRequest(text) && input.officialPixKey?.trim()) {
+  const text = turnMessages.length === 1 && turnMessages[0].kind === 'text'
+    ? turnMessages[0].text?.trim() ?? '' : ''
+  if (decision.action === 'answer_official_pix' && isExplicitOfficialPixRequest(text)
+    && input.officialPixKey?.trim()) {
     const holder = input.officialPixHolder?.trim()
     return {
       action: 'answer_official_pix',
@@ -54,6 +49,18 @@ export function selectStoreOnePilotSafeReply(input: {
       text: decision.canonicalReply,
       messageType: decision.action === 'answer_store_hours' ? 'store_hours' : 'store_location',
     } : null
+  }
+
+  const messageTypeByAction: Partial<Record<typeof decision.action, PilotSafeReply['messageType']>> = {
+    human_handoff: 'human_handoff',
+    repeat_handoff: 'human_handoff',
+    acknowledge_attachment: 'attachment_handoff',
+    recognize_continuation: 'ai_clarification',
+    conservative_fallback: 'ai_greeting',
+  }
+  const messageType = messageTypeByAction[decision.action]
+  if (messageType && decision.canonicalReply) {
+    return { action: decision.action as PilotSafeReply['action'], messageType, text: decision.canonicalReply }
   }
 
   return null

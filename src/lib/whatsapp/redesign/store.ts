@@ -34,6 +34,10 @@ type ConversationRow = Database['public']['Tables']['whatsapp_conversation_memor
 type MessageRow = Database['public']['Tables']['whatsapp_conversation_messages']['Row']
 type TurnRow = Database['public']['Tables']['whatsapp_conversation_turns']['Row']
 type StoreRow = Database['public']['Tables']['stores']['Row']
+type WhatsAppStoreProfileRow = StoreRow & {
+  razao_social?: string | null
+  pix_key?: string | null
+}
 
 export const WHATSAPP_SHADOW_STALE_PROCESSING_MS = 10 * 60 * 1000
 
@@ -500,10 +504,10 @@ export class WhatsAppRedesignConversationStore {
     return replayWhatsAppConversationSummary({ summary: base, processedTurns })
   }
 
-  async loadStore(storeId: number): Promise<StoreRow> {
+  async loadStore(storeId: number): Promise<WhatsAppStoreProfileRow> {
     const { data, error } = await (this.client
       .from('stores') as any)
-      .select('id, name, tenant_id, settings, street, number, neighborhood, city, state')
+      .select('id, name, tenant_id, settings, street, number, neighborhood, city, state, razao_social, pix_key')
       .eq('id', storeId)
       .single()
     if (error) throw error

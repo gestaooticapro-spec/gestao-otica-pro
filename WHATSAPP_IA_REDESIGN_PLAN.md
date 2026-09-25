@@ -2152,5 +2152,24 @@ loja; a chave Pix vem exclusivamente de `stores.pix_key` e só é enviada para
 pedido isolado pela chave. O acionamento é explícito por
 `whatsapp_automation.ai_redesign.safe_replies_enabled`; desligar essa flag
 devolve as próximas mensagens ao fluxo anterior. O roteiro de ativação e
-reversão está em `docs/whatsapp-redesign-stage4-pilot.md`. Ainda é necessário
-publicar o código e validar o piloto em produção antes de concluir a etapa.
+reversão está em `docs/whatsapp-redesign-stage4-pilot.md`. A conclusão exige
+deploy confirmado e validação de mensagens reais no piloto.
+
+Após o deploy informado como Ready em 24/09/2026, a Loja 1 foi conferida com
+modo sombra, automação e canal ativos e dados oficiais presentes. A flag do
+piloto foi ativada e confirmada por nova leitura, sem exibir dados sensíveis.
+A etapa permanece em andamento enquanto os cenários reais e a reversão não
+forem validados.
+
+A primeira validação real ocorreu em 24/09/2026: uma entrada foi processada e
+exatamente uma resposta `answer_store_hours`/`store_hours` foi enviada pelo
+piloto. A consulta mostrou apenas categorias e status; não exibiu telefone,
+texto da conversa ou chave Pix. A segunda mensagem também recebeu exatamente
+uma resposta `answer_store_location`/`store_location`; o turno sombra ainda
+aguardava processamento agendado. Os demais cenários e a reversão seguem pendentes.
+
+A terceira mensagem, com pedido isolado pela chave Pix, recebeu exatamente uma
+resposta enviada do tipo `payment_pix_info`; a chave não foi exibida na consulta.
+O cron sombra está pausado por decisão do usuário, então não há classificação
+sombra final desse turno. Ainda faltam os testes de pedido humano, anexo e
+reversão operacional.

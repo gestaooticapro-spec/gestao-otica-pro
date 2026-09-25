@@ -57,6 +57,8 @@ export type WhatsAppShadowDecisionInput = {
   hoursFacts: StoreHoursFacts | null
   storeLocationReply: string | null
   hasCurrentTurnAttachment: boolean
+  explicitOfficialPixRequest?: boolean
+  hasOfficialPixKey?: boolean
 }
 
 export type WhatsAppShadowDecisionResult = {
@@ -104,6 +106,22 @@ export function buildWhatsAppShadowDecision(
         'Recebi o arquivo. Sou a IAra, uma assistente virtual, e vou chamar um atendente para verificar isso para você.',
         'attachment_requires_human_review'
       ),
+    }
+  }
+
+  if (input.explicitOfficialPixRequest && input.hasOfficialPixKey
+    && classification.confidence >= WHATSAPP_REDESIGN_MIN_CONFIDENCE) {
+    return {
+      reason: 'official_pix_key_requested',
+      draft: WhatsAppSystemDecisionDraftSchema.parse({
+        action: 'answer_official_pix',
+        // A chave não é duplicada no metadata do turno; o envio é renderizado
+        // no webhook a partir do cadastro oficial da loja.
+        canonicalReply: 'Responder com a chave Pix oficial cadastrada para a loja.',
+        facts: { hasOfficialPixKey: true },
+        humanHandoffTiming: null,
+        humanization: humanization(false),
+      }),
     }
   }
 
@@ -190,6 +208,12 @@ export type StoreLocationSource = {
   neighborhood: string | null
   city: string | null
   state: string | null
+}
+
+export function isExplicitOfficialPixRequest(text: string | null | undefined) {
+  const normalized = (text ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
+  return /^(?:qual (?:e |seria )?(?:a )?chave pix|(?:me |nos )?(?:passa|passe|manda|mande|envia|envie|informa|informe) (?:a |sua |o )?(?:chave )?pix|(?:pode |poderia )?(?:me )?(?:passar|mandar|enviar|informar) (?:a |sua |o )?(?:chave )?pix|(?:chave )?pix (?:da loja|da otica)?)(?: por favor)?$/.test(normalized)
 }
 
 export function buildOfficialStoreLocationReply(store: StoreLocationSource) {

@@ -43,6 +43,7 @@ import {
 } from '../src/lib/whatsapp/redesign/memory-consolidation'
 import { WhatsAppRedesignConversationStore } from '../src/lib/whatsapp/redesign/store'
 import {
+  classifyWhatsAppShadowOutcome,
   compareWhatsAppShadowWithLegacy,
   extractWhatsAppLegacyCanonicalEvidence,
   extractWhatsAppShadowDecisionEvidence,
@@ -106,6 +107,12 @@ test('comparacao da etapa 3 distingue alinhamento, seguranca e divergencia', () 
     inboundStatus: 'received', outboundStatus: null, messageType: null,
     canonicalAction: null, canonicalOutboundType: null, canonicalIntent: null,
   }).verdict, 'inconclusive')
+})
+
+test('comparador reconhece resposta Pix oficial como saida automatica', () => {
+  assert.equal(classifyWhatsAppShadowOutcome({
+    action: 'answer_official_pix', intent: 'unknown', mentionsAttachment: false,
+  }), 'other_reply')
 })
 
 function message(index: number, role: WhatsAppConversationMessage['role'] = 'customer'): WhatsAppConversationMessage {
@@ -692,6 +699,27 @@ test('decisao sombra usa somente horario oficial para responder sobre expediente
   assert.equal(result.draft.facts.isStoreOpenNow, true)
 })
 
+test('pedido literal da chave Pix vira acao registrada sem gravar o valor da chave no turno', () => {
+  const result = buildWhatsAppShadowDecision({
+    classification: {
+      intent: 'unknown', confidence: 0.98, topicRelation: 'continue_topic',
+      requestsHuman: false, mentionsAttachment: false,
+      entities: { customerName: null, patientName: null, cpf: null, orderNumber: null },
+    },
+    memory: { summary: defaultConversationSummary(BASE_TIME), messages: [message(1)] },
+    now: BASE_TIME,
+    hoursFacts: null,
+    storeLocationReply: null,
+    hasCurrentTurnAttachment: false,
+    explicitOfficialPixRequest: true,
+    hasOfficialPixKey: true,
+  })
+
+  assert.equal(result.draft.action, 'answer_official_pix')
+  assert.equal(result.reason, 'official_pix_key_requested')
+  assert.doesNotMatch(result.draft.canonicalReply || '', /chave-teste/)
+})
+
 test('decisao sombra nao propoe resposta enquanto o humano confirmado esta ativo', () => {
   const summary = reconcileConfirmedHumanActivity({
     summary: defaultConversationSummary(BASE_TIME),
@@ -806,7 +834,7 @@ test('endereco oficial produz link de mapa sem depender da IA', () => {
   assert.match(reply || '', /query=Rua\+Principal/)
 })
 
-test('processador sombra registra classificacao e decisao sem enviar mensagem', async () => {
+test('processador atende turno capturado imediatamente e registra decisao sem enviar mensagem', async () => {
   const turnId = '00000000-0000-4000-8000-000000000101'
   const customerMessage = {
     ...message(1),
@@ -880,6 +908,8 @@ test('processador sombra registra classificacao e decisao sem enviar mensagem', 
 
   const result = await processWhatsAppRedesignShadowTurns({
     store: fakeStore,
+    storeId: 1,
+    turnId,
     now: new Date(BASE_TIME),
     classifier: async () => ({
       success: true,
@@ -901,7 +931,7 @@ test('processador sombra registra classificacao e decisao sem enviar mensagem', 
     }),
   })
 
-  assert.deepEqual(result, { discovered: 1, recovered: 1, processed: 1, failed: 0, skipped: 0, sendsMessage: false })
+  assert.deepEqual(result, { discovered: 1, recovered: 0, processed: 1, failed: 0, skipped: 0, sendsMessage: false })
   assert.equal(finished[0].status, 'processed')
   const processing = finished[0].metadata.shadowProcessing as Record<string, unknown>
   assert.equal(processing.sendsMessage, false)

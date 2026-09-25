@@ -90,6 +90,7 @@ export function classifyWhatsAppShadowOutcome(
 ): WhatsAppShadowOutcome {
   if (evidence.action === 'answer_store_hours') return 'store_hours'
   if (evidence.action === 'answer_store_location') return 'store_location'
+  if (evidence.action === 'answer_official_pix') return 'other_reply'
   if (evidence.action === 'no_reply') return 'no_reply'
   if (evidence.action === 'acknowledge_attachment') return 'attachment_handoff'
   if (evidence.action === 'recognize_continuation') return 'continuation'

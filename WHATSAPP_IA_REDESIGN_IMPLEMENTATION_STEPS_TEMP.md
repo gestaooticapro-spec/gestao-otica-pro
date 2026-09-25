@@ -23,10 +23,12 @@ registrado no `WHATSAPP_IA_REDESIGN_PLAN.md`.
    pendencias, anexos, handoff e pausa humana renovavel de duas horas.
 3. ~~**CONCLUÍDA — Validar decisões em sombra.** Comparar redesign e legado na
   Loja 1 com conversas reais e cenarios de teste, sem trocar quem responde.~~
-4. **EM ANDAMENTO — Ativar respostas seguras no piloto.** Liberar horario,
-   endereco/mapa e Pix oficial somente na Loja 1, com reversao simples.
-5. **PENDENTE — Implementar fluxos sensiveis.** Tratar OS/retirada, parcelas,
-   anexos/comprovantes, produtos, exame de vista, reclamacao, troca e garantia.
+4. **EM ANDAMENTO — Usar a decisao canonica no piloto ao vivo.** Reutilizar
+   imediatamente a decisao registrada para auditoria, habilitar respostas e
+   handoffs do redesign somente na Loja 1 e preservar reversao simples.
+5. **PENDENTE — Implementar consultas operacionais.** Tratar OS/retirada,
+   parcelas, produtos, exame de vista, reclamacao, troca e garantia com dados
+   verificados; ate la, o redesign encaminha esses assuntos para a equipe.
 6. **PENDENTE — Operacao completa e migracao.** Exibir contexto e decisoes na
    Central, integrar disparos automaticos, migrar loja por loja e aposentar o
    roteador legado quando a equivalencia estiver comprovada.
@@ -145,3 +147,33 @@ registrado no `WHATSAPP_IA_REDESIGN_PLAN.md`.
   Pix oficial. Continua desligado por padrao ate publicar o codigo e ativar
   `whatsapp_automation.ai_redesign.safe_replies_enabled` na loja. Os demais
   assuntos continuam no fluxo anterior; desativar a flag reverte o piloto.
+- 24/09/2026: depois do deploy informado como Ready, as precondicoes da Loja 1
+  foram conferidas sem exibir dados oficiais ou credenciais: modo sombra,
+  automacao e canal ativos, horario, endereco completo e Pix presentes. A flag
+  do piloto foi ativada e confirmada por nova leitura. Faltam testes reais de
+  resposta antes de concluir a etapa 4.
+- 24/09/2026: primeira validacao real apos ativacao concluida. Na janela
+  consultada houve uma entrada processada e exatamente uma saida enviada pelo
+  piloto, classificada como `answer_store_hours`/`store_hours`. A consulta foi
+  agregada e nao exibiu telefone, texto ou chave Pix. Restam endereco/mapa,
+  Pix, pedido humano, anexo e reversao operacional.
+- 24/09/2026: segunda validacao real concluida: uma entrada gerou exatamente
+  uma saida enviada, classificada como `answer_store_location`/`store_location`.
+  O turno correspondente ainda estava `ready` na fila sombra durante a
+  conferencia; falta confirmar seu processamento agendado. Restam Pix, pedido
+  humano, anexo e reversao operacional.
+- 24/09/2026: terceira validacao real concluida: o pedido isolado da chave Pix
+  gerou uma unica saida enviada do tipo `payment_pix_info`. O valor da chave
+  nao foi exibido na consulta nem registrado na documentacao. O cron foi pausado
+  pelo usuario, portanto nao ha confirmacao de classificacao sombra desse turno.
+  Restam pedido humano, anexo e reversao operacional.
+- 24/09/2026: iniciado o uso da decisao canonica ao vivo na Loja 1. O webhook
+  processa imediatamente o turno capturado, persiste classificacao/decisao uma
+  unica vez e reutiliza o resultado para responder, sem aguardar o cron; em
+  corrida, consulta o mesmo turno processado pelo cron. Respostas canonicas de
+  horario, endereco, saudacao e Pix, alem de handoffs conservadores, passam pelo
+  envio existente. Handoff ativa pausa/pendencia operacional, e a memoria sombra
+  so registra o evento depois da entrega confirmada. Pausas humanas e modos
+  `force_human`/`force_ai` preservam o roteamento de controle existente. Typecheck
+  e 48 testes focados passaram; falta publicar e repetir as validacoes reais de
+  pedido humano/anexo, alem de conferir ausencia de duplicidade.

@@ -318,6 +318,20 @@ export async function captureWhatsAppShadowOutbound(input: WhatsAppShadowOutboun
         messageId: storedMessage.id,
       })
     }
+    const canonical = asRecord(asRecord(input.payload)?.canonical)
+    const canonicalAction = normalizedText(canonical?.action)
+    if (canonicalAction === 'human_handoff' || canonicalAction === 'repeat_handoff'
+      || canonicalAction === 'acknowledge_attachment') {
+      await store.recordControlEvent({
+        conversationId: storedMessage.conversation_id,
+        eventKey: `outbound:${input.outboundMessageId}:handoff`,
+        action: 'handoff_sent',
+        occurredAt: storedMessage.occurred_at,
+        actor: 'confirmed_automation',
+        messageId: storedMessage.id,
+        reason: canonicalAction,
+      })
+    }
     return { captured: true, count: 1 }
   })
   return result.success ? result.value : { captured: false, reason: 'capture_failed' as const }

@@ -14,7 +14,11 @@ import {
 import { applyStoreAvailabilityToDecision } from './store-availability-policy'
 import { proposeWhatsAppConversationSummary } from './memory-consolidation'
 import { WhatsAppRedesignConversationStore, type WhatsAppRedesignTurnContext } from './store'
-import { buildOfficialStoreLocationReply, buildWhatsAppShadowDecision } from './system-decision'
+import {
+  buildOfficialStoreLocationReply,
+  buildWhatsAppShadowDecision,
+  isExplicitOfficialPixRequest,
+} from './system-decision'
 
 const SHADOW_PROCESSOR_VERSION = 1
 
@@ -24,6 +28,8 @@ type RedesignClassifier = (input: Parameters<typeof classifyWhatsAppRedesignConv
 export type ProcessShadowTurnsOptions = {
   limit?: number
   storeId?: number
+  /** Processes this exact captured turn immediately, without waiting for the scheduled worker. */
+  turnId?: string
   now?: Date
   store?: WhatsAppRedesignConversationStore
   classifier?: RedesignClassifier
@@ -100,6 +106,10 @@ async function processClaimedTurn(input: {
     hoursFacts,
     storeLocationReply: buildOfficialStoreLocationReply(storeProfile),
     hasCurrentTurnAttachment: context.turnMessages.some((message) => message.kind !== 'text'),
+    explicitOfficialPixRequest: context.turnMessages.length === 1
+      && context.turnMessages[0].kind === 'text'
+      && isExplicitOfficialPixRequest(context.turnMessages[0].text),
+    hasOfficialPixKey: Boolean(storeProfile.pix_key?.trim()),
   })
   const requiresHandoff = decisionResult.draft.action === 'human_handoff'
     || decisionResult.draft.action === 'repeat_handoff'
@@ -153,10 +163,12 @@ export async function processWhatsAppRedesignShadowTurns(
   const store = options.store ?? new WhatsAppRedesignConversationStore()
   const classifier = options.classifier ?? classifyWhatsAppRedesignConversation
   const now = options.now ?? new Date()
-  const recovered = typeof store.recoverStaleProcessingTurns === 'function'
+  const recovered = !options.turnId && typeof store.recoverStaleProcessingTurns === 'function'
     ? await store.recoverStaleProcessingTurns(now.toISOString(), options.storeId)
     : 0
-  const turnIds = await store.listReadyTurnIds(options.limit ?? 10, now.toISOString(), options.storeId)
+  const turnIds = options.turnId
+    ? [options.turnId]
+    : await store.listReadyTurnIds(options.limit ?? 10, now.toISOString(), options.storeId)
   const result: ProcessShadowTurnsResult = {
     discovered: turnIds.length,
     recovered,
@@ -176,9 +188,10 @@ export async function processWhatsAppRedesignShadowTurns(
     let context: WhatsAppRedesignTurnContext | null = null
     try {
       context = await store.loadTurnContext(turnId)
-      if (context.conversation.mode !== 'shadow') {
+      if (context.conversation.mode !== 'shadow'
+        || (options.storeId !== undefined && context.conversation.store_id !== options.storeId)) {
         const released = await store.releaseClaimedTurn(turnId)
-        if (!released) throw new Error('nao_foi_possivel_liberar_turno_fora_do_modo_sombra')
+        if (!released) throw new Error('nao_foi_possivel_liberar_turno_fora_do_escopo_sombra')
         result.skipped += 1
         continue
       }

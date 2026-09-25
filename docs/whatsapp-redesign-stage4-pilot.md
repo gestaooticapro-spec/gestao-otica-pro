@@ -5,12 +5,16 @@ estar com `whatsapp_automation.ai_redesign.mode = "shadow"` e só responde pelo
 redesign quando `whatsapp_automation.ai_redesign.safe_replies_enabled = true`.
 Outras lojas não entram no piloto mesmo se a flag for definida por engano.
 
-O caminho de saída reutiliza a mensagem de entrada e o envio existentes. Um
-turno é classificado pelo redesign antes do roteamento legado. Apenas decisão
-de horário/endereço com confiança suficiente, ou pedido isolado pela chave Pix,
-gera saída do piloto. Anexo, pedido humano, pausa humana e outros assuntos
-seguem para o fluxo anterior. O processador sombra continua registrando a
-auditoria do turno sem enviar outra mensagem.
+O caminho de saída reutiliza a mensagem de entrada e o envio existentes. O
+turno específico é processado imediatamente pelo mesmo decisor usado na
+auditoria; a resposta ao vivo reutiliza a decisão persistida e não aguarda o
+cron nem faz uma segunda classificação. Horário, endereço/mapa, Pix literal,
+saudação conservadora e encaminhamentos definidos pelo redesign seguem essa
+decisão. Encaminhamentos ativam a pausa/pendência operacional e só são
+registrados como handoff confirmado quando a entrega é confirmada. Pausas
+humanas existentes continuam bloqueando respostas automáticas. O cron segue
+ativo para recuperação e turnos que não foram finalizados no caminho imediato;
+ele não envia mensagens.
 
 ## Ativação
 
@@ -20,9 +24,36 @@ auditoria do turno sem enviar outra mensagem.
    `whatsapp_automation.ai_redesign.safe_replies_enabled = true`, preservando
    todas as outras chaves de `stores.settings`. Se `mode` acabou de mudar para
    `shadow`, aguardar até um minuto pela atualização do cache de captura.
-4. Validar com um número de teste: horário, endereço, chave Pix, pedido humano
-   e anexo. Conferir que cada entrada teve no máximo uma saída e que a chave
-   usada é a oficial da loja, sem imprimir seu valor em logs ou relatórios.
+4. Validar com um número de teste: horário, endereço, chave Pix, pedido humano,
+   anexo, saudação, pausa ativa e conversa fora do expediente. Conferir que cada
+   entrada teve no máximo uma saída e que a chave usada é a oficial, sem imprimir
+   seu valor em logs ou relatórios.
+
+Operação local, sem imprimir os valores da configuração:
+
+```bash
+node --import tsx scripts/manage-whatsapp-redesign-stage4.ts status
+node --import tsx scripts/manage-whatsapp-redesign-stage4.ts enable
+node --import tsx scripts/manage-whatsapp-redesign-stage4.ts check-recent
+```
+
+Em 24/09/2026, após o deploy informado como Ready, as pré-condições da Loja 1
+foram conferidas e o piloto foi ativado. Falta validar mensagens reais após a
+ativação; não considerar a etapa concluída antes dessa conferência.
+
+Primeira validação após ativação: na janela de consulta, uma entrada foi
+processada e houve exatamente uma saída enviada, com ação `answer_store_hours`
+e tipo `store_hours`. A checagem exibiu somente contagens e categorias, sem
+telefone, texto da conversa ou chave Pix.
+
+Segunda validação: a entrada seguinte gerou exatamente uma saída enviada,
+classificada como `answer_store_location`/`store_location`. O turno ainda estava
+`ready` na captura sombra durante a checagem, portanto a classificação posterior
+do processador agendado ainda não foi confirmada.
+
+Terceira validação: o pedido explícito pela chave Pix gerou exatamente uma
+saída enviada do tipo `payment_pix_info`. O relatório não expôs a chave. Como o
+cron foi pausado pelo usuário, o turno sombra continua sem classificação final.
 
 ## Reversão
 
@@ -31,3 +62,7 @@ restante da configuração. As próximas entradas voltam ao roteador anterior;
 mensagens já enviadas não podem ser recolhidas. O modo `shadow` pode continuar
 registrando decisões sem afetar a resposta. Se for necessário interromper
 também essa captura, retornar `mode` para `legacy` separadamente.
+
+```bash
+node --import tsx scripts/manage-whatsapp-redesign-stage4.ts disable
+```

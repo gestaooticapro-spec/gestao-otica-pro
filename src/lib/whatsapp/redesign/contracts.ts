@@ -133,6 +133,7 @@ export type WhatsAppRedesignClassification = z.infer<typeof WhatsAppRedesignClas
 export const WhatsAppRedesignActionSchema = z.enum([
   'answer_store_hours',
   'answer_store_location',
+  'answer_official_pix',
   'acknowledge_attachment',
   'recognize_continuation',
   'human_handoff',

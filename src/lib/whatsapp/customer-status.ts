@@ -8,7 +8,6 @@ import type { StoreSettings } from '@/lib/store-modules'
 import { evaluateStoreHours } from './store-hours-logic'
 import {
   classifyWhatsAppIntent,
-  classifyWhatsAppRedesignConversation,
   resolveWhatsAppInstallmentReminderPreference,
   resolveWhatsAppPostSaleRating,
   humanizeWhatsAppReply,
@@ -61,8 +60,11 @@ import {
   captureWhatsAppShadowOutbound,
 } from './redesign/shadow-ingestion'
 import { WhatsAppRedesignConversationStore } from './redesign/store'
-import { buildOfficialStoreLocationReply, buildWhatsAppShadowDecision } from './redesign/system-decision'
-import { applyStoreAvailabilityToDecision } from './redesign/store-availability-policy'
+import { processWhatsAppRedesignShadowTurns } from './redesign/shadow-processor'
+import {
+  WhatsAppRedesignClassificationSchema,
+  WhatsAppSystemDecisionSchema,
+} from './redesign/contracts'
 import { isStoreOneSafeRepliesPilotEnabled, selectStoreOnePilotSafeReply } from './redesign/safe-replies-pilot'
 
 const SAME_STATUS_SILENCE_WINDOW_MS = 2 * 60 * 60 * 1000
@@ -2613,38 +2615,41 @@ export async function resolveCustomerStatus(
     && shadowCapture.captured && 'turnId' in shadowCapture
     && typeof shadowCapture.turnId === 'string'
     && controlMode !== 'force_human'
+    && controlMode !== 'force_ai'
     && !['human_pause', 'awaiting_human', 'waiting_human_after_attachment', 'silent'].includes(state?.state ?? '')) {
     let pilotReply: ReturnType<typeof selectStoreOnePilotSafeReply> = null
     try {
-      const turnContext = await new WhatsAppRedesignConversationStore().loadTurnContext(shadowCapture.turnId)
-      const humanControl = turnContext.memory.summary.humanControl
-      const classificationResult = humanControl === 'human_active' || humanControl === 'human_pending'
-        ? null : await classifyWhatsAppRedesignConversation({
-          memory: turnContext.memory,
-          turnMessages: turnContext.turnMessages,
-          elapsedSincePreviousMessageMs: null,
-        })
-      if (classificationResult?.success) {
-        const decisionAt = new Date()
-        const decisionHours = settings.store_hours
-          ? evaluateStoreHours(settings.store_hours, decisionAt)
-          : null
-        const proposal = buildWhatsAppShadowDecision({
-          classification: classificationResult.data,
-          memory: turnContext.memory,
-          now: decisionAt.toISOString(),
-          hoursFacts: decisionHours,
-          storeLocationReply: storeProfile.street?.trim() && storeProfile.number?.trim()
-            && storeProfile.city?.trim() && storeProfile.state?.trim()
-            ? buildOfficialStoreLocationReply(storeProfile)
-            : null,
-          hasCurrentTurnAttachment: turnContext.turnMessages.some((message) => message.kind !== 'text'),
-        })
-        const decision = decisionHours
-          ? applyStoreAvailabilityToDecision(proposal.draft, decisionHours)
-          : proposal.draft
+      const redesignStore = new WhatsAppRedesignConversationStore()
+      const processing = await processWhatsAppRedesignShadowTurns({
+        storeId: channel.store_id,
+        turnId: shadowCapture.turnId,
+        store: redesignStore,
+      })
+      let turnContext = processing.processed === 1
+        ? await redesignStore.loadTurnContext(shadowCapture.turnId) : null
+      // Se o cron já reivindicou exatamente este turno, reutiliza o resultado
+      // dele em vez de cair no legado e produzir uma segunda decisão diferente.
+      for (let attempt = 0; !turnContext && processing.skipped > 0 && attempt < 20; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 150))
+        const latest = await redesignStore.loadTurnContext(shadowCapture.turnId)
+        if (latest.turn.status === 'processed') turnContext = latest
+        else if (latest.turn.status !== 'processing') break
+      }
+      if (turnContext) {
+        const turnMetadata = turnContext.turn.metadata && typeof turnContext.turn.metadata === 'object'
+          && !Array.isArray(turnContext.turn.metadata)
+          ? turnContext.turn.metadata as Record<string, unknown> : {}
+        const shadowProcessing = turnMetadata.shadowProcessing && typeof turnMetadata.shadowProcessing === 'object'
+          && !Array.isArray(turnMetadata.shadowProcessing)
+          ? turnMetadata.shadowProcessing as Record<string, unknown> : {}
+        const classification = WhatsAppRedesignClassificationSchema.parse(shadowProcessing.classification)
+        const decision = WhatsAppSystemDecisionSchema.parse(shadowProcessing.decision)
+
+        // O caminho ao vivo usa a mesma decisão já persistida para auditoria; não
+        // faz uma segunda chamada de classificação nem espera o cron de sombra.
+        if (decision.action === 'no_reply') return ignoreInbound(inbound.id)
         pilotReply = selectStoreOnePilotSafeReply({
-          classification: classificationResult.data,
+          classification,
           decision,
           turnMessages: turnContext.turnMessages,
           officialPixKey: storeProfile.pix_key ?? null,
@@ -2657,13 +2662,30 @@ export async function resolveCustomerStatus(
     }
 
     if (pilotReply) {
-      return createOutbound(channel, inbound.id, normalizedPhone, pilotReply.text, pilotReply.messageType,
-        buildWhatsAppCanonicalPayload({
-          intent: pilotReply.action === 'answer_official_pix' ? 'payment_info' : pilotReply.action === 'answer_store_hours' ? 'store_hours' : 'store_location',
+      const isHandoff = pilotReply.action === 'human_handoff' || pilotReply.action === 'repeat_handoff'
+      const intent = pilotReply.action === 'answer_official_pix' ? 'payment_info'
+        : pilotReply.action === 'answer_store_hours' ? 'store_hours'
+          : pilotReply.action === 'answer_store_location' ? 'store_location'
+            : pilotReply.action === 'human_handoff' || pilotReply.action === 'repeat_handoff'
+              ? 'human_agent_request' : pilotReply.action === 'acknowledge_attachment' ? 'attachment' : 'unknown'
+      const payload = buildWhatsAppCanonicalPayload({
+          intent,
           action: pilotReply.action,
           outboundType: pilotReply.messageType,
           canonicalReply: pilotReply.text,
-        }), inbound.id)
+        })
+      if (isHandoff) {
+        await setConversationState(
+          channel,
+          normalizedPhone,
+          isWhatsAppToolAgentEnabled(automationSettings) ? 'awaiting_human' : 'human_pause',
+          isWhatsAppToolAgentEnabled(automationSettings) ? AWAITING_HUMAN_CONTEXT_MS : HUMAN_HANDOFF_PAUSE_MS,
+          { ...payload, lastAction: 'human_handoff', reason: 'whatsapp_redesign_decision' },
+          inbound.id
+        )
+      }
+      return createOutbound(channel, inbound.id, normalizedPhone, pilotReply.text, pilotReply.messageType,
+        payload, inbound.id)
     }
   }
 
