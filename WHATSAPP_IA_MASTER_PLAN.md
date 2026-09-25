@@ -14,6 +14,8 @@ A solução deve ser **provider-agnostic** desde o início, para permitir trocar
 ## Decisões Centrais
 
 - A IA será tratada como **classificador/extrator/redator**, não como agente autônomo.
+- **Regra obrigatória de redação (decisão do usuário, 25/09/2026):** em operação normal, toda mensagem de saída ao cliente deve ser redigida pela IA com base nos fatos e na decisão segura do sistema. Texto fixo/pré-escrito não pode ser a resposta normal, inclusive em handoff, anexos, saudações, horário, endereço ou Pix. Texto fixo só pode ser usado como fallback quando a geração por IA falhar (indisponibilidade/erro dos providers ou saída inválida após os fallbacks configurados), e essa condição deve ser registrada. Não se deve substituir a IA por templates apenas por conveniência ou elegibilidade por intenção.
+- No handoff de produto/estoque, a consulta continua obrigatoriamente com um atendente e o sistema não consulta nem promete estoque; a redação da IA deve preservar o item/marca mencionado (por exemplo, “lentes Varilux”), sem uma frase genérica como “essa peça ou lente”.
 - Toda mensagem inbound passa primeiro por um **orquestrador do sistema**.
 - O orquestrador decide se:
   - ignora
@@ -38,7 +40,7 @@ Criar um fluxo híbrido em que o cliente perceba mais humanidade, mas o sistema 
 - Horário de funcionamento
 - Localização / endereço
 - Informações objetivas sobre pagamento / parcela / Pix, desde que já existam no sistema e não exijam negociação
-- Resposta padrão de handoff para atendente
+- Handoff para atendente com texto contextual redigido por IA
 
 ### O que o V1 não deve automatizar até decisão posterior
 
@@ -76,10 +78,11 @@ Criar um fluxo híbrido em que o cliente perceba mais humanidade, mas o sistema 
    - decide ação final
    - produz resposta canônica estruturada
 
-5. **Humanizador IA**
-   - opcional por intent elegível
-   - transforma resposta canônica em texto amigável
+5. **Redator IA**
+   - obrigatório para toda resposta enviada em operação normal
+   - transforma decisão e fatos canônicos em texto contextual, humano e natural
    - não pode mudar facts, decisão nem policy
+   - template determinístico somente como fallback comprovado quando os providers de IA falharem
 
 6. **Memória / Estado**
    - persistida no banco
@@ -116,9 +119,8 @@ Criar um fluxo híbrido em que o cliente perceba mais humanidade, mas o sistema 
   - marcar conversa como `waiting_human_after_attachment`
   - não pedir interpretação à IA no primeiro momento
   - não responder com texto clínico/comercial
-  - responder uma mensagem fixa do sistema, sem IA:
-    - recebimento confirmado
-    - atendimento humano será chamado
+  - a IA redige a confirmação contextual do recebimento e do encaminhamento humano com base nos fatos conhecidos
+  - se a geração por IA falhar, pode usar fallback fixo e registrar a falha
 - Se uma mensagem textual vier logo após anexo recente:
   - sistema identifica contexto de anexo pendente
   - responde handoff humano
@@ -133,8 +135,8 @@ Criar um fluxo híbrido em que o cliente perceba mais humanidade, mas o sistema 
   - sistema decide:
     - automação segura
     - handoff humano
-    - resposta padrão
-  - se elegível, humaniza com IA
+    - resposta redigida por IA conforme a decisão e os fatos seguros
+  - redige com IA toda resposta enviada em operação normal; texto fixo só em fallback após falha registrada
   - envia
 
 ## Intenções do V1
@@ -659,6 +661,17 @@ Adicionar humanização IA em cima da resposta canônica
 - Se o deploy precisar ser retomado por outra IA/agente, esta arquitetura deve ser mantida: **IA na borda, sistema no comando**.
 
 ## Progresso da Branch
+
+### Redação contextual por IA no piloto Loja 1 (25/09/2026)
+
+- O usuário não aceita respostas pré-escritas como comportamento normal: a IA deve redigir as mensagens ao cliente; templates ficam restritos a fallback quando os providers de IA falharem.
+- Auditoria do código encontrou uma divergência importante: `src/lib/whatsapp/redesign/system-decision.ts` continha textos fixos por intenção (incluindo `product_availability`) e o piloto enviava o texto diretamente, sem chamar o redator/humanizador de IA.
+- Portanto, a resposta de estoque “Vou chamar um atendente para verificar essa peça ou lente para você” veio de um template fixo; não foi redigida pela IA. A IA classificou a intenção, mas não personalizou a mensagem.
+- O processador `shadow-processor.ts` registra classificação/decisão e declara `sendsMessage: false`; a resposta ao vivo da loja 1 é enviada pelo caminho de `safe-replies-pilot.ts`. A regra de redação tem de ser aplicada ao caminho ao vivo, não apenas à sombra.
+- O piloto agora chama `generateWhatsAppRedesignReply` antes de enviar respostas seguras, passando mensagens atuais, histórico recente, ação decidida e fatos oficiais. As frases fixas foram renomeadas e tratadas como `fallbackReply`/`fallbackText`; não são fornecidas ao redator como roteiro.
+- A geração cobre respostas de horário, endereço, Pix oficial, handoff (inclusive produto/estoque), anexos, continuidade e fallback conservador. Para produto/estoque, o sistema continua encaminhando ao atendente, sem consultar nem afirmar disponibilidade; a marca/produto classificado é requisito da validação da resposta gerada.
+- A resposta pronta só é usada quando os providers falham ou quando a saída gerada é inválida para a regra de negócio (omite marca/produto, chave Pix, horário oficial ou encaminhamento humano, ou afirma disponibilidade de estoque). O outbound registra se foi IA ou fallback e o motivo deste último.
+- **Pendência antes do uso publicado:** executar typecheck e testes automatizados; publicar a mudança e validar em conversa real que a IA produza uma resposta contextual. Os testes deste código não chamam provedores reais nem enviam WhatsApp.
 
 ### Entregue na branch `feature/whatsapp-ia-orchestrator`
 

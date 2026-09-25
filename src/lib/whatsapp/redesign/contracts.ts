@@ -126,6 +126,7 @@ export const WhatsAppRedesignClassificationSchema = z.object({
     patientName: z.string().trim().max(200).nullable(),
     cpf: z.string().trim().max(20).nullable(),
     orderNumber: z.string().trim().max(80).nullable(),
+    productMention: z.string().trim().min(1).max(160).nullable().optional(),
   }).strict(),
 }).strict()
 export type WhatsAppRedesignClassification = z.infer<typeof WhatsAppRedesignClassificationSchema>
@@ -173,26 +174,26 @@ export type WhatsAppHumanHandoffTiming = z.infer<typeof WhatsAppHumanHandoffTimi
 
 const WhatsAppSystemDecisionBaseSchema = z.object({
   action: WhatsAppRedesignActionSchema,
-  canonicalReply: z.string().trim().min(1).max(1200).nullable(),
+  fallbackReply: z.string().trim().min(1).max(1200).nullable(),
   facts: z.record(z.string(), WhatsAppCanonicalFactSchema),
   humanHandoffTiming: WhatsAppHumanHandoffTimingSchema.nullable(),
   humanization: WhatsAppHumanizationPolicySchema,
 }).strict()
 
 export const WhatsAppSystemDecisionDraftSchema = WhatsAppSystemDecisionBaseSchema.superRefine((decision, context) => {
-  if (decision.action === 'no_reply' && decision.canonicalReply !== null) {
+  if (decision.action === 'no_reply' && decision.fallbackReply !== null) {
     context.addIssue({
       code: 'custom',
-      path: ['canonicalReply'],
-      message: 'no_reply nao pode carregar resposta canonica.',
+      path: ['fallbackReply'],
+      message: 'no_reply nao pode carregar texto de fallback.',
     })
   }
 
-  if (decision.action !== 'no_reply' && !decision.canonicalReply) {
+  if (decision.action !== 'no_reply' && !decision.fallbackReply) {
     context.addIssue({
       code: 'custom',
-      path: ['canonicalReply'],
-      message: 'A decisao exige resposta canonica.',
+      path: ['fallbackReply'],
+      message: 'A decisao exige um texto de fallback para contingencia.',
     })
   }
 })

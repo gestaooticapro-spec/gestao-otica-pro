@@ -57,7 +57,7 @@ test('comparacao da etapa 3 extrai somente evidencias estruturadas', () => {
   const shadow = extractWhatsAppShadowDecisionEvidence({
     shadowProcessing: {
       classification: { intent: 'store_hours', mentionsAttachment: false },
-      decision: { action: 'answer_store_hours', canonicalReply: 'conteudo privado' },
+      decision: { action: 'answer_store_hours', fallbackReply: 'conteudo privado' },
     },
   })
   const legacy = extractWhatsAppLegacyCanonicalEvidence({
@@ -65,7 +65,7 @@ test('comparacao da etapa 3 extrai somente evidencias estruturadas', () => {
       intent: 'store_hours',
       action: 'auto_reply',
       outboundType: 'store_hours',
-      canonicalReply: 'outro conteudo privado',
+      fallbackReply: 'outro conteudo privado',
       facts: { storeName: 'privado' },
     },
   })
@@ -527,7 +527,7 @@ test('classificacao da IA e estrita e nao aceita texto de resposta', () => {
   }))
 })
 
-test('decisao do sistema exige resposta canonica exceto em no_reply', () => {
+test('decisao do sistema exige texto de fallback exceto em no_reply', () => {
   const humanization = {
     mustNotAddFacts: true as const,
     mustKeepShort: true,
@@ -538,7 +538,7 @@ test('decisao do sistema exige resposta canonica exceto em no_reply', () => {
 
   assert.doesNotThrow(() => WhatsAppSystemDecisionSchema.parse({
     action: 'answer_store_hours',
-    canonicalReply: 'A loja esta aberta agora.',
+    fallbackReply: 'A loja esta aberta agora.',
     facts: { isOpenNow: true },
     humanHandoffTiming: null,
     humanization,
@@ -546,7 +546,7 @@ test('decisao do sistema exige resposta canonica exceto em no_reply', () => {
 
   assert.doesNotThrow(() => WhatsAppSystemDecisionSchema.parse({
     action: 'no_reply',
-    canonicalReply: null,
+    fallbackReply: null,
     facts: {},
     humanHandoffTiming: null,
     humanization,
@@ -554,7 +554,7 @@ test('decisao do sistema exige resposta canonica exceto em no_reply', () => {
 
   assert.throws(() => WhatsAppSystemDecisionSchema.parse({
     action: 'human_handoff',
-    canonicalReply: null,
+    fallbackReply: null,
     facts: {},
     humanHandoffTiming: null,
     humanization,
@@ -564,7 +564,7 @@ test('decisao do sistema exige resposta canonica exceto em no_reply', () => {
 test('fora do expediente nao bloqueia respostas que nao dependem de funcionario', () => {
   const decision = WhatsAppSystemDecisionSchema.parse({
     action: 'answer_store_location',
-    canonicalReply: 'Estamos na Rua Principal, 100.',
+    fallbackReply: 'Estamos na Rua Principal, 100.',
     facts: { address: 'Rua Principal, 100' },
     humanHandoffTiming: null,
     humanization: {
@@ -590,7 +590,7 @@ test('fora do expediente nao bloqueia respostas que nao dependem de funcionario'
 test('handoff fora do expediente informa quando a equipe continuara o atendimento', () => {
   const decision = WhatsAppSystemDecisionDraftSchema.parse({
     action: 'human_handoff',
-    canonicalReply: 'Sou a IAra, uma assistente virtual. Vou encaminhar sua pergunta sobre a peca para um atendente.',
+    fallbackReply: 'Sou a IAra, uma assistente virtual. Vou encaminhar sua pergunta sobre a peca para um atendente.',
     facts: { handoffReason: 'product_availability' },
     humanHandoffTiming: null,
     humanization: {
@@ -613,13 +613,13 @@ test('handoff fora do expediente informa quando a equipe continuara o atendiment
   assert.equal(result.humanHandoffTiming?.mode, 'when_store_opens')
   assert.equal(result.humanHandoffTiming?.nextOpenSchedule, 'Amanhã às 08:00')
   assert.equal(result.facts.isStoreOpenNow, false)
-  assert.match(result.canonicalReply || '', /quando ela abrir, amanhã às 08:00/i)
+  assert.match(result.fallbackReply || '', /quando ela abrir, amanhã às 08:00/i)
 })
 
 test('handoff fechado nunca inventa horario quando a agenda nao calcula a proxima abertura', () => {
   const decision = WhatsAppSystemDecisionDraftSchema.parse({
     action: 'human_handoff',
-    canonicalReply: 'Sou a IAra, uma assistente virtual. Vou encaminhar este caso para um atendente.',
+    fallbackReply: 'Sou a IAra, uma assistente virtual. Vou encaminhar este caso para um atendente.',
     facts: { handoffReason: 'unknown' },
     humanHandoffTiming: null,
     humanization: {
@@ -644,7 +644,7 @@ test('handoff fechado nunca inventa horario quando a agenda nao calcula a proxim
 test('handoff durante o expediente continua imediato', () => {
   const decision = WhatsAppSystemDecisionDraftSchema.parse({
     action: 'repeat_handoff',
-    canonicalReply: 'Sou a IAra, uma assistente virtual. Vou chamar novamente um atendente para continuar esse assunto.',
+    fallbackReply: 'Sou a IAra, uma assistente virtual. Vou chamar novamente um atendente para continuar esse assunto.',
     facts: { handoffReason: 'conversation_continuation' },
     humanHandoffTiming: null,
     humanization: {
@@ -664,7 +664,7 @@ test('handoff durante o expediente continua imediato', () => {
     full_weekly_schedule: 'Segunda-feira: 08:00 - 18:00',
   })
 
-  assert.equal(result.canonicalReply, decision.canonicalReply)
+  assert.equal(result.fallbackReply, decision.fallbackReply)
   assert.equal(result.humanHandoffTiming?.mode, 'during_open_hours')
   assert.equal(result.facts.isStoreOpenNow, true)
 })
@@ -697,7 +697,7 @@ test('decisao sombra usa somente horario oficial para responder sobre expediente
   })
 
   assert.equal(result.draft.action, 'answer_store_hours')
-  assert.match(result.draft.canonicalReply || '', /abertos agora/i)
+  assert.match(result.draft.fallbackReply || '', /abertos agora/i)
   assert.equal(result.draft.facts.isStoreOpenNow, true)
 })
 
@@ -727,7 +727,7 @@ test('pergunta em espanhol sobre amanha responde no idioma e no dia solicitado',
 
   assert.equal(result.reason, 'official_store_hours_requested_day')
   assert.equal(result.draft.action, 'answer_store_hours')
-  assert.equal(result.draft.canonicalReply, 'Sí, mañana abrimos de 08:30 a 18:00.')
+  assert.equal(result.draft.fallbackReply, 'Sí, mañana abrimos de 08:30 a 18:00.')
   assert.equal(result.draft.facts.requestedDay, 'tomorrow')
 })
 
@@ -755,7 +755,7 @@ test('pergunta sobre amanha informa fechamento excepcional sem reaproveitar o ho
     hasCurrentTurnAttachment: false,
   })
 
-  assert.equal(result.draft.canonicalReply, 'Amanhã a loja estará fechada.')
+  assert.equal(result.draft.fallbackReply, 'Amanhã a loja estará fechada.')
   assert.equal(result.draft.facts.tomorrowIsExceptionalClosure, true)
 })
 
@@ -798,7 +798,7 @@ test('pedido literal da chave Pix vira acao registrada sem gravar o valor da cha
 
   assert.equal(result.draft.action, 'answer_official_pix')
   assert.equal(result.reason, 'official_pix_key_requested')
-  assert.doesNotMatch(result.draft.canonicalReply || '', /chave-teste/)
+  assert.doesNotMatch(result.draft.fallbackReply || '', /chave-teste/)
 })
 
 test('decisao sombra nao propoe resposta enquanto o humano confirmado esta ativo', () => {
@@ -897,7 +897,7 @@ test('assunto que exige funcionario gera handoff transparente da IAra', () => {
   })
 
   assert.equal(result.draft.action, 'human_handoff')
-  assert.match(result.draft.canonicalReply || '', /Sou a IAra/i)
+  assert.match(result.draft.fallbackReply || '', /Sou a IAra/i)
   assert.equal(result.draft.humanization.mustMentionHumanHandoff, true)
 })
 

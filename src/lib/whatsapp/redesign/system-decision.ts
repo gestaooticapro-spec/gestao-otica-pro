@@ -29,7 +29,7 @@ function humanization(requiresHandoff: boolean) {
 function handoffDraft(
   classification: WhatsAppRedesignClassification,
   memory: WhatsAppConversationMemory,
-  canonicalReply: string,
+  fallbackReply: string,
   reason: string
 ): WhatsAppSystemDecisionDraft {
   const isContinuation = memory.summary.humanControl === 'human_pending'
@@ -37,12 +37,13 @@ function handoffDraft(
 
   return WhatsAppSystemDecisionDraftSchema.parse({
     action: isContinuation ? 'repeat_handoff' : 'human_handoff',
-    canonicalReply: isContinuation
+    fallbackReply: isContinuation
       ? 'Sou a IAra, uma assistente virtual. Entendi que você está retomando esse assunto. Vou chamar novamente um atendente para continuar com você.'
-      : canonicalReply,
+      : fallbackReply,
     facts: {
       classificationIntent: classification.intent,
       classificationConfidence: classification.confidence,
+      productMention: classification.entities.productMention ?? null,
       decisionReason: reason,
     },
     humanHandoffTiming: null,
@@ -114,7 +115,7 @@ export function buildWhatsAppShadowDecision(
       reason: 'human_control_blocks_ai',
       draft: WhatsAppSystemDecisionDraftSchema.parse({
         action: 'no_reply',
-        canonicalReply: null,
+        fallbackReply: null,
         facts: { decisionReason: 'human_control_blocks_ai' },
         humanHandoffTiming: null,
         humanization: humanization(false),
@@ -156,7 +157,7 @@ export function buildWhatsAppShadowDecision(
         action: 'answer_official_pix',
         // A chave não é duplicada no metadata do turno; o envio é renderizado
         // no webhook a partir do cadastro oficial da loja.
-        canonicalReply: 'Responder com a chave Pix oficial cadastrada para a loja.',
+        fallbackReply: 'Responder com a chave Pix oficial cadastrada para a loja.',
         facts: { hasOfficialPixKey: true },
         humanHandoffTiming: null,
         humanization: humanization(false),
@@ -173,7 +174,7 @@ export function buildWhatsAppShadowDecision(
         reason: 'official_store_hours_requested_day',
         draft: WhatsAppSystemDecisionDraftSchema.parse({
           action: 'answer_store_hours',
-          canonicalReply: canonicalTomorrowHoursReply(input.tomorrowHoursFacts, language),
+          fallbackReply: canonicalTomorrowHoursReply(input.tomorrowHoursFacts, language),
           facts: {
             requestedDay,
             tomorrowSchedule: input.tomorrowHoursFacts.today_schedule,
@@ -185,14 +186,14 @@ export function buildWhatsAppShadowDecision(
       }
     }
 
-    const canonicalReply = input.hoursFacts.is_open_now
+    const fallbackReply = input.hoursFacts.is_open_now
       ? `Sim, estamos abertos agora. O horário de hoje é ${input.hoursFacts.today_schedule}.`
       : `No momento estamos fechados. A próxima abertura será ${input.hoursFacts.next_open_schedule}.`
     return {
       reason: 'official_store_hours_available',
       draft: WhatsAppSystemDecisionDraftSchema.parse({
         action: 'answer_store_hours',
-        canonicalReply,
+        fallbackReply,
         facts: {
           isStoreOpenNow: input.hoursFacts.is_open_now,
           todaySchedule: input.hoursFacts.today_schedule,
@@ -211,8 +212,11 @@ export function buildWhatsAppShadowDecision(
       reason: 'official_store_location_available',
       draft: WhatsAppSystemDecisionDraftSchema.parse({
         action: 'answer_store_location',
-        canonicalReply: input.storeLocationReply,
-        facts: { hasOfficialStoreLocation: true },
+        fallbackReply: input.storeLocationReply,
+        facts: {
+          hasOfficialStoreLocation: true,
+          officialStoreLocation: input.storeLocationReply,
+        },
         humanHandoffTiming: null,
         humanization: humanization(false),
       }),
@@ -224,7 +228,7 @@ export function buildWhatsAppShadowDecision(
       reason: 'greeting_without_operational_request',
       draft: WhatsAppSystemDecisionDraftSchema.parse({
         action: 'conservative_fallback',
-        canonicalReply: 'Olá! Como posso ajudar?',
+        fallbackReply: 'Olá! Como posso ajudar?',
         facts: { classificationIntent: 'greeting' },
         humanHandoffTiming: null,
         humanization: humanization(false),
@@ -242,7 +246,9 @@ export function buildWhatsAppShadowDecision(
     budget_request: 'Sou a IAra, uma assistente virtual. Vou chamar um atendente para preparar essa informação para você.',
     human_agent_request: 'Sou a IAra, uma assistente virtual. Vou chamar um atendente para continuar com você.',
   }
-  const message = handoffMessages[classification.intent]
+  const message = classification.intent === 'product_availability' && classification.entities.productMention
+    ? `Sou a IAra, uma assistente virtual. Vou chamar um atendente para verificar ${classification.entities.productMention} para você.`
+    : handoffMessages[classification.intent]
   const reason = classification.confidence < WHATSAPP_REDESIGN_MIN_CONFIDENCE
     ? 'classification_below_safe_confidence'
     : message

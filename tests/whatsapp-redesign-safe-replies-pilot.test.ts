@@ -6,8 +6,10 @@ import {
 } from '../src/lib/whatsapp/redesign/contracts'
 import {
   isStoreOneSafeRepliesPilotEnabled,
+  resolveStoreOnePilotReplyText,
   selectStoreOnePilotSafeReply,
 } from '../src/lib/whatsapp/redesign/safe-replies-pilot'
+import { buildWhatsAppRedesignReplyPrompt } from '../src/lib/whatsapp/ai'
 
 const classification = WhatsAppRedesignClassificationSchema.parse({
   intent: 'store_hours', confidence: 0.98, topicRelation: 'change_topic',
@@ -15,7 +17,7 @@ const classification = WhatsAppRedesignClassificationSchema.parse({
   entities: { customerName: null, patientName: null, cpf: null, orderNumber: null },
 })
 const decision = WhatsAppSystemDecisionSchema.parse({
-  action: 'answer_store_hours', canonicalReply: 'Horário oficial de hoje.',
+  action: 'answer_store_hours', fallbackReply: 'Fallback horário oficial de hoje.',
   facts: {}, humanHandoffTiming: null,
   humanization: {
     mustNotAddFacts: true, mustKeepShort: true, mustIdentifyIara: false,
@@ -31,17 +33,20 @@ test('piloto exige Loja 1, modo sombra e ativacao explicita', () => {
   assert.equal(isStoreOneSafeRepliesPilotEnabled(1, { ai_redesign: { mode: 'legacy', safe_replies_enabled: true } }), false)
 })
 
-test('resposta ao vivo usa a decisao canonica, inclusive handoff e anexo', () => {
+test('selecao do piloto prepara texto fixo somente como fallback, nunca como texto ao vivo', () => {
   const base = {
     classification, decision,
     turnMessages: [{ kind: 'text', text: 'Qual o horário?' }],
     officialPixKey: null, officialPixHolder: null,
   }
-  assert.deepEqual(selectStoreOnePilotSafeReply(base), {
-    action: 'answer_store_hours', messageType: 'store_hours', text: 'Horário oficial de hoje.',
-  })
+  const hoursReply = selectStoreOnePilotSafeReply(base)
+  assert.equal(hoursReply?.action, 'answer_store_hours')
+  assert.equal(hoursReply?.messageType, 'store_hours')
+  assert.equal(hoursReply?.fallbackText, 'Fallback horário oficial de hoje.')
+  assert.equal('text' in (hoursReply ?? {}), false)
+
   const handoff = WhatsAppSystemDecisionSchema.parse({
-    ...decision, action: 'human_handoff', canonicalReply: 'Vou chamar um atendente.',
+    ...decision, action: 'human_handoff', fallbackReply: 'Fallback: vou chamar um atendente.',
     humanHandoffTiming: { mode: 'during_open_hours', nextOpenSchedule: null },
   })
   assert.equal(selectStoreOnePilotSafeReply({
@@ -50,34 +55,122 @@ test('resposta ao vivo usa a decisao canonica, inclusive handoff e anexo', () =>
   assert.equal(selectStoreOnePilotSafeReply({
     ...base, turnMessages: [{ kind: 'image', text: null }], decision: {
       ...handoff, action: 'acknowledge_attachment', humanHandoffTiming: null,
-      canonicalReply: 'Recebi o arquivo. Vou chamar um atendente.',
+      fallbackReply: 'Fallback: recebi o arquivo e vou chamar um atendente.',
     },
   })?.messageType, 'attachment_handoff')
-  assert.equal(selectStoreOnePilotSafeReply({
-    ...base, turnMessages: [...base.turnMessages, ...base.turnMessages],
-  })?.action, 'answer_store_hours')
 })
 
-test('Pix literal usa chave oficial; demais pedidos seguem handoff canonico', () => {
-  const pixDecision = WhatsAppSystemDecisionSchema.parse({
-    ...decision, action: 'answer_official_pix', canonicalReply: 'Responder com a chave oficial cadastrada.',
+test('geracao contextual preserva a marca e nunca afirma disponibilidade em estoque', () => {
+  const productClassification = WhatsAppRedesignClassificationSchema.parse({
+    intent: 'product_availability', confidence: 0.98, topicRelation: 'change_topic',
+    requestsHuman: false, mentionsAttachment: false,
+    entities: { customerName: null, patientName: null, cpf: null, orderNumber: null, productMention: 'lentes Varilux' },
   })
   const handoff = WhatsAppSystemDecisionSchema.parse({
-    ...decision, action: 'human_handoff', canonicalReply: 'Atendente.',
+    ...decision,
+    action: 'human_handoff',
+    fallbackReply: 'Fallback de contingência para lentes Varilux.',
+    facts: { handoffReason: 'product_availability', productMention: 'lentes Varilux' },
     humanHandoffTiming: { mode: 'during_open_hours', nextOpenSchedule: null },
   })
-  const base = {
-    classification: { ...classification, intent: 'unknown' as const }, decision: pixDecision,
-    turnMessages: [{ kind: 'text', text: 'Qual é a chave Pix?' }],
-    officialPixKey: 'chave-teste', officialPixHolder: 'Loja Teste',
-  }
-  assert.deepEqual(selectStoreOnePilotSafeReply(base), {
-    action: 'answer_official_pix', messageType: 'payment_pix_info',
-    text: 'Nossa chave Pix é chave-teste. Favorecido: Loja Teste. Confira o favorecido antes de pagar.',
+  const candidate = selectStoreOnePilotSafeReply({
+    classification: productClassification,
+    decision: handoff,
+    turnMessages: [{ kind: 'text', text: 'Vocês têm lentes Varilux em estoque?' }],
+    officialPixKey: null,
+    officialPixHolder: null,
+  })!
+
+  assert.equal(candidate.replyInput.facts.productMention, 'lentes Varilux')
+  assert.equal(candidate.replyInput.userMessages[0].text, 'Vocês têm lentes Varilux em estoque?')
+  const prompt = buildWhatsAppRedesignReplyPrompt(candidate.replyInput)
+  assert.match(prompt, /escreva uma resposta nova e contextual/)
+  assert.match(prompt, /nunca confirme nem sugira disponibilidade em estoque/)
+  assert.match(prompt, /lentes Varilux/)
+  assert.doesNotMatch(prompt, /Fallback de contingência para lentes Varilux/)
+
+  assert.equal(resolveStoreOnePilotReplyText(candidate, {
+    success: true,
+    data: { reply_text: 'Vou pedir para a equipe verificar as lentes Varilux para você.' },
+  }).generatedBy, 'ai')
+  const unsafeStockClaim = resolveStoreOnePilotReplyText(candidate, {
+    success: true,
+    data: { reply_text: 'Temos lentes Varilux disponíveis em estoque.' },
   })
-  assert.equal(selectStoreOnePilotSafeReply({ ...base, classification, decision: pixDecision })?.action, 'answer_official_pix')
-  assert.equal(selectStoreOnePilotSafeReply({ ...base, officialPixKey: null }), null)
-  for (const text of ['Já paguei no Pix', 'Qual o valor da parcela e a chave Pix?', 'Não me passe o Pix', 'Enviei comprovante Pix']) {
-    assert.equal(selectStoreOnePilotSafeReply({ ...base, decision: handoff, turnMessages: [{ kind: 'text', text }] })?.action, 'human_handoff')
-  }
+  assert.equal(unsafeStockClaim.generatedBy, 'fallback')
+  assert.equal(unsafeStockClaim.fallbackReason, 'unsafe_stock_claim')
+  const missingProduct = resolveStoreOnePilotReplyText(candidate, {
+    success: true,
+    data: { reply_text: 'Vou pedir para a equipe consultar a disponibilidade.' },
+  })
+  assert.equal(missingProduct.generatedBy, 'fallback')
+  assert.equal(missingProduct.fallbackReason, 'required_product_omitted')
+  assert.equal(missingProduct.text, candidate.fallbackText)
+  assert.equal(resolveStoreOnePilotReplyText(candidate, { success: false }).fallbackReason, 'provider_failure')
+})
+
+test('handoff gerado precisa preservar o encaminhamento humano', () => {
+  const handoff = WhatsAppSystemDecisionSchema.parse({
+    ...decision,
+    action: 'human_handoff',
+    fallbackReply: 'Fallback: vou chamar um atendente.',
+    humanHandoffTiming: { mode: 'during_open_hours', nextOpenSchedule: null },
+  })
+  const candidate = selectStoreOnePilotSafeReply({
+    classification: { ...classification, intent: 'human_agent_request', requestsHuman: true },
+    decision: handoff,
+    turnMessages: [{ kind: 'text', text: 'Quero falar com alguém.' }],
+    officialPixKey: null,
+    officialPixHolder: null,
+  })!
+  const missingHandoff = resolveStoreOnePilotReplyText(candidate, {
+    success: true,
+    data: { reply_text: 'Claro, vou ajudar você com isso.' },
+  })
+  assert.equal(missingHandoff.generatedBy, 'fallback')
+  assert.equal(missingHandoff.fallbackReason, 'handoff_omitted')
+})
+
+test('Pix gerado inclui a chave oficial e usa o texto fixo so se a resposta falhar', () => {
+  const pixDecision = WhatsAppSystemDecisionSchema.parse({
+    ...decision, action: 'answer_official_pix', fallbackReply: 'Fallback da chave Pix oficial.',
+  })
+  const candidate = selectStoreOnePilotSafeReply({
+    classification: { ...classification, intent: 'unknown' },
+    decision: pixDecision,
+    turnMessages: [{ kind: 'text', text: 'Qual é a chave Pix?' }],
+    officialPixKey: 'chave-teste',
+    officialPixHolder: 'Loja Teste',
+  })!
+  assert.equal(candidate.replyInput.facts.officialPixKey, 'chave-teste')
+  assert.equal(resolveStoreOnePilotReplyText(candidate, {
+    success: true, data: { reply_text: 'A chave Pix é chave-teste. Confira o favorecido antes de pagar.' },
+  }).generatedBy, 'ai')
+  assert.equal(resolveStoreOnePilotReplyText(candidate, {
+    success: true, data: { reply_text: 'Use a chave da loja para pagar.' },
+  }).fallbackReason, 'official_key_omitted')
+  assert.equal(selectStoreOnePilotSafeReply({
+    classification: { ...classification, intent: 'unknown' }, decision: pixDecision,
+    turnMessages: [{ kind: 'text', text: 'Paguei a parcela no Pix' }],
+    officialPixKey: 'chave-teste', officialPixHolder: 'Loja Teste',
+  }), null)
+})
+
+test('horario oficial deve aparecer na resposta gerada ou aciona fallback seguro', () => {
+  const candidate = selectStoreOnePilotSafeReply({
+    classification,
+    decision: WhatsAppSystemDecisionSchema.parse({
+      ...decision,
+      facts: { requestedDay: 'tomorrow', tomorrowSchedule: '08:30 às 12:30' },
+    }),
+    turnMessages: [{ kind: 'text', text: 'Amanhã abre?' }],
+    officialPixKey: null,
+    officialPixHolder: null,
+  })!
+  assert.equal(resolveStoreOnePilotReplyText(candidate, {
+    success: true, data: { reply_text: 'Amanhã, abrimos das 08:30 às 12:30.' },
+  }).generatedBy, 'ai')
+  assert.equal(resolveStoreOnePilotReplyText(candidate, {
+    success: true, data: { reply_text: 'Sim, abrimos amanhã.' },
+  }).fallbackReason, 'official_hours_omitted')
 })

@@ -69,7 +69,7 @@ export function applyStoreAvailabilityToDecision(
 
   return WhatsAppSystemDecisionSchema.parse({
     ...parsedDecision,
-    canonicalReply: `${parsedDecision.canonicalReply} ${localizedNotice}`,
+    fallbackReply: `${parsedDecision.fallbackReply} ${localizedNotice}`,
     facts: {
       ...parsedDecision.facts,
       isStoreOpenNow: false,

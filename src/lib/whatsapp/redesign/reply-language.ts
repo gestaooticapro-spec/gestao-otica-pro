@@ -105,8 +105,19 @@ export function localizeStoreHoursRange(
 
 function localizedHandoff(
   intent: WhatsAppRedesignClassification['intent'],
-  language: WhatsAppRedesignReplyLanguage
+  language: WhatsAppRedesignReplyLanguage,
+  productMention: string | null
 ) {
+  if (intent === 'product_availability' && productMention) {
+    if (language === 'es') {
+      return `Soy IAra, una asistente virtual. Voy a pedir a un asesor que verifique ${productMention} para ti.`
+    }
+    if (language === 'en') {
+      return `I’m IAra, a virtual assistant. I’ll ask a team member to check ${productMention} for you.`
+    }
+    return `Sou a IAra, uma assistente virtual. Vou chamar um atendente para verificar ${productMention} para você.`
+  }
+
   const messages: Record<WhatsAppRedesignReplyLanguage, Partial<Record<WhatsAppRedesignClassification['intent'], string>>> = {
     'pt-BR': {
       vision_exam: 'Sou a IAra, uma assistente virtual. Para te dar a informação correta sobre exame de vista ou avaliação de grau, vou chamar um atendente.',
@@ -150,14 +161,14 @@ export function localizeWhatsAppRedesignDecision(
   classification: WhatsAppRedesignClassification,
   language: WhatsAppRedesignReplyLanguage
 ): WhatsAppSystemDecisionDraft {
-  if (language === 'pt-BR' || decision.action === 'no_reply' || !decision.canonicalReply) {
+  if (language === 'pt-BR' || decision.action === 'no_reply' || !decision.fallbackReply) {
     return WhatsAppSystemDecisionDraftSchema.parse({
       ...decision,
       facts: { ...decision.facts, replyLanguage: language },
     })
   }
 
-  let reply = decision.canonicalReply
+  let reply = decision.fallbackReply
   if (decision.action === 'answer_store_hours') {
     const requestedTomorrow = decision.facts.requestedDay === 'tomorrow'
     const schedule = requestedTomorrow
@@ -193,12 +204,16 @@ export function localizeWhatsAppRedesignDecision(
       : classification.mentionsAttachment || decision.action === 'acknowledge_attachment'
         ? language === 'es' ? 'Recibí el archivo. Soy IAra, una asistente virtual, y pediré a un asesor que lo revise contigo.'
           : 'I received the file. I’m IAra, a virtual assistant, and I’ll ask a team member to review it with you.'
-        : localizedHandoff(classification.requestsHuman ? 'human_agent_request' : classification.intent, language)
+        : localizedHandoff(
+          classification.requestsHuman ? 'human_agent_request' : classification.intent,
+          language,
+          classification.entities.productMention ?? null
+        )
   }
 
   return WhatsAppSystemDecisionDraftSchema.parse({
     ...decision,
-    canonicalReply: reply,
+    fallbackReply: reply,
     facts: { ...decision.facts, replyLanguage: language },
   })
 }

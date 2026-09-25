@@ -11,6 +11,7 @@ import {
   classifyWhatsAppIntent,
   resolveWhatsAppInstallmentReminderPreference,
   resolveWhatsAppPostSaleRating,
+  generateWhatsAppRedesignReply,
   humanizeWhatsAppReply,
   generateWhatsAppFallbackReply,
   extractReceiptWithVision,
@@ -66,7 +67,11 @@ import {
   WhatsAppRedesignClassificationSchema,
   WhatsAppSystemDecisionSchema,
 } from './redesign/contracts'
-import { isStoreOneSafeRepliesPilotEnabled, selectStoreOnePilotSafeReply } from './redesign/safe-replies-pilot'
+import {
+  isStoreOneSafeRepliesPilotEnabled,
+  resolveStoreOnePilotReplyText,
+  selectStoreOnePilotSafeReply,
+} from './redesign/safe-replies-pilot'
 
 const SAME_STATUS_SILENCE_WINDOW_MS = 2 * 60 * 60 * 1000
 const HUMAN_PAUSE_MS = 60 * 60 * 1000
@@ -196,7 +201,7 @@ type PersistentPostSaleMemory = {
 }
 
 type WhatsAppAiDiagnostic = {
-  task: 'intent_classification' | 'installment_reminder_preference_resolution' | 'post_sale_rating_resolution' | 'reply_humanization' | 'fallback_reply' | 'receipt_extraction' | 'tool_agent_plan' | 'tool_agent_reply'
+  task: 'intent_classification' | 'redesign_reply_generation' | 'installment_reminder_preference_resolution' | 'post_sale_rating_resolution' | 'reply_humanization' | 'fallback_reply' | 'receipt_extraction' | 'tool_agent_plan' | 'tool_agent_reply'
   success: boolean
   provider: string
   model: string
@@ -2618,6 +2623,7 @@ export async function resolveCustomerStatus(
     && controlMode !== 'force_ai'
     && !['human_pause', 'awaiting_human', 'waiting_human_after_attachment', 'silent'].includes(state?.state ?? '')) {
     let pilotReply: ReturnType<typeof selectStoreOnePilotSafeReply> = null
+    let pilotConversationHistory: string[] = []
     try {
       const redesignStore = new WhatsAppRedesignConversationStore()
       const processing = await processWhatsAppRedesignShadowTurns({
@@ -2644,6 +2650,11 @@ export async function resolveCustomerStatus(
           ? turnMetadata.shadowProcessing as Record<string, unknown> : {}
         const classification = WhatsAppRedesignClassificationSchema.parse(shadowProcessing.classification)
         const decision = WhatsAppSystemDecisionSchema.parse(shadowProcessing.decision)
+        const currentTurnMessageIds = new Set(turnContext.turnMessages.map((message) => message.id))
+        pilotConversationHistory = turnContext.memory.messages
+          .filter((message) => !currentTurnMessageIds.has(message.id))
+          .map((message) => `${message.role === 'customer' ? 'Cliente' : message.role === 'human' ? 'Atendente' : 'IA'}: ${message.text || `[${message.kind}]`}`)
+          .slice(-8)
 
         // O caminho ao vivo usa a mesma decisão já persistida para auditoria; não
         // faz uma segunda chamada de classificação nem espera o cron de sombra.
@@ -2663,17 +2674,31 @@ export async function resolveCustomerStatus(
 
     if (pilotReply) {
       const isHandoff = pilotReply.action === 'human_handoff' || pilotReply.action === 'repeat_handoff'
-      const intent = pilotReply.action === 'answer_official_pix' ? 'payment_info'
-        : pilotReply.action === 'answer_store_hours' ? 'store_hours'
-          : pilotReply.action === 'answer_store_location' ? 'store_location'
-            : pilotReply.action === 'human_handoff' || pilotReply.action === 'repeat_handoff'
-              ? 'human_agent_request' : pilotReply.action === 'acknowledge_attachment' ? 'attachment' : 'unknown'
-      const payload = buildWhatsAppCanonicalPayload({
-          intent,
-          action: pilotReply.action,
-          outboundType: pilotReply.messageType,
-          canonicalReply: pilotReply.text,
+      let generationResult: WhatsAppAiResult<{ reply_text: string }> | null = null
+      try {
+        generationResult = await generateWhatsAppRedesignReply({
+          ...pilotReply.replyInput,
+          conversationHistory: pilotConversationHistory,
+          storeName: storeProfile.name,
         })
+        await logAiResult(channel, inbound.id, 'redesign_reply_generation', generationResult)
+      } catch {
+        console.warn('[WhatsApp redesign pilot] Redacao por IA indisponivel; fallback de contingencia utilizado.')
+      }
+      const renderedReply = resolveStoreOnePilotReplyText(
+        pilotReply,
+        generationResult ?? { success: false }
+      )
+      const payload = buildWhatsAppCanonicalPayload({
+        intent: pilotReply.replyInput.intent,
+        action: pilotReply.action,
+        outboundType: pilotReply.messageType,
+        canonicalReply: renderedReply.text,
+        facts: {
+          replyGeneration: renderedReply.generatedBy,
+          replyGenerationFallbackReason: renderedReply.fallbackReason,
+        },
+      })
       if (isHandoff) {
         await setConversationState(
           channel,
@@ -2684,7 +2709,7 @@ export async function resolveCustomerStatus(
           inbound.id
         )
       }
-      return createOutbound(channel, inbound.id, normalizedPhone, pilotReply.text, pilotReply.messageType,
+      return createOutbound(channel, inbound.id, normalizedPhone, renderedReply.text, pilotReply.messageType,
         payload, inbound.id)
     }
   }

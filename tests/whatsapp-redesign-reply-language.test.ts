@@ -33,7 +33,7 @@ test('detecta idioma da mensagem atual e usa contexto recente somente quando nec
 
 test('localiza a resposta de horário sem alterar os fatos da loja', () => {
   const decision = WhatsAppSystemDecisionDraftSchema.parse({
-    action: 'answer_store_hours', canonicalReply: 'Horário de hoje: 08:30 às 18:00.',
+    action: 'answer_store_hours', fallbackReply: 'Horário de hoje: 08:30 às 18:00.',
     facts: { requestedDay: 'tomorrow', tomorrowSchedule: '08:30 às 12:30' },
     humanHandoffTiming: null,
     humanization: {
@@ -42,14 +42,14 @@ test('localiza a resposta de horário sem alterar os fatos da loja', () => {
     },
   })
   const localized = localizeWhatsAppRedesignDecision(decision, classification, 'es')
-  assert.equal(localized.canonicalReply, 'Sí, mañana abrimos de 08:30 a 12:30.')
+  assert.equal(localized.fallbackReply, 'Sí, mañana abrimos de 08:30 a 12:30.')
   assert.equal(localized.facts.tomorrowSchedule, '08:30 às 12:30')
   assert.equal(localized.facts.replyLanguage, 'es')
 })
 
 test('aviso de handoff fora do expediente acompanha o idioma e o próximo horário', () => {
   const decision = WhatsAppSystemDecisionDraftSchema.parse({
-    action: 'human_handoff', canonicalReply: 'Soy IAra, una asistente virtual. Avisaré a un asesor.',
+    action: 'human_handoff', fallbackReply: 'Soy IAra, una asistente virtual. Avisaré a un asesor.',
     facts: { replyLanguage: 'es' },
     humanHandoffTiming: null,
     humanization: {
@@ -62,8 +62,8 @@ test('aviso de handoff fora do expediente acompanha o idioma e o próximo horár
     today_schedule: 'Fechado', next_open_schedule: 'Amanhã às 08:30',
     full_weekly_schedule: '',
   })
-  assert.match(result.canonicalReply ?? '', /La tienda está cerrada ahora/)
-  assert.match(result.canonicalReply ?? '', /mañana a las 08:30/)
+  assert.match(result.fallbackReply ?? '', /La tienda está cerrada ahora/)
+  assert.match(result.fallbackReply ?? '', /mañana a las 08:30/)
   assert.equal(result.humanHandoffTiming?.mode, 'when_store_opens')
 })
 

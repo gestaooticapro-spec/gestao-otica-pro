@@ -4,6 +4,8 @@ import {
   WhatsAppRedesignClassificationSchema,
   type WhatsAppConversationMemory,
   type WhatsAppConversationMessage,
+  type WhatsAppConversationTopic,
+  type WhatsAppRedesignAction,
   type WhatsAppRedesignClassification,
 } from './redesign/contracts'
 
@@ -68,7 +70,7 @@ export type WhatsAppIntent = (typeof WHATSAPP_INTENTS)[number]
 export type WhatsAppReasoningTag = (typeof WHATSAPP_REASONING_TAGS)[number]
 export type WhatsAppReplyTone = (typeof WHATSAPP_TONES)[number]
 export type WhatsAppAiProvider = 'gemini' | 'openai'
-export type WhatsAppAiTask = 'intent_classification' | 'redesign_classification' | 'installment_reminder_preference_resolution' | 'post_sale_rating_resolution' | 'reply_humanization' | 'fallback_reply' | 'receipt_extraction' | 'tool_agent_plan' | 'tool_agent_reply'
+export type WhatsAppAiTask = 'intent_classification' | 'redesign_classification' | 'redesign_reply_generation' | 'installment_reminder_preference_resolution' | 'post_sale_rating_resolution' | 'reply_humanization' | 'fallback_reply' | 'receipt_extraction' | 'tool_agent_plan' | 'tool_agent_reply'
 
 export type WhatsAppAiTokenUsage = {
   inputTokens: number | null
@@ -324,6 +326,15 @@ export type WhatsAppRedesignClassificationInput = {
   memory: WhatsAppConversationMemory
   turnMessages: WhatsAppConversationMessage[]
   elapsedSincePreviousMessageMs: number | null
+}
+
+export type WhatsAppRedesignReplyInput = {
+  action: Exclude<WhatsAppRedesignAction, 'no_reply'>
+  intent: WhatsAppConversationTopic
+  userMessages: Array<{ kind: string; text: string | null }>
+  conversationHistory?: string[]
+  storeName?: string | null
+  facts: Record<string, string | number | boolean | null>
 }
 
 export type WhatsAppInstallmentReminderPreferenceResolutionInput = {
@@ -833,6 +844,47 @@ function parseStructuredJson<T>(rawText: string, schema: z.ZodSchema<T>) {
   return schema.parse(parsed)
 }
 
+export function buildWhatsAppRedesignReplyPrompt(input: WhatsAppRedesignReplyInput) {
+  const conversationHistory = (input.conversationHistory || [])
+    .map((line) => normalizeWhitespace(line))
+    .filter(Boolean)
+    .slice(-8)
+
+  return [
+    'Voce escreve respostas originais e naturais para o WhatsApp de uma otica.',
+    'Responda SOMENTE em JSON valido, sem markdown ou explicacoes extras.',
+    'Esta e a etapa normal de redacao do redesign: escreva uma resposta nova e contextual, nao copie templates nem frases padrao.',
+    'Use somente os fatos estruturados fornecidos. Nao invente nem altere horarios, endereco, chave Pix, estoque, pagamentos, status, prazos ou promessas.',
+    'Responda no idioma da mensagem atual do cliente. Se o idioma nao estiver claro, use portugues do Brasil.',
+    'Use o historico apenas para entender referencias e continuidade; nao repita apresentacoes nem mensagens anteriores sem necessidade.',
+    'Para product_availability, nunca confirme nem sugira disponibilidade em estoque: informe naturalmente que vai chamar um atendente para verificar e preserve a marca ou produto exato em productMention quando existir.',
+    'Para human_handoff ou repeat_handoff, seja acolhedor, contextual e claro sobre o encaminhamento; nao diga que a equipe ja respondeu ou ja verificou algo.',
+    'Para answer_official_pix, inclua a chave Pix oficial exatamente como fornecida e nao altere caracteres.',
+    'Para horarios e endereco, responda a pergunta especifica do cliente usando somente os fatos oficiais correspondentes.',
+    'Para anexos, confirme o recebimento de forma breve e diga que um atendente vai revisar; nao interprete o conteudo clinico, financeiro ou comercial.',
+    'Mantenha a resposta breve, humana e sem menu de opcoes.',
+    '',
+    'SCHEMA:',
+    JSON.stringify({ reply_text: 'Texto natural escrito para a mensagem atual.' }, null, 2),
+    '',
+    'DECISAO SEGURA DO SISTEMA E FATOS:',
+    JSON.stringify({
+      action: input.action,
+      intent: input.intent,
+      storeName: input.storeName || null,
+      facts: input.facts,
+    }, null, 2),
+    '',
+    'MENSAGENS ATUAIS DO CLIENTE (separadas, sem concatenar):',
+    JSON.stringify(input.userMessages, null, 2),
+    ...(conversationHistory.length ? [
+      '',
+      'HISTORICO RECENTE:',
+      ...conversationHistory,
+    ] : []),
+  ].join('\n')
+}
+
 function buildRedesignClassificationPrompt(input: WhatsAppRedesignClassificationInput) {
   const memoryMessages = input.memory.messages.map((message) => ({
     role: message.role,
@@ -856,6 +908,7 @@ function buildRedesignClassificationPrompt(input: WhatsAppRedesignClassification
     'Identifique mudanca de assunto mesmo quando ela ocorrer dentro do mesmo turno.',
     'requestsHuman deve ser true somente quando o cliente pedir explicitamente uma pessoa ou atendente.',
     'mentionsAttachment deve considerar tanto o tipo da mensagem quanto referencias como foto, imagem, PDF, receita ou comprovante.',
+    'Em entities.productMention, preserve literalmente o nome, marca ou modelo de produto/lente citado pelo cliente quando houver; caso contrario use null. Nunca invente nem generalize esse nome.',
     '',
     'INTENTS PERMITIDAS:',
     'greeting, vision_exam, store_hours, store_location, product_availability, attachment, order_status, installment_status, complaint_or_adaptation, exchange_or_warranty, budget_request, human_agent_request, unknown',
@@ -875,6 +928,7 @@ function buildRedesignClassificationPrompt(input: WhatsAppRedesignClassification
         patientName: null,
         cpf: null,
         orderNumber: null,
+        productMention: null,
       },
     }, null, 2),
     '',
@@ -1034,6 +1088,16 @@ export async function humanizeWhatsAppReply(
   return executeStructuredTask(
     'reply_humanization',
     buildHumanizationPrompt(input),
+    WhatsAppReplyHumanizationSchema
+  )
+}
+
+export async function generateWhatsAppRedesignReply(
+  input: WhatsAppRedesignReplyInput
+): Promise<WhatsAppAiResult<WhatsAppReplyHumanization>> {
+  return executeStructuredTask(
+    'redesign_reply_generation',
+    buildWhatsAppRedesignReplyPrompt(input),
     WhatsAppReplyHumanizationSchema
   )
 }
