@@ -1,5 +1,106 @@
 # Redesign da IA de atendimento no WhatsApp
 
+## Complemento de auditoria ao vivo — 25/09/2026
+
+- O pedido explícito de atendente, a pergunta sobre Varilux e a saudação após
+  liberar o handoff foram confirmados pelo usuário; cada entrada teve uma única
+  saída enviada. Os metadados mostram a saudação gerada pela IA e o último
+  encaminhamento de estoque usando fallback por `unsafe_stock_claim`.
+- Auditoria somente leitura de 72 horas: 53 entradas do número de teste, zero
+  chaves de inbound repetidas, zero entradas com múltiplos outbounds e zero
+  grupos de respostas enviadas duplicadas. Na tabela inteira, 1.236 outbounds
+  vinculados a inbounds também não apresentaram mais de um outbound por inbound.
+  Dezessete entradas da janela não tinham saída enviada associada; sem leitura
+  do conteúdo, não é possível concluir se foram ignoradas, agrupadas ou tratadas
+  por outro fluxo.
+- A revisão de código encontrou uma corrida rara no reprocessamento tardio de
+  webhooks. A proteção local agora consulta outbounds existentes, suprime uma
+  segunda resposta e trata a corrida com índice único por inbound. Foi incluído
+  teste SQL que passou dentro de uma transação revertida, sem persistir a
+  migration nem os fixtures. A proteção ainda não está em produção: depende de
+  aplicar a migration e publicar o código.
+- O pedido explícito de atendente e a retomada após liberar a pausa humana foram
+  validados ao vivo. A auditoria observacional não substitui teste de corrida.
+  A reversão da flag do piloto continua pendente, pois os testes ao vivo seguem
+  em andamento.
+
+## Roteiro consolidado e situação atual — 25/09/2026
+
+Este é o roteiro canônico do redesign. As etapas são as acompanhadas em
+`WHATSAPP_IA_REDESIGN_IMPLEMENTATION_STEPS_TEMP.md`; planos anteriores de IA
+ou documentos de infraestrutura da VPS não substituem nem renumeram estas
+etapas. As decisões e o escopo detalhado deste plano permanecem preservados.
+
+**Estamos na Etapa 4, em andamento: piloto ao vivo da decisão canônica na Loja
+1.** As Etapas 1, 2 e 3 estão concluídas conforme as validações registradas
+neste plano e nos documentos das Etapas 2 e 3.
+
+| Etapa | Situação | Escopo e critério de saída |
+|---|---|---|
+| 1. Processar turnos em sombra | Concluída | Classificar turnos e registrar decisões sem enviar resposta pelo redesign. |
+| 2. Consolidar memória e controle humano | Concluída | Persistir assuntos, anexos e eventos de controle; validação SQL transacional aprovada. |
+| 3. Validar decisões em sombra | Concluída | Comparação agregada e cenários controlados sem trocar o fluxo que responde. |
+| 4. Usar a decisão canônica no piloto ao vivo | **Em andamento** | Validar respostas e handoffs reais, origem IA/fallback, mudança de assunto, anexos, controle humano e reversão da flag. |
+| 5. Implementar consultas operacionais | Pendente | Acrescentar somente consultas aprovadas com dados verificáveis. Consulta automática de produtos/estoque está fora do escopo atual: esses pedidos sempre vão para um atendente até decisão futura explícita. |
+| 6. Operação completa e migração | Pendente | Completar a operação, migrar gradualmente loja por loja e aposentar o legado somente após equivalência comprovada. |
+
+### Evidências já observadas no piloto ao vivo
+
+- O usuário confirmou respostas reais de horário — inclusive correção para a
+  pergunta sobre amanhã — e de endereço/mapa.
+- O usuário confirmou encaminhamento de disponibilidade de lentes Varilux sem
+  afirmar estoque, com identificação da IAra.
+- O usuário confirmou encaminhamento de uma pergunta sobre conserto de armação,
+  também com identificação da IAra e sem inventar a política da loja.
+- O usuário confirmou um teste ao vivo com imagem: a IAra reconheceu o arquivo,
+  identificou-se e encaminhou a análise a um atendente. Isso valida a resposta
+  inicial ao anexo; não confirma que um funcionário recebeu ou respondeu.
+- Na continuação textual “Recebeu?”, o usuário confirmou que a resposta manteve
+  o contexto do anexo, informou o encaminhamento humano e usou o próximo horário
+  de abertura (08:30); considerou o resultado satisfatório. Isso valida a
+  continuação conversacional após o anexo, sem confirmar resposta posterior de
+  um funcionário.
+- Depois da continuação do anexo, o usuário perguntou “E a loja abre amanhã?”
+  e recebeu o horário oficial de amanhã (08:30–12:30). O usuário confirmou o
+  resultado; mudança de assunto e seleção do dia solicitado ficam validadas
+  neste contexto.
+- Auditoria de metadados sem conteúdo privado confirmou origem IA nos registros
+  de reparo, imagem e continuação do anexo. Para estoque, há registros gerados
+  pela IA, fallback e registros antigos sem origem; o encaminhamento mais
+  recente classificado como estoque usou `unsafe_stock_claim`. Não atribuir uma
+  captura específica sem correspondência exata ao outbound.
+- A pausa humana foi liberada nos controles antigo e do redesign após as duas
+  últimas respostas de teste; nenhuma mensagem foi enviada para essa liberação.
+- Atualização de 25/09: a saudação após o handoff foi gerada pela IA. Entre os
+  quatro inbounds recentes que citavam Varilux, dois outbounds usaram fallback
+  por `unsafe_stock_claim`, um foi gerado pela IA e um registro antigo não
+  tinha origem registrada. O teste Varilux mais recente usou fallback seguro.
+  O pedido explícito de atendente e a saudação de retomada tiveram uma saída
+  enviada cada.
+- Auditoria de 72 horas do número de teste: 53 entradas, nenhuma chave de
+  inbound repetida, nenhum inbound com mais de um outbound e nenhum grupo de
+  respostas enviadas duplicadas. A varredura global de 1.236 outbounds ligados
+  a inbound também encontrou zero inbound com múltiplos registros. Dezessete
+  entradas da janela não tinham saída enviada associada; sem ler o conteúdo,
+  não se pode concluir que houve falha de resposta.
+- A revisão do código encontrou uma corrida rara no reprocessamento tardio. A
+  proteção local consulta saídas existentes e acrescenta índice único por
+  inbound, com teste SQL transacional. Só ficará ativa após migration e deploy.
+
+### Próximos itens da Etapa 4
+
+1. Publicar o código e aplicar a migration de idempotência; a proteção contra a
+   corrida concorrente ainda não está ativa no banco de produção.
+2. Pedido explícito de atendente, Varilux, saudação após handoff, imagem e
+   continuação “Recebeu?” já foram confirmados pelo usuário. A auditoria dos
+   registros não encontrou duplicatas, mas não substitui validação pós-deploy.
+3. Testar a reversão operacional desligando a flag do piloto. Não fazer isso
+   enquanto os testes ao vivo estiverem em andamento sem combinar com o usuário.
+
+Só depois desses critérios a Etapa 4 pode ser marcada como concluída e a Etapa
+5 iniciada. O histórico detalhado continua no checklist; este resumo é a
+referência rápida para saber onde estamos.
+
 ## Status do documento
 
 Este documento inicia um redesign do atendimento automático no WhatsApp.

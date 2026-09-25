@@ -2129,6 +2129,24 @@ async function createOutbound(
   if (sourceInboundMessageId && !(await isInboundStillLatest(channel.id, phone, sourceInboundMessageId))) {
     return ignoreInbound(inboundMessageId)
   }
+
+  // Webhooks repetidos podem voltar a processar um inbound antigo ainda marcado
+  // como recebido. Reutilizar qualquer outbound já criado evita uma segunda
+  // resposta; o índice único abaixo fecha também a corrida entre consultas.
+  const { data: existingOutbound, error: existingOutboundError } = await (supabase
+    .from('whatsapp_outbound_messages') as any)
+    .select('id')
+    .eq('inbound_message_id', inboundMessageId)
+    .maybeSingle()
+  if (existingOutboundError) throw existingOutboundError
+  if (existingOutbound) {
+    const { error: markProcessedError } = await (supabase.from('whatsapp_inbound_messages') as any)
+      .update({ status: 'processed' })
+      .eq('id', inboundMessageId)
+    if (markProcessedError) throw markProcessedError
+    return { shouldReply: false, duplicate: true }
+  }
+
   const { data: outbound, error } = await (supabase.from('whatsapp_outbound_messages') as any)
     .insert({
       tenant_id: channel.tenant_id,
@@ -2144,11 +2162,28 @@ async function createOutbound(
     .select('id')
     .single()
 
+  if (error?.code === '23505') {
+    // Outra execução pode ter vencido depois da consulta acima.
+    const { data: racedOutbound, error: racedLookupError } = await (supabase
+      .from('whatsapp_outbound_messages') as any)
+      .select('id')
+      .eq('inbound_message_id', inboundMessageId)
+      .maybeSingle()
+    if (racedLookupError) throw racedLookupError
+    if (racedOutbound) {
+      const { error: markProcessedError } = await (supabase.from('whatsapp_inbound_messages') as any)
+        .update({ status: 'processed' })
+        .eq('id', inboundMessageId)
+      if (markProcessedError) throw markProcessedError
+      return { shouldReply: false, duplicate: true }
+    }
+  }
   if (error) throw error
 
-  await (supabase.from('whatsapp_inbound_messages') as any)
+  const { error: markProcessedError } = await (supabase.from('whatsapp_inbound_messages') as any)
     .update({ status: 'processed' })
     .eq('id', inboundMessageId)
+  if (markProcessedError) throw markProcessedError
 
   return {
     shouldReply: true,

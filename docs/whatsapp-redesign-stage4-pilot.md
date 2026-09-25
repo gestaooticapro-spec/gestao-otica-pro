@@ -66,3 +66,24 @@ também essa captura, retornar `mode` para `legacy` separadamente.
 ```bash
 node --import tsx scripts/manage-whatsapp-redesign-stage4.ts disable
 ```
+
+## Auditoria de duplicidade e continuidade — 25/09/2026
+
+- O pedido explícito de atendente, o encaminhamento de estoque Varilux e a
+  saudação após liberação do handoff foram confirmados pelo usuário; cada
+  entrada teve uma única saída enviada. Os metadados mostram a saudação gerada
+  pela IA. Entre quatro inbounds recentes que citavam Varilux, dois outbounds
+  usaram fallback `unsafe_stock_claim`, um foi gerado pela IA e um registro
+  antigo não tinha origem registrada; o teste mais recente usou fallback.
+- Auditoria somente leitura dos últimos 72 h: 53 entradas do número de teste,
+  zero chaves de inbound repetidas, zero entradas com mais de um outbound e
+  zero grupos de respostas enviadas duplicadas. Globalmente, 1.236 outbounds
+  vinculados a inbounds também não apresentaram múltiplos registros por inbound.
+- Dezessete entradas da janela não tinham saída enviada associada. O conteúdo
+  não foi lido nessa auditoria, portanto isso não prova perda de resposta.
+- A revisão de código detectou uma corrida rara no reprocessamento tardio. A
+  proteção local acrescenta idempotência no fluxo e índice único por inbound,
+  acompanhado de teste SQL aprovado dentro de uma transação revertida; nenhum
+  dado foi persistido. Ainda falta aplicar a migration e publicar o código para
+  ativar a proteção em produção.
+- A reversão do piloto permanece pendente enquanto os testes ao vivo continuam.

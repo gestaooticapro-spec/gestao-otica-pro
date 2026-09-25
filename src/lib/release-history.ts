@@ -9,6 +9,7 @@ export type Release = {
 // altera o Dashboard ou o modal de histórico.
 export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'Mensagens repetidas recebidas pelo WhatsApp passam a gerar no máximo uma resposta automática.',
   'As respostas do novo atendimento por WhatsApp passaram a ser redigidas pela IA com base na conversa e nos dados oficiais da loja; textos prontos são usados somente quando a geração falha ou produz uma resposta insegura ou incompleta.',
   'A IAra passa a se identificar antes de encaminhar a conversa a um atendente ou quando não tiver segurança para responder.',
   'A liberação da pausa humana passa a considerar os formatos equivalentes do telefone, evitando que uma pausa antiga continue bloqueando respostas.',

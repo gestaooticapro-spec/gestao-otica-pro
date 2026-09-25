@@ -39,3 +39,8 @@ redesign. A auditoria não enviou respostas e a Loja 1 permaneceu em `shadow`.
 A etapa 4 foi autorizada em 24/09/2026. A implementação do piloto é acompanhada
 em `WHATSAPP_IA_REDESIGN_IMPLEMENTATION_STEPS_TEMP.md`; a etapa 3 acima permanece
 como registro da validação em sombra.
+
+Para a posição atual do piloto, evidências reais já coletadas e critérios que
+ainda faltam para concluir a etapa 4, consulte o roteiro consolidado em
+`WHATSAPP_IA_REDESIGN_PLAN.md`. Este arquivo é o registro histórico da etapa 3,
+não o status corrente do redesign.

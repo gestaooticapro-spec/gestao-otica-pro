@@ -1,6 +1,7 @@
 # Checklist temporario da implementacao do redesign da IA do WhatsApp
 
-Este arquivo acompanha somente a execucao das seis etapas restantes. Ele deve
+Este arquivo acompanha as seis etapas do roteiro canonico em
+`WHATSAPP_IA_REDESIGN_PLAN.md` (as etapas 1, 2 e 3 ja foram concluidas). Ele deve
 ser removido quando a etapa 6 estiver concluida e o estado final estiver
 registrado no `WHATSAPP_IA_REDESIGN_PLAN.md`.
 
@@ -23,12 +24,15 @@ registrado no `WHATSAPP_IA_REDESIGN_PLAN.md`.
    pendencias, anexos, handoff e pausa humana renovavel de duas horas.
 3. ~~**CONCLUÍDA — Validar decisões em sombra.** Comparar redesign e legado na
   Loja 1 com conversas reais e cenarios de teste, sem trocar quem responde.~~
-4. **EM ANDAMENTO — Usar a decisao canonica no piloto ao vivo.** Reutilizar
-   imediatamente a decisao registrada para auditoria, habilitar respostas e
-   handoffs do redesign somente na Loja 1 e preservar reversao simples.
-5. **PENDENTE — Implementar consultas operacionais.** Tratar OS/retirada,
-   parcelas, produtos, exame de vista, reclamacao, troca e garantia com dados
-   verificados; ate la, o redesign encaminha esses assuntos para a equipe.
+4. **EM ANDAMENTO — Usar a decisao canonica no piloto ao vivo.** Validar na
+   Loja 1 respostas e handoffs reais, mudanca de assunto, origem IA/fallback,
+   anexos, ausencia de duplicidade e reversao do piloto. O resumo e os criterios
+   de saida estao em `WHATSAPP_IA_REDESIGN_PLAN.md`.
+5. **PENDENTE — Implementar consultas operacionais aprovadas.** Avaliar
+   OS/retirada, parcelas, exame de vista, reclamacao, troca e garantia com dados
+   verificados e limites de seguranca. Consulta automatica de produtos/estoque
+   esta fora do escopo atual: esses pedidos devem sempre ser encaminhados a um
+   atendente ate decisao futura explicita.
 6. **PENDENTE — Operacao completa e migracao.** Exibir contexto e decisoes na
    Central, integrar disparos automaticos, migrar loja por loja e aposentar o
    roteador legado quando a equivalencia estiver comprovada.
@@ -183,5 +187,43 @@ registrado no `WHATSAPP_IA_REDESIGN_PLAN.md`.
   solicitado e responder no idioma espanhol quando detectado, usando a agenda
   oficial daquele dia. Em outra conversa, a classificacao reconheceu a
   continuacao do assunto de disponibilidade de produto e encaminhou para a
-  equipe; a consulta de produtos continua pertencendo a etapa 5. Nao foram
+  equipe; consulta automatica de produtos/estoque fica fora do escopo atual e
+  esse pedido deve ser encaminhado a um atendente. Nao foram
   alteradas conversas nem enviados testes ao WhatsApp.
+- 25/09/2026: respostas reais do piloto para disponibilidade de lentes Varilux
+  e possibilidade de conserto de armacao foram confirmadas pelo usuario. Ambas
+  identificaram a IAra e encaminharam a confirmacao a equipe sem prometer
+  estoque ou inventar uma politica. A pausa humana foi liberada apos cada
+  resposta. Ainda e necessario conferir nos metadados se os textos foram
+  gerados pelo provedor de IA ou pelo fallback; a aparencia do texto nao
+  comprova a origem. Permanecem os criterios de saida da Etapa 4 no plano.
+- 25/09/2026: o usuario confirmou o teste ao vivo de recebimento de imagem. A
+  resposta reconheceu o arquivo, identificou a IAra e encaminhou a revisao a
+  um atendente. A pausa humana foi liberada e os controles antigo e do redesign
+  foram conferidos sem bloqueio restante. A resposta visivel nao comprova se foi
+  gerada por IA ou fallback.
+- 25/09/2026: a mensagem textual “Recebeu?” foi respondida com contexto do anexo
+  e do proximo horario de abertura. O usuario considerou o resultado
+  satisfatorio. A pausa humana foi novamente liberada e verificada; a origem IA
+  versus fallback ainda precisa de confirmacao nos metadados, sem expor o texto.
+- 25/09/2026: apos o contexto do anexo, o usuario perguntou se a loja abriria
+  amanha e recebeu o horario oficial de amanha (08:30-12:30). O usuario
+  confirmou o resultado. A verificacao seguinte encontrou ambos os controles
+  humanos sem pausa ativa.
+- 25/09/2026: pedido explicito de atendente, encaminhamento de estoque Varilux
+  e retomada apos liberar a pausa foram confirmados ao vivo. Cada entrada teve
+  uma unica saida; metadados confirmaram a saudacao gerada pela IA. Dos quatro
+  inbounds recentes que citavam Varilux, dois outbounds usaram fallback
+  `unsafe_stock_claim`, um foi gerado pela IA e um registro antigo nao tinha
+  origem registrada. O teste Varilux mais recente usou fallback seguro.
+- 25/09/2026: auditoria sem conteudo privado dos ultimos 72 h encontrou 53
+  entradas do numero de teste, zero chaves de inbound duplicadas, zero entradas
+  com mais de um outbound e zero respostas enviadas duplicadas. Em toda a base,
+  1.236 outbounds vinculados a inbound nao mostraram multiplos registros por
+  entrada. Dezessete entradas da janela nao tinham saida enviada associada e
+  nao foram classificadas por conteudo.
+- 25/09/2026: revisao do codigo revelou uma corrida rara de reprocessamento
+  tardio. Foi adicionada protecao local de outbound unico por inbound, tratamento
+  idempotente; o teste SQL passou em transacao revertida, sem persistir a
+  migration ou os fixtures. Typecheck e 69 testes focados passaram. A protecao
+  aguarda aplicacao da migration/deploy; reversao do piloto permanece pendente.

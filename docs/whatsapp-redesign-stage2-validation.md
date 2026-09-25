@@ -32,7 +32,8 @@ resultados e termina com `ROLLBACK`. O resultado deve exibir
 
 ## Estado da implementação
 
-- As etapas 1 e 2 estão concluídas; a etapa 3 permanece pendente no checklist.
+- As etapas 1, 2 e 3 estão concluídas. A etapa 4 está em andamento na Loja 1;
+  o roteiro corrente e seus critérios estão em `WHATSAPP_IA_REDESIGN_PLAN.md`.
 - A classificação em sombra e a proposta de resumo por turno já estão no código
   local, sem envio pelo redesign.
 - O replay determinístico de turnos processados foi preparado para reconstruir
@@ -54,11 +55,10 @@ resultados e termina com `ROLLBACK`. O resultado deve exibir
   cria fixtures temporárias na Loja 1 dentro de uma transação e termina em
   `ROLLBACK`; não chama IA nem envia mensagens. O usuário executou o roteiro no
   SQL Editor e recebeu `VALIDACAO_ETAPA_2_OK`, concluindo a validação da etapa
-  2. A etapa 3 deverá comparar decisões em sombra sem trocar quem responde.
-  Não publique o redesign para responder clientes com base apenas nos testes
-  locais.
+  2. A etapa 3 foi concluída em 24/09/2026 sem trocar quem respondia; a etapa 4
+  agora valida o piloto ao vivo sob os critérios do plano canônico.
 
-## Prompt para um modelo mais barato
+## Prompt usado na revisão original (histórico; não é instrução de status atual)
 
 > Leia `README.md`, `WHATSAPP_IA_REDESIGN_PLAN.md` e
 > `WHATSAPP_IA_REDESIGN_IMPLEMENTATION_STEPS_TEMP.md`. Não altere a Loja 1,

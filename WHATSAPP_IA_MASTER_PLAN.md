@@ -1,5 +1,11 @@
 # Plano Mestre — IA na Frente da Automação de WhatsApp
 
+> **Referência histórica de arquitetura.** O acompanhamento das etapas do
+> redesign em execução foi consolidado em `WHATSAPP_IA_REDESIGN_PLAN.md` e
+> `WHATSAPP_IA_REDESIGN_IMPLEMENTATION_STEPS_TEMP.md`. Não use a numeração de
+> etapas deste documento para inferir o status do redesign; seu conteúdo
+> técnico permanece como contexto, sem substituir o plano canônico.
+
 ## Resumo
 
 Implementar uma camada de IA **na entrada e na saída** do fluxo de WhatsApp, mantendo a **decisão operacional dentro do sistema**. A IA não executa regras de negócio nem toma decisões finais; ela:
