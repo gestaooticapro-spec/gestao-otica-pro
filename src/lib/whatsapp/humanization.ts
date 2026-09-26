@@ -30,14 +30,27 @@ function preservesOrderStatus(payload: PayloadRecord, replyText: string) {
   const canonical = extractWhatsAppCanonicalReply(payload as Json)
   if (canonical?.intent !== 'order_status') return true
 
+  const normalized = replyText.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('pt-BR').replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim()
+  const has = (pattern: RegExp) => pattern.test(normalized)
+
+  // Nao existe statusCode quando a busca nao localizou a OS. Nesse caso,
+  // preserve o encaminhamento e a identificacao da IAra, sem inventar etapa.
+  if (canonical.action === 'human_handoff' || canonical.action === 'repeat_handoff') {
+    const identifiesIara = has(/\biara\b/u)
+    const mentionsHuman = has(/\b(?:atendente|equipe|funcionario|colaborador|assessor|asesor|asesora|equipo|team|advisor|staff)\b/u)
+    const inventsStatus = has(/\b(?:ficou|esta|ta|esta ya|is)\s+pront\w*\b/u)
+      || has(/\b(?:pode|puede|can)\s+(?:ser\s+)?(?:retirar|retirado|retirada|buscar|recoger|pick up)\b/u)
+      || has(/\b(?:em producao|no laboratorio|em montagem|in production|en produccion)\b/u)
+    return identifiesIara && mentionsHuman && !inventsStatus
+  }
+
   // Um pedido de identificacao ainda nao tem status consultado para preservar.
   // Validamos que a resposta continue pedindo os dados necessarios, em vez de
   // exigir um statusCode inexistente e rejeitar toda resposta gerada pela IA.
   if (canonical.action === 'request_identifier'
     || canonical.outboundType === 'identifier_prompt'
     || canonical.outboundType === 'order_disambiguation_prompt') {
-    const normalized = replyText.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      .toLocaleLowerCase('pt-BR').replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim()
     const asksForIdentifier = /\b(?:envie|informe|diga|passe|compartilhe|me\s+(?:diga|informe|passe)|provide|send|share|tell me|indique|passar|informar|enviar|mandar|fornecer)\b/u.test(normalized)
     return /\b(?:cpf|numero do pedido|numero da os|ordem de servico|nome completo|titular|pedido)\b/u.test(normalized)
       && asksForIdentifier
@@ -45,10 +58,6 @@ function preservesOrderStatus(payload: PayloadRecord, replyText: string) {
 
   const statusCode = canonical.facts.statusCode
   if (typeof statusCode !== 'string') return false
-  const normalized = replyText.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .toLocaleLowerCase('pt-BR').replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim()
-  const has = (pattern: RegExp) => pattern.test(normalized)
-
   switch (statusCode) {
     case 'ready_for_pickup':
       return has(/\b(?:ficou pronto|esta pronto|pronto para retirar|ja pode retirar|pode retirar|pode buscar|ready for pickup|ready to pick up|listo para recoger|ya puedes recoger)\b/u)

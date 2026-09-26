@@ -462,7 +462,7 @@ function iaraHandoffText(
 
 function notFoundHandoffText() {
   return [
-    'Não consegui encontrar um pedido em aberto com essas informações.',
+    'Sou a IAra, assistente virtual. Não consegui encontrar um pedido em aberto com essas informações.',
     'Vou deixar a conversa para nossa equipe continuar o atendimento por aqui.',
   ].join('\n')
 }
@@ -1190,10 +1190,14 @@ async function maybeHumanizeOutboundFromCanonical(
       && (canonical.action === 'request_identifier'
         || canonical.outboundType === 'identifier_prompt'
         || canonical.outboundType === 'order_disambiguation_prompt')
-    if (isIdentifierRequest && firstRender.payload.humanization?.success !== true) {
+    const isOrderHandoff = canonical.intent === 'order_status'
+      && (canonical.action === 'human_handoff' || canonical.action === 'repeat_handoff')
+    if ((isIdentifierRequest || isOrderHandoff) && firstRender.payload.humanization?.success !== true) {
       humanized = await humanizeWhatsAppReply({
         ...humanizationInput,
-        validationFeedback: 'A resposta anterior falou de horario da loja. Peça somente um identificador para localizar o pedido, sem mencionar horario ou status.',
+        validationFeedback: isOrderHandoff
+          ? 'Apresente-se como IAra e diga que um atendente ou a equipe continuará a verificação. Não afirme que a OS foi encontrada, está pronta ou em produção. Não peça novamente o mesmo identificador.'
+          : 'Peça somente um identificador para localizar o pedido, sem mencionar horário ou status.',
       })
     } else {
       return { ...firstRender, aiResult: humanized }

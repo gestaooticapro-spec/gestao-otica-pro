@@ -133,6 +133,53 @@ test('rejeita humanizacao do pedido de identificador que inventa status da OS', 
   assert.equal(result.payload.humanization.success, false)
 })
 
+test('aceita encaminhamento humanizado de OS nao localizada sem status oficial', () => {
+  const canonical = buildWhatsAppCanonicalPayload({
+    intent: 'order_status',
+    action: 'human_handoff',
+    outboundType: 'human_handoff',
+    canonicalReply: 'Sou a IAra, assistente virtual. Nossa equipe vai conferir essa OS.',
+  })
+  const replyText = 'Sou a IAra, assistente virtual. Não localizei essa OS; vou pedir à nossa equipe que confira e continue com você por aqui.'
+  const result = applyWhatsAppHumanizationOutcome(canonical, canonical.canonical.canonicalReply, {
+    success: true, provider: 'openai', model: 'test-model', attempts: 1, replyText,
+  })
+
+  assert.equal(result.text, replyText)
+  assert.equal(result.payload.humanization.success, true)
+})
+
+test('rejeita encaminhamento de OS sem IAra, sem equipe ou com status inventado', () => {
+  const canonical = buildWhatsAppCanonicalPayload({
+    intent: 'order_status',
+    action: 'human_handoff',
+    outboundType: 'human_handoff',
+    canonicalReply: 'Sou a IAra, assistente virtual. Nossa equipe vai conferir essa OS.',
+  })
+  for (const replyText of [
+    'Não localizei essa OS; nossa equipe vai conferir.',
+    'Sou a IAra. Não localizei essa OS.',
+    'Sou a IAra. Nossa equipe vai conferir; seu óculos está pronto.',
+  ]) {
+    const result = applyWhatsAppHumanizationOutcome(canonical, canonical.canonical.canonicalReply, {
+      success: true, provider: 'openai', model: 'test-model', attempts: 1, replyText,
+    })
+    assert.equal(result.payload.humanization.success, false)
+  }
+})
+
+test('prompt de OS nao localizada pede apresentacao e encaminhamento sem inventar status', () => {
+  const prompt = buildWhatsAppHumanizationPrompt({
+    intent: 'order_status', action: 'human_handoff', outboundType: 'human_handoff',
+    canonicalReply: 'Sou a IAra. Nossa equipe vai conferir essa OS.',
+    userMessageText: 'Pode consultar a OS 9999999999?',
+    policy: { mustNotAddInformation: true, mustKeepShort: true },
+  })
+  assert.match(prompt, /Apresente-se como IAra/u)
+  assert.match(prompt, /nao invente status/u)
+  assert.match(prompt, /Nao solicite novamente o mesmo identificador/u)
+})
+
 test('prompt de pedido de identificador prioriza a OS e ignora historico de horarios', () => {
   const prompt = buildWhatsAppHumanizationPrompt({
     intent: 'order_status',

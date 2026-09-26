@@ -551,6 +551,8 @@ export function buildWhatsAppHumanizationPrompt(input: WhatsAppReplyHumanization
     && (input.action === 'request_identifier'
       || input.outboundType === 'identifier_prompt'
       || input.outboundType === 'order_disambiguation_prompt')
+  const isOrderHandoff = input.intent === 'order_status'
+    && (input.action === 'human_handoff' || input.action === 'repeat_handoff')
   const conversationHistory = (isIdentifierRequest ? [] : input.conversationHistory || [])
     .map((line) => normalizeWhitespace(line))
     .filter(Boolean)
@@ -565,6 +567,11 @@ export function buildWhatsAppHumanizationPrompt(input: WhatsAppReplyHumanization
       'A acao atual e solicitar um identificador para localizar uma OS; nenhum status de pedido foi encontrado ainda.',
       'Redija uma pergunta natural pedindo um dos identificadores que aparecem na resposta canonica. Nao diga que encontrou, consultou ou sabe o status do pedido.',
       'Nao responda sobre horario, abertura ou fechamento da loja: esse nao e o assunto desta mensagem.',
+    ] : []),
+    ...(isOrderHandoff ? [
+      'Esta OS nao foi localizada com os dados disponiveis; nao invente status de producao ou retirada.',
+      'Apresente-se como IAra, assistente virtual, e explique naturalmente que um atendente ou a equipe continuara a verificacao.',
+      'Nao solicite novamente o mesmo identificador que o cliente acabou de informar.',
     ] : []),
     ...(input.validationFeedback ? [
       'A tentativa anterior foi rejeitada pela validacao semantica. Corrija a resposta de acordo com esta orientacao: ' + input.validationFeedback,
