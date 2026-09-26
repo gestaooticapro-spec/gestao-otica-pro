@@ -5,7 +5,7 @@ import {
   isInstallmentReminderPreferenceCandidate,
   isSimpleRepeatedStatusQuestion,
 } from '../src/lib/whatsapp/customer-status'
-import { detectWhatsAppConversationLanguage } from '../src/lib/whatsapp/ai'
+import { buildWhatsAppHumanizationPrompt, detectWhatsAppConversationLanguage } from '../src/lib/whatsapp/ai'
 import {
   continueExperimentalConversationAfterAutomatedHandoff,
   decidePreAiRoute,
@@ -102,6 +102,23 @@ test('rejeita humanizacao do pedido de identificador que inventa status da OS', 
 
   assert.equal(result.text, canonical.canonical.canonicalReply)
   assert.equal(result.payload.humanization.success, false)
+})
+
+test('prompt de pedido de identificador prioriza a OS e ignora historico de horarios', () => {
+  const prompt = buildWhatsAppHumanizationPrompt({
+    intent: 'order_status',
+    action: 'request_identifier',
+    outboundType: 'identifier_prompt',
+    canonicalReply: 'Peça CPF, número da OS ou nome completo.',
+    userMessageText: 'Meu óculos está pronto?',
+    conversationHistory: ['Cliente perguntou o horário; loja fecha às 18h.'],
+    policy: { mustNotAddInformation: true, mustKeepShort: true },
+  })
+
+  assert.match(prompt, /solicitar um identificador para localizar uma OS/u)
+  assert.match(prompt, /Nao responda sobre horario/u)
+  assert.doesNotMatch(prompt, /HISTORICO RECENTE DA SESSAO AUTOMATICA/u)
+  assert.doesNotMatch(prompt, /08:30 as 18:00/u)
 })
 
 test('mantem o contexto disponivel enquanto aguarda a primeira resposta humana', () => {

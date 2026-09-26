@@ -1161,19 +1161,44 @@ async function maybeHumanizeOutboundFromCanonical(
     return { text: fallbackText, payload, aiResult: undefined as WhatsAppAiResult<any> | undefined }
   }
 
-  const humanized = await humanizeWhatsAppReply({
+  const humanizationInput = {
     intent: plan.intent,
+    action: canonical.action,
+    outboundType: canonical.outboundType,
     canonicalReply: canonical.canonicalReply,
     userMessageText: context?.userMessageText || undefined,
     conversationHistory: context?.conversationHistory || [],
     storeName: storeName || null,
     facts: canonical.facts,
-    tone: 'friendly',
+    tone: 'friendly' as const,
     policy: {
       mustKeepShort: true,
       mustNotAddInformation: true,
     },
-  })
+  }
+  let humanized = await humanizeWhatsAppReply(humanizationInput)
+
+  if (humanized.success) {
+    const firstRender = applyWhatsAppHumanizationOutcome(payload, fallbackText, {
+      success: true,
+      provider: humanized.provider,
+      model: humanized.model,
+      attempts: humanized.attempts,
+      replyText: humanized.data.reply_text,
+    })
+    const isIdentifierRequest = canonical.intent === 'order_status'
+      && (canonical.action === 'request_identifier'
+        || canonical.outboundType === 'identifier_prompt'
+        || canonical.outboundType === 'order_disambiguation_prompt')
+    if (isIdentifierRequest && firstRender.payload.humanization?.success !== true) {
+      humanized = await humanizeWhatsAppReply({
+        ...humanizationInput,
+        validationFeedback: 'A resposta anterior falou de horario da loja. Peça somente um identificador para localizar o pedido, sem mencionar horario ou status.',
+      })
+    } else {
+      return { ...firstRender, aiResult: humanized }
+    }
+  }
 
   if (!humanized.success) {
     return {

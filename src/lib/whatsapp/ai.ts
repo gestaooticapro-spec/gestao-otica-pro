@@ -273,6 +273,8 @@ export type WhatsAppPostSaleRatingResolutionInput = {
 
 export type WhatsAppReplyHumanizationInput = {
   intent: WhatsAppIntent
+  action?: string
+  outboundType?: string
   userMessageText?: string
   conversationHistory?: string[]
   tone?: WhatsAppReplyTone
@@ -283,6 +285,7 @@ export type WhatsAppReplyHumanizationInput = {
     mustNotAddInformation?: boolean
     mustKeepShort?: boolean
   }
+  validationFeedback?: string
 }
 
 export type WhatsAppAiSuccess<T> = {
@@ -543,8 +546,12 @@ function buildPostSaleRatingResolutionPrompt(input: WhatsAppPostSaleRatingResolu
   ].join('\n')
 }
 
-function buildHumanizationPrompt(input: WhatsAppReplyHumanizationInput) {
-  const conversationHistory = (input.conversationHistory || [])
+export function buildWhatsAppHumanizationPrompt(input: WhatsAppReplyHumanizationInput) {
+  const isIdentifierRequest = input.intent === 'order_status'
+    && (input.action === 'request_identifier'
+      || input.outboundType === 'identifier_prompt'
+      || input.outboundType === 'order_disambiguation_prompt')
+  const conversationHistory = (isIdentifierRequest ? [] : input.conversationHistory || [])
     .map((line) => normalizeWhitespace(line))
     .filter(Boolean)
     .slice(-8)
@@ -554,6 +561,14 @@ function buildHumanizationPrompt(input: WhatsAppReplyHumanizationInput) {
     'Responda SOMENTE em JSON valido, sem markdown, sem explicacoes extras.',
     'Nao altere fatos, nao invente informacoes, nao mude a decisao do sistema.',
     'Se a entrada fornecer a MENSAGEM DO CLIENTE original, formule a sua resposta baseada EXATAMENTE nos fatos e na resposta canonica fornecidos para matar a duvida do cliente.',
+    ...(isIdentifierRequest ? [
+      'A acao atual e solicitar um identificador para localizar uma OS; nenhum status de pedido foi encontrado ainda.',
+      'Redija uma pergunta natural pedindo um dos identificadores que aparecem na resposta canonica. Nao diga que encontrou, consultou ou sabe o status do pedido.',
+      'Nao responda sobre horario, abertura ou fechamento da loja: esse nao e o assunto desta mensagem.',
+    ] : []),
+    ...(input.validationFeedback ? [
+      'A tentativa anterior foi rejeitada pela validacao semantica. Corrija a resposta de acordo com esta orientacao: ' + input.validationFeedback,
+    ] : []),
     'Detecte o idioma predominante da MENSAGEM DO CLIENTE e do historico recente. Responda no mesmo idioma: portugues para portugues e espanhol para espanhol. Nao misture idiomas. Se nao for possivel identificar com seguranca, use portugues do Brasil.',
     'Quando os fatos indicarem que a loja esta fechada, seja acolhedor e contextual. Informe somente o proximo horario fornecido pelo sistema; adapte a redacao ao pedido do cliente sem prometer nada que nao esteja na resposta canonica. Se o caso ja foi encaminhado para a equipe, deixe isso claro de forma gentil.',
     'Se houver policy de mensagem curta, mantenha conciso.',
@@ -562,11 +577,13 @@ function buildHumanizationPrompt(input: WhatsAppReplyHumanizationInput) {
     WHATSAPP_TONES.join(', '),
     '',
     'SCHEMA:',
-    JSON.stringify({ reply_text: 'Oi! Hoje atendemos das 08:30 as 18:00.' }, null, 2),
+    JSON.stringify({ reply_text: 'Oi! Posso te ajudar com isso.' }, null, 2),
     '',
     'ENTRADA DO SISTEMA:',
     JSON.stringify({
       intent: input.intent,
+      action: input.action || null,
+      outboundType: input.outboundType || null,
       tone: input.tone || 'friendly',
       storeName: input.storeName || null,
       facts: input.facts || {},
@@ -1128,7 +1145,7 @@ export async function humanizeWhatsAppReply(
 ): Promise<WhatsAppAiResult<WhatsAppReplyHumanization>> {
   return executeStructuredTask(
     'reply_humanization',
-    buildHumanizationPrompt(input),
+    buildWhatsAppHumanizationPrompt(input),
     WhatsAppReplyHumanizationSchema
   )
 }
