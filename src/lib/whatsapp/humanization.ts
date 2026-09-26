@@ -30,6 +30,18 @@ function preservesOrderStatus(payload: PayloadRecord, replyText: string) {
   const canonical = extractWhatsAppCanonicalReply(payload as Json)
   if (canonical?.intent !== 'order_status') return true
 
+  // Um pedido de identificacao ainda nao tem status consultado para preservar.
+  // Validamos que a resposta continue pedindo os dados necessarios, em vez de
+  // exigir um statusCode inexistente e rejeitar toda resposta gerada pela IA.
+  if (canonical.action === 'request_identifier'
+    || canonical.outboundType === 'identifier_prompt'
+    || canonical.outboundType === 'order_disambiguation_prompt') {
+    const normalized = replyText.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLocaleLowerCase('pt-BR').replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim()
+    return /\b(?:cpf|numero do pedido|numero da os|ordem de servico|nome completo|titular|pedido)\b/u.test(normalized)
+      && /\b(?:envie|informe|diga|passe|compartilhe|me(?:\s+)?(?:diga|informe|passe)|provide|send|share|tell me|indique)\b/u.test(normalized)
+  }
+
   const statusCode = canonical.facts.statusCode
   if (typeof statusCode !== 'string') return false
   const normalized = replyText.normalize('NFD').replace(/[\u0300-\u036f]/g, '')

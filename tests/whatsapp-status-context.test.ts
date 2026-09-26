@@ -66,6 +66,44 @@ test('aceita humanizacao natural que preserva a etapa pronta para retirada', () 
   assert.equal(result.payload.humanization.success, true)
 })
 
+test('aceita humanizacao que pede identificador antes de consultar uma OS', () => {
+  const canonical = buildWhatsAppCanonicalPayload({
+    intent: 'order_status',
+    action: 'request_identifier',
+    outboundType: 'identifier_prompt',
+    canonicalReply: 'Envie o CPF, número do pedido ou nome completo.',
+  })
+  const result = applyWhatsAppHumanizationOutcome(canonical, canonical.canonical.canonicalReply, {
+    success: true,
+    provider: 'openai',
+    model: 'test-model',
+    attempts: 1,
+    replyText: 'Para eu localizar seu pedido, me informe o número da OS ou o nome completo do titular, por favor.',
+  })
+
+  assert.equal(result.text, 'Para eu localizar seu pedido, me informe o número da OS ou o nome completo do titular, por favor.')
+  assert.equal(result.payload.humanization.success, true)
+})
+
+test('rejeita humanizacao do pedido de identificador que inventa status da OS', () => {
+  const canonical = buildWhatsAppCanonicalPayload({
+    intent: 'order_status',
+    action: 'request_identifier',
+    outboundType: 'identifier_prompt',
+    canonicalReply: 'Envie o CPF, número do pedido ou nome completo.',
+  })
+  const result = applyWhatsAppHumanizationOutcome(canonical, canonical.canonical.canonicalReply, {
+    success: true,
+    provider: 'openai',
+    model: 'test-model',
+    attempts: 1,
+    replyText: 'Seu óculos já está pronto para retirada.',
+  })
+
+  assert.equal(result.text, canonical.canonical.canonicalReply)
+  assert.equal(result.payload.humanization.success, false)
+})
+
 test('mantem o contexto disponivel enquanto aguarda a primeira resposta humana', () => {
   const baseInput = {
     option: null,
