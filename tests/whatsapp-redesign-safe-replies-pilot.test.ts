@@ -74,6 +74,16 @@ test('piloto consulta OS apenas com intencao confiavel e sem pedido humano ou an
     decision: repeatedHandoffDecision,
     messageText: 'Quero fazer óculos novos.',
   }), false)
+  assert.equal(shouldLookupOrderStatusInStoreOnePilot({
+    classification: { ...orderClassification, intent: 'store_hours' },
+    decision,
+    messageText: 'Meu óculos está pronto?',
+  }), true)
+  assert.equal(shouldLookupOrderStatusInStoreOnePilot({
+    classification: { ...orderClassification, intent: 'store_hours' },
+    decision,
+    messageText: 'Meu óculos está pronto? Quero falar com um atendente.',
+  }), false)
 })
 
 test('selecao do piloto prepara texto fixo somente como fallback, nunca como texto ao vivo', () => {

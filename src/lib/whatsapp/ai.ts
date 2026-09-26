@@ -26,6 +26,14 @@ const GEMINI_MODEL = process.env.WHATSAPP_AI_GEMINI_MODEL || 'gemini-2.5-flash'
 const OPENAI_MODEL = process.env.WHATSAPP_AI_OPENAI_MODEL || process.env.OPENAI_TEXT_MODEL || 'gpt-4.1-nano'
 const REQUEST_TIMEOUT_MS = Number(process.env.WHATSAPP_AI_TIMEOUT_MS || 20000)
 
+const OPENAI_ONLY_RESPONSE_TASKS = new Set<WhatsAppAiTask>([
+  'redesign_reply_generation',
+  'reply_humanization',
+  'fallback_reply',
+  'post_sale_rating_resolution',
+  'tool_agent_reply',
+])
+
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
   let timeout: ReturnType<typeof setTimeout> | undefined
   return Promise.race([
@@ -839,10 +847,11 @@ async function callOpenAI(task: WhatsAppAiTask, prompt: string): Promise<Provide
 }
 
 async function runWithFallback(task: WhatsAppAiTask, prompt: string) {
-  const attempts: Array<Promise<ProviderAttemptSuccess | ProviderAttemptFailure>> = [
-    callGemini(task, prompt),
-    callOpenAI(task, prompt),
-  ]
+  // Gemini permanece habilitado para interpretar/classificar; textos enviados
+  // ao cliente e respostas redigidas pelo agente usam somente OpenAI.
+  const attempts: Array<Promise<ProviderAttemptSuccess | ProviderAttemptFailure>> = OPENAI_ONLY_RESPONSE_TASKS.has(task)
+    ? [callOpenAI(task, prompt)]
+    : [callGemini(task, prompt), callOpenAI(task, prompt)]
   return new Promise<
     | { success: true; result: ProviderAttemptSuccess; providerErrors: string[] }
     | { success: false; providerErrors: string[] }
