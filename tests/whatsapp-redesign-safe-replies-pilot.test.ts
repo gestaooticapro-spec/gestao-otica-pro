@@ -120,6 +120,22 @@ test('consulta de OS confiavel segue para o agente de ferramentas quando habilit
     classification: { ...orderClassification, requestsHuman: true },
     decision: handoffDecision,
   }), false)
+  assert.equal(shouldUseOrderStatusToolAgent({
+    enabled: true,
+    classification: { ...orderClassification, intent: 'vision_exam' },
+    decision: WhatsAppSystemDecisionSchema.parse({
+      ...handoffDecision,
+      action: 'repeat_handoff',
+      facts: { decisionReason: 'topic_requires_human:vision_exam' },
+    }),
+    messageText: 'E da OS 9999?',
+  }), true)
+  assert.equal(shouldUseOrderStatusToolAgent({
+    enabled: true,
+    classification: { ...orderClassification, requestsHuman: true },
+    decision: handoffDecision,
+    messageText: 'Quero falar com atendente sobre a OS 9999',
+  }), false)
 })
 
 test('selecao do piloto prepara texto fixo somente como fallback, nunca como texto ao vivo', () => {

@@ -1793,7 +1793,9 @@ para situações diferentes e devem ser substituídos por políticas nomeadas:
 - 2 horas de sessão curta da IA;
 - 30 minutos para menu aguardando escolha;
 - 20 minutos para identificação de cliente/CPF/número;
-- 1 hora de silêncio após resposta de status;
+- estado temporário após uma resposta automática: serve para evitar reprocessar
+  a mesma mensagem, não equivale a `human_pause` e não pode bloquear uma nova
+  pergunta. `human_pause` continua sendo um controle separado da equipe;
 - 2 horas para evitar repetição do mesmo status;
 - até 7 dias de memória persistente específica do pós-venda.
 

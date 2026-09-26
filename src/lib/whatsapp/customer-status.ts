@@ -34,6 +34,7 @@ import {
 import {
   continueExperimentalConversationAfterAutomatedHandoff,
   decidePreAiRoute,
+  isRepeatedSilentInbound,
   shouldReleaseClosedTrapPause,
 } from './routing-heuristics'
 import { decidePostClassificationRoute, type WhatsAppPostClassificationDecision } from './flow-decisions'
@@ -2675,12 +2676,15 @@ export async function resolveCustomerStatus(
 
   let useOrderStatusToolAgentForCurrentInbound = false
   let redesignConversationHistory: string[] = []
+  const isRepeatedMessageDuringSilentWindow = state?.state === 'silent'
+    && isRepeatedSilentInbound(effectiveMessageText, state.metadata)
   if (isStoreOneSafeRepliesPilotEnabled(channel.store_id, automationSettings)
     && shadowCapture.captured && 'turnId' in shadowCapture
     && typeof shadowCapture.turnId === 'string'
     && controlMode !== 'force_human'
     && controlMode !== 'force_ai'
-    && !['human_pause', 'waiting_human_after_attachment', 'silent'].includes(state?.state ?? '')) {
+    && !['human_pause', 'waiting_human_after_attachment'].includes(state?.state ?? '')
+    && !isRepeatedMessageDuringSilentWindow) {
     let pilotReply: ReturnType<typeof selectStoreOnePilotSafeReply> = null
     try {
       const redesignStore = new WhatsAppRedesignConversationStore()
@@ -2718,6 +2722,7 @@ export async function resolveCustomerStatus(
           enabled: isWhatsAppAiResponderEnabled(automationSettings),
           classification,
           decision,
+          messageText: effectiveMessageText,
         })
         useOrderStatusToolAgentForCurrentInbound = useOrderStatusToolAgent
         const explicitOrderNumber = extractExplicitOrderNumber(effectiveMessageText)

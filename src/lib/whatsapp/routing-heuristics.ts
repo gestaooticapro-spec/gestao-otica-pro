@@ -167,22 +167,28 @@ export function decidePreAiRoute(input: {
   return 'continue_to_ai_or_menu'
 }
 
+export function isRepeatedSilentInbound(
+  messageText: string | null,
+  metadata: Json | null | undefined
+) {
+  const currentMessage = normalizeComparableMessage(messageText)
+  const previousMessage = normalizeComparableMessage(readMetadataString(metadata, 'lastInboundText'))
+  return Boolean(currentMessage && currentMessage === previousMessage)
+}
+
 export function continueExperimentalConversationAfterAutomatedHandoff(input: {
   route: WhatsAppPreAiRouteDecision
   messageText: string | null
   metadata: Json | null | undefined
   toolAgentEnabled: boolean
 }): WhatsAppPreAiRouteDecision {
-  if (!input.toolAgentEnabled) return input.route
+  if (!input.toolAgentEnabled && input.route !== 'ignore_silent') return input.route
   if (input.route === 'preserve_human_handoff' || input.route === 'attachment_followup_handoff') {
     return 'continue_to_ai_or_menu'
   }
   if (input.route !== 'ignore_silent') return input.route
 
-  const currentMessage = normalizeComparableMessage(input.messageText)
-  const previousMessage = normalizeComparableMessage(readMetadataString(input.metadata, 'lastInboundText'))
-
-  return currentMessage && currentMessage === previousMessage
+  return isRepeatedSilentInbound(input.messageText, input.metadata)
     ? 'ignore_silent'
     : 'continue_to_ai_or_menu'
 }

@@ -9,6 +9,8 @@ export type Release = {
 // altera o Dashboard ou o modal de histórico.
 export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'Uma resposta automática não silencia perguntas novas durante a janela temporária; somente a repetição da mesma mensagem é suprimida, sem alterar a pausa humana.',
+  'Uma OS informada explicitamente no WhatsApp continua sendo consultada pelo agente de IA mesmo que a classificação inicial confunda o assunto.',
   'A resposta humanizada sobre uma OS preserva a etapa oficial do pedido; se a IA desviar do status, o sistema usa a informação confirmada.',
   'As respostas redigidas pela IA passam a usar exclusivamente OpenAI; respostas de contingência continuam disponíveis se a geração falhar ou for insegura.',
   'As respostas de WhatsApp ficam menos sujeitas a atrasos quando um provedor de IA demora, usando primeiro a resposta válida que chegar.',

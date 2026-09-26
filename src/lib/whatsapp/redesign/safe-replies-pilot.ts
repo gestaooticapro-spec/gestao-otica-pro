@@ -67,10 +67,14 @@ export function shouldUseOrderStatusToolAgent(input: {
   enabled: boolean
   classification: WhatsAppRedesignClassification
   decision: WhatsAppSystemDecisionDraft
+  messageText?: string | null
 }) {
-  return input.enabled
-    && input.classification.intent === 'order_status'
+  const hasExplicitOrderNumber = Boolean(extractExplicitOrderNumber(input.messageText))
+  const classificationSupportsOrderLookup = input.classification.intent === 'order_status'
     && input.classification.confidence >= WHATSAPP_REDESIGN_MIN_CONFIDENCE
+
+  return input.enabled
+    && (classificationSupportsOrderLookup || hasExplicitOrderNumber)
     && !input.classification.requestsHuman
     && !input.classification.mentionsAttachment
     && input.decision.action !== 'no_reply'

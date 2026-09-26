@@ -132,27 +132,27 @@ test('recupera contexto da equipe e de comprovante sem confirmar a baixa', () =>
   ])
 })
 
-test('modo experimental libera pergunta nova apos silencio ou handoff automatico', () => {
+test('silencio temporario suprime repeticao identica, mas deixa mensagem nova continuar', () => {
   const metadata = { lastInboundText: 'Como esta meu oculos?' }
 
   assert.equal(continueExperimentalConversationAfterAutomatedHandoff({
     route: 'ignore_silent',
     messageText: 'E minhas parcelas?',
     metadata,
-    toolAgentEnabled: true,
+    toolAgentEnabled: false,
   }), 'continue_to_ai_or_menu')
   assert.equal(continueExperimentalConversationAfterAutomatedHandoff({
     route: 'ignore_silent',
-    messageText: 'Como esta meu oculos?',
-    metadata,
-    toolAgentEnabled: true,
-  }), 'ignore_silent')
-  assert.equal(continueExperimentalConversationAfterAutomatedHandoff({
-    route: 'ignore_silent',
-    messageText: 'E minhas parcelas?',
+    messageText: 'como está meu óculos!',
     metadata,
     toolAgentEnabled: false,
   }), 'ignore_silent')
+  assert.equal(continueExperimentalConversationAfterAutomatedHandoff({
+    route: 'preserve_human_handoff',
+    messageText: 'E meu oculos em producao?',
+    metadata,
+    toolAgentEnabled: false,
+  }), 'preserve_human_handoff')
   assert.equal(continueExperimentalConversationAfterAutomatedHandoff({
     route: 'preserve_human_handoff',
     messageText: 'E meu oculos em producao?',

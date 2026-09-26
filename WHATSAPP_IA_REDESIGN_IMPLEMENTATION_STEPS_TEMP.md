@@ -33,7 +33,9 @@ registrado no `WHATSAPP_IA_REDESIGN_PLAN.md`.
    ou pelo identificador informado, executa somente consultas aprovadas e
    redige a resposta a partir dos fatos encontrados. A busca deterministica
    explicita fica como contingencia se a chamada da IA estiver indisponivel;
-   nao substitui a decisao da IA no caminho normal. Se houver mais de uma OS,
+   nao substitui a decisao da IA no caminho normal. Um numero de OS escrito
+   explicitamente tambem direciona a mensagem ao agente mesmo quando a
+   classificacao inicial confunde o assunto. Se houver mais de uma OS,
    nao selecionar silenciosamente: pedir o numero para desambiguar. Consulta
    automatica de produtos/estoque continua fora do escopo: encaminhar a um
    atendente. Parcelas, exame, reclamacao, troca e garantia ficam para depois.
@@ -44,6 +46,11 @@ registrado no `WHATSAPP_IA_REDESIGN_PLAN.md`.
    roteador legado quando a equivalencia estiver comprovada.
 
 ## Historico
+
+- 26/09/2026: corrigido o roteamento do estado `silent`: agora ele suprime
+  somente a repetição da mesma mensagem; uma pergunta diferente pode continuar
+  pelo atendimento/redesign. `human_pause` permanece como bloqueio humano
+  independente e prioritário.
 
 - 18/09/2026: etapa 1 iniciada com processamento exclusivamente em sombra.
 - 18/09/2026: processador publicado e executado na Loja 1; três turnos reais
