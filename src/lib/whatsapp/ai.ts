@@ -571,6 +571,7 @@ export function buildWhatsAppHumanizationPrompt(input: WhatsAppReplyHumanization
     ...(isOrderHandoff ? [
       'Esta OS nao foi localizada com os dados disponiveis; nao invente status de producao ou retirada.',
       'Apresente-se como IAra, assistente virtual, e explique naturalmente que um atendente ou a equipe continuara a verificacao.',
+      'A resposta canonica e um texto de seguranca; nao a copie. Reescreva com palavras proprias, de forma breve, acolhedora e ligada ao pedido atual.',
       'Nao solicite novamente o mesmo identificador que o cliente acabou de informar.',
     ] : []),
     ...(input.validationFeedback ? [

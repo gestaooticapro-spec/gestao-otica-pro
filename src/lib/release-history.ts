@@ -9,7 +9,7 @@ export type Release = {
 // altera o Dashboard ou o modal de histórico.
 export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
-  'Encaminhamentos de OS nao localizada aceitam texto da IA que identifica a IAra e chama a equipe, sem exigir um status inexistente; uma segunda tentativa corrige respostas que desviem do assunto.',
+  'Encaminhamentos de OS nao localizada validam a identificacao da IAra, o contato da equipe e a ausencia de status inventado; a IA e orientada a reformular com palavras proprias em vez de copiar o texto canonico.',
   'Pedidos de status sem OS vinculada aceitam a pergunta natural da IA solicitando um identificador, inclusive formas como “poderia me passar”, sem recorrer ao texto fixo.',
   'Uma resposta automática não silencia perguntas novas durante a janela temporária; somente a repetição da mesma mensagem é suprimida, sem alterar a pausa humana.',
   'Uma OS informada explicitamente no WhatsApp continua sendo consultada pelo agente de IA mesmo que a classificação inicial confunda o assunto.',

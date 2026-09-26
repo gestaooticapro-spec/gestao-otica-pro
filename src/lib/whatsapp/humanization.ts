@@ -42,7 +42,10 @@ function preservesOrderStatus(payload: PayloadRecord, replyText: string) {
     const inventsStatus = has(/\b(?:ficou|esta|ta|esta ya|is)\s+pront\w*\b/u)
       || has(/\b(?:pode|puede|can)\s+(?:ser\s+)?(?:retirar|retirado|retirada|buscar|recoger|pick up)\b/u)
       || has(/\b(?:em producao|no laboratorio|em montagem|in production|en produccion)\b/u)
-    return identifiesIara && mentionsHuman && !inventsStatus
+    const canonicalNormalized = canonical.canonicalReply.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLocaleLowerCase('pt-BR').replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim()
+    const copiedCanonicalReply = normalized === canonicalNormalized
+    return identifiesIara && mentionsHuman && !inventsStatus && !copiedCanonicalReply
   }
 
   // Um pedido de identificacao ainda nao tem status consultado para preservar.

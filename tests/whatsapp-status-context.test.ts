@@ -157,6 +157,7 @@ test('rejeita encaminhamento de OS sem IAra, sem equipe ou com status inventado'
     canonicalReply: 'Sou a IAra, assistente virtual. Nossa equipe vai conferir essa OS.',
   })
   for (const replyText of [
+    canonical.canonical.canonicalReply,
     'Não localizei essa OS; nossa equipe vai conferir.',
     'Sou a IAra. Não localizei essa OS.',
     'Sou a IAra. Nossa equipe vai conferir; seu óculos está pronto.',
@@ -177,6 +178,7 @@ test('prompt de OS nao localizada pede apresentacao e encaminhamento sem inventa
   })
   assert.match(prompt, /Apresente-se como IAra/u)
   assert.match(prompt, /nao invente status/u)
+  assert.match(prompt, /nao a copie/u)
   assert.match(prompt, /Nao solicite novamente o mesmo identificador/u)
 })
 

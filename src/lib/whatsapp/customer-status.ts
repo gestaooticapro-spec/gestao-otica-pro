@@ -1196,7 +1196,7 @@ async function maybeHumanizeOutboundFromCanonical(
       humanized = await humanizeWhatsAppReply({
         ...humanizationInput,
         validationFeedback: isOrderHandoff
-          ? 'Apresente-se como IAra e diga que um atendente ou a equipe continuará a verificação. Não afirme que a OS foi encontrada, está pronta ou em produção. Não peça novamente o mesmo identificador.'
+          ? 'Apresente-se como IAra e diga que um atendente ou a equipe continuará a verificação. Redija uma mensagem curta e natural com palavras próprias, contextualizada ao pedido do cliente; não copie a resposta canônica. Não afirme que a OS foi encontrada, está pronta ou em produção. Não peça novamente o mesmo identificador.'
           : 'Peça somente um identificador para localizar o pedido, sem mencionar horário ou status.',
       })
     } else {
