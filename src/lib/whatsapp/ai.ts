@@ -24,11 +24,13 @@ const OPENAI_KEYS = [
 
 const GEMINI_MODEL = process.env.WHATSAPP_AI_GEMINI_MODEL || 'gemini-2.5-flash'
 const OPENAI_MODEL = process.env.WHATSAPP_AI_OPENAI_MODEL || process.env.OPENAI_TEXT_MODEL || 'gpt-4.1-nano'
+const OPENAI_ORDER_HANDOFF_MODEL = process.env.WHATSAPP_AI_OPENAI_ORDER_HANDOFF_MODEL || 'gpt-4.1-mini'
 const REQUEST_TIMEOUT_MS = Number(process.env.WHATSAPP_AI_TIMEOUT_MS || 20000)
 
 const OPENAI_ONLY_RESPONSE_TASKS = new Set<WhatsAppAiTask>([
   'redesign_reply_generation',
   'reply_humanization',
+  'order_handoff_humanization',
   'fallback_reply',
   'post_sale_rating_resolution',
   'tool_agent_reply',
@@ -90,7 +92,7 @@ export type WhatsAppIntent = (typeof WHATSAPP_INTENTS)[number]
 export type WhatsAppReasoningTag = (typeof WHATSAPP_REASONING_TAGS)[number]
 export type WhatsAppReplyTone = (typeof WHATSAPP_TONES)[number]
 export type WhatsAppAiProvider = 'gemini' | 'openai'
-export type WhatsAppAiTask = 'intent_classification' | 'redesign_classification' | 'redesign_reply_generation' | 'installment_reminder_preference_resolution' | 'post_sale_rating_resolution' | 'reply_humanization' | 'fallback_reply' | 'receipt_extraction' | 'tool_agent_plan' | 'tool_agent_reply'
+export type WhatsAppAiTask = 'intent_classification' | 'redesign_classification' | 'redesign_reply_generation' | 'installment_reminder_preference_resolution' | 'post_sale_rating_resolution' | 'reply_humanization' | 'order_handoff_humanization' | 'fallback_reply' | 'receipt_extraction' | 'tool_agent_plan' | 'tool_agent_reply'
 
 export type WhatsAppAiTokenUsage = {
   inputTokens: number | null
@@ -810,6 +812,7 @@ async function callOpenAI(task: WhatsAppAiTask, prompt: string): Promise<Provide
 
   const order = nextRoundRobinOrder(OPENAI_KEYS.length, openAiRoundRobinCursor)
   openAiRoundRobinCursor = (openAiRoundRobinCursor + 1) % OPENAI_KEYS.length
+  const model = task === 'order_handoff_humanization' ? OPENAI_ORDER_HANDOFF_MODEL : OPENAI_MODEL
 
   for (const keyIndex of order) {
     const key = OPENAI_KEYS[keyIndex]
@@ -821,7 +824,7 @@ async function callOpenAI(task: WhatsAppAiTask, prompt: string): Promise<Provide
           authorization: `Bearer ${key}`,
         },
         body: JSON.stringify({
-          model: OPENAI_MODEL,
+          model,
           input: prompt,
         }),
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
@@ -856,7 +859,7 @@ async function callOpenAI(task: WhatsAppAiTask, prompt: string): Promise<Provide
 
       return {
         provider: 'openai',
-        model: OPENAI_MODEL,
+        model,
         keyIndex,
         rawText,
         tokenUsage: normalizeOpenAiUsage(payload?.usage),
@@ -1151,8 +1154,10 @@ export async function extractReceiptWithVision(
 export async function humanizeWhatsAppReply(
   input: WhatsAppReplyHumanizationInput
 ): Promise<WhatsAppAiResult<WhatsAppReplyHumanization>> {
+  const isOrderHandoff = input.intent === 'order_status'
+    && (input.action === 'human_handoff' || input.action === 'repeat_handoff')
   return executeStructuredTask(
-    'reply_humanization',
+    isOrderHandoff ? 'order_handoff_humanization' : 'reply_humanization',
     buildWhatsAppHumanizationPrompt(input),
     WhatsAppReplyHumanizationSchema
   )
