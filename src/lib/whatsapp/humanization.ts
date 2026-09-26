@@ -1,6 +1,6 @@
 import type { Json } from '@/lib/database.types'
 import type { WhatsAppCanonicalReply } from './canonical'
-import { getWhatsAppCanonicalHumanizableIntent } from './canonical'
+import { extractWhatsAppCanonicalReply, getWhatsAppCanonicalHumanizableIntent } from './canonical'
 
 export type WhatsAppHumanizationDecision =
   | 'skip_disabled'
@@ -25,6 +25,30 @@ export type WhatsAppHumanizationOutcome =
   | WhatsAppHumanizationSuccess
 
 type PayloadRecord = Record<string, Json | undefined>
+
+function preservesOrderStatus(payload: PayloadRecord, replyText: string) {
+  const canonical = extractWhatsAppCanonicalReply(payload as Json)
+  if (canonical?.intent !== 'order_status') return true
+
+  const statusCode = canonical.facts.statusCode
+  if (typeof statusCode !== 'string') return false
+  const normalized = replyText.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('pt-BR').replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim()
+  const has = (pattern: RegExp) => pattern.test(normalized)
+
+  switch (statusCode) {
+    case 'ready_for_pickup':
+      return has(/\b(?:ficou pronto|esta pronto|pronto para retirar|ja pode retirar|pode retirar|pode buscar|ready for pickup|ready to pick up|listo para recoger|ya puedes recoger)\b/u)
+    case 'lens_in_production':
+      return has(/\b(?:produc|laborator|fabric|production|fabricacion)\w*\b/u)
+    case 'lens_arrived_needs_frame':
+      return has(/\b(?:cheg|arriv|lleg)\w*\b/u) && has(/\b(?:armaca|mont|frame)\w*\b/u)
+    case 'lens_arrived_assembling':
+      return has(/\b(?:cheg|arriv|lleg)\w*\b/u) && has(/\b(?:mont|ensambl|assembly)\w*\b/u)
+    default:
+      return false
+  }
+}
 
 export function decideWhatsAppHumanization(
   enabled: boolean,
@@ -64,17 +88,20 @@ export function applyWhatsAppHumanizationOutcome(
     }
   }
 
+  const statusPreserved = preservesOrderStatus(payload, outcome.replyText)
   return {
-    text: outcome.replyText,
+    text: statusPreserved ? outcome.replyText : fallbackText,
     payload: {
       ...payload,
       humanization: {
         enabled: true,
-        success: true,
+        success: statusPreserved,
         provider: outcome.provider,
         model: outcome.model,
         attempts: outcome.attempts,
-        replyText: outcome.replyText,
+        ...(statusPreserved
+          ? { replyText: outcome.replyText }
+          : { rejectionReason: 'order_status_not_preserved' }),
       },
     } satisfies PayloadRecord,
   }

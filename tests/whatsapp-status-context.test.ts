@@ -11,6 +11,8 @@ import {
   decidePreAiRoute,
 } from '../src/lib/whatsapp/routing-heuristics'
 import { resolveConversationStateCandidates } from '../src/lib/whatsapp/conversation-state-matching'
+import { buildWhatsAppCanonicalPayload } from '../src/lib/whatsapp/canonical'
+import { applyWhatsAppHumanizationOutcome } from '../src/lib/whatsapp/humanization'
 
 test('silencia apenas uma repeticao literal de status', () => {
   assert.equal(isSimpleRepeatedStatusQuestion('Como t\u00e1 meu \u00f3culos?'), true)
@@ -20,6 +22,48 @@ test('silencia apenas uma repeticao literal de status', () => {
 test('mantem perguntas novas sobre prazo e antecipacao fora do silencio', () => {
   assert.equal(isSimpleRepeatedStatusQuestion('Que dia deve ficar pronto?'), false)
   assert.equal(isSimpleRepeatedStatusQuestion('Tem como adiantar um pouco?'), false)
+})
+
+test('rejeita humanizacao de OS que troca a etapa oficial por assunto de horario', () => {
+  const canonical = buildWhatsAppCanonicalPayload({
+    intent: 'order_status',
+    action: 'auto_reply',
+    outboundType: 'os_status',
+    canonicalReply: 'Oi! Seu óculos ficou pronto e já pode ser retirado na loja.',
+    facts: { statusCode: 'ready_for_pickup' },
+  })
+  const result = applyWhatsAppHumanizationOutcome(canonical, canonical.canonical.canonicalReply, {
+    success: true,
+    provider: 'openai',
+    model: 'test-model',
+    attempts: 1,
+    replyText: 'Oi! Hoje atendemos das 08:30 às 18:00.',
+  })
+
+  assert.equal(result.text, canonical.canonical.canonicalReply)
+  assert.equal(result.payload.humanization.success, false)
+  assert.equal('rejectionReason' in result.payload.humanization
+    ? result.payload.humanization.rejectionReason : null, 'order_status_not_preserved')
+})
+
+test('aceita humanizacao natural que preserva a etapa pronta para retirada', () => {
+  const canonical = buildWhatsAppCanonicalPayload({
+    intent: 'order_status',
+    action: 'auto_reply',
+    outboundType: 'os_status',
+    canonicalReply: 'Oi! Seu óculos ficou pronto e já pode ser retirado na loja.',
+    facts: { statusCode: 'ready_for_pickup' },
+  })
+  const result = applyWhatsAppHumanizationOutcome(canonical, canonical.canonical.canonicalReply, {
+    success: true,
+    provider: 'openai',
+    model: 'test-model',
+    attempts: 1,
+    replyText: 'Boa notícia: seu óculos está pronto para retirar!',
+  })
+
+  assert.equal(result.text, 'Boa notícia: seu óculos está pronto para retirar!')
+  assert.equal(result.payload.humanization.success, true)
 })
 
 test('mantem o contexto disponivel enquanto aguarda a primeira resposta humana', () => {
