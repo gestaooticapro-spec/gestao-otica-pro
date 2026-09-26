@@ -68,6 +68,7 @@ import {
   WhatsAppSystemDecisionSchema,
 } from './redesign/contracts'
 import {
+  extractExplicitOrderNumber,
   isStoreOneSafeRepliesPilotEnabled,
   resolveStoreOnePilotReplyText,
   selectStoreOnePilotSafeReply,
@@ -2710,6 +2711,34 @@ export async function resolveCustomerStatus(
           .filter((message) => !currentTurnMessageIds.has(message.id))
           .map((message) => `${message.role === 'customer' ? 'Cliente' : message.role === 'human' ? 'Atendente' : 'IA'}: ${message.text || `[${message.kind}]`}`)
           .slice(-8)
+
+        const explicitOrderNumber = extractExplicitOrderNumber(effectiveMessageText)
+        if (explicitOrderNumber) {
+          const orderMatch = await findOpenOsByOrderNumberOnly(channel.store_id, `OS ${explicitOrderNumber}`)
+          if (orderMatch) {
+            const statusMetadata = appendAiSessionMessage(
+              mergeMetadata(state?.metadata, inboundContextMetadata),
+              'customer',
+              effectiveMessageText
+            )
+            return createStatusReply(
+              channel,
+              inbound.id,
+              normalizedPhone,
+              orderMatch.customer,
+              orderMatch.serviceOrder,
+              statusMetadata,
+              classification.confidence,
+              {
+                enabled: WHATSAPP_AI_FINAL_WRITER_ENABLED && isWhatsAppAiResponderEnabled(automationSettings),
+                storeName: storeProfile.name,
+                userMessageText: effectiveMessageText,
+                conversationHistory: pilotConversationHistory,
+                onResult: async (result) => { await logAiResult(channel, inbound.id, 'reply_humanization', result) },
+              }
+            )
+          }
+        }
 
         if (shouldLookupOrderStatusInStoreOnePilot({
           classification,

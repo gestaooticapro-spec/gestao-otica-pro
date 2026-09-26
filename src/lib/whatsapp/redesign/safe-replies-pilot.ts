@@ -63,6 +63,13 @@ export function shouldLookupOrderStatusInStoreOnePilot(input: {
     )
 }
 
+export function extractExplicitOrderNumber(messageText: string | null | undefined) {
+  const normalized = (messageText ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('pt-BR')
+  const match = normalized.match(/\b(?:os|ordem(?:\s+de\s+servico)?|pedido)\s*(?:n[º°o.]?\s*)?(\d{1,10})\b/u)
+  return match?.[1] ?? null
+}
+
 function selectStoreOnePilotSafeReplyBase(input: {
   classification: WhatsAppRedesignClassification
   decision: WhatsAppSystemDecisionDraft

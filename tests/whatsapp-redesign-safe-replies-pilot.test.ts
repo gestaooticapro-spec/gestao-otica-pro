@@ -5,6 +5,7 @@ import {
   WhatsAppSystemDecisionSchema,
 } from '../src/lib/whatsapp/redesign/contracts'
 import {
+  extractExplicitOrderNumber,
   isStoreOneSafeRepliesPilotEnabled,
   resolveStoreOnePilotReplyText,
   selectStoreOnePilotSafeReply,
@@ -32,6 +33,13 @@ test('piloto exige Loja 1, modo sombra e ativacao explicita', () => {
   assert.equal(isStoreOneSafeRepliesPilotEnabled(2, settings), false)
   assert.equal(isStoreOneSafeRepliesPilotEnabled(1, { ai_redesign: { mode: 'shadow' } }), false)
   assert.equal(isStoreOneSafeRepliesPilotEnabled(1, { ai_redesign: { mode: 'legacy', safe_replies_enabled: true } }), false)
+})
+
+test('extrai identificador explicito de OS sem confundir pergunta de status', () => {
+  assert.equal(extractExplicitOrderNumber('OS 277'), '277')
+  assert.equal(extractExplicitOrderNumber('Pedido nº 2041'), '2041')
+  assert.equal(extractExplicitOrderNumber('Meu óculos está pronto?'), null)
+  assert.equal(extractExplicitOrderNumber('Quero falar com um atendente'), null)
 })
 
 test('piloto consulta OS apenas com intencao confiavel e sem pedido humano ou anexo', () => {
