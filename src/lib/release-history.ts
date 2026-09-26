@@ -9,6 +9,7 @@ export type Release = {
 // altera o Dashboard ou o modal de histórico.
 export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'Pedidos de status sem OS vinculada aceitam a pergunta natural da IA solicitando um identificador, inclusive formas como “poderia me passar”, sem recorrer ao texto fixo.',
   'Uma resposta automática não silencia perguntas novas durante a janela temporária; somente a repetição da mesma mensagem é suprimida, sem alterar a pausa humana.',
   'Uma OS informada explicitamente no WhatsApp continua sendo consultada pelo agente de IA mesmo que a classificação inicial confunda o assunto.',
   'A resposta humanizada sobre uma OS preserva a etapa oficial do pedido; se a IA desviar do status, o sistema usa a informação confirmada.',

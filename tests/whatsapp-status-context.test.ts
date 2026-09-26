@@ -85,6 +85,35 @@ test('aceita humanizacao que pede identificador antes de consultar uma OS', () =
   assert.equal(result.payload.humanization.success, true)
 })
 
+test('aceita pedido natural de identificador com verbo no infinitivo', () => {
+  const canonical = buildWhatsAppCanonicalPayload({
+    intent: 'order_status',
+    action: 'request_identifier',
+    outboundType: 'identifier_prompt',
+    canonicalReply: 'Envie o número do pedido para localizar a OS.',
+  })
+  const replyText = 'Para eu localizar seu pedido, você poderia me passar o número do pedido?'
+  const result = applyWhatsAppHumanizationOutcome(canonical, canonical.canonical.canonicalReply, {
+    success: true,
+    provider: 'openai',
+    model: 'test-model',
+    attempts: 1,
+    replyText,
+  })
+
+  assert.equal(result.text, replyText)
+  assert.equal(result.payload.humanization.success, true)
+
+  const contextualReply = applyWhatsAppHumanizationOutcome(canonical, canonical.canonical.canonicalReply, {
+    success: true,
+    provider: 'openai',
+    model: 'test-model',
+    attempts: 1,
+    replyText: 'Para verificar se seu óculos está pronto, poderia me passar o número do pedido?',
+  })
+  assert.equal(contextualReply.payload.humanization.success, true)
+})
+
 test('rejeita humanizacao do pedido de identificador que inventa status da OS', () => {
   const canonical = buildWhatsAppCanonicalPayload({
     intent: 'order_status',

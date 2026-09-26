@@ -38,8 +38,9 @@ function preservesOrderStatus(payload: PayloadRecord, replyText: string) {
     || canonical.outboundType === 'order_disambiguation_prompt') {
     const normalized = replyText.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .toLocaleLowerCase('pt-BR').replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim()
+    const asksForIdentifier = /\b(?:envie|informe|diga|passe|compartilhe|me\s+(?:diga|informe|passe)|provide|send|share|tell me|indique|passar|informar|enviar|mandar|fornecer)\b/u.test(normalized)
     return /\b(?:cpf|numero do pedido|numero da os|ordem de servico|nome completo|titular|pedido)\b/u.test(normalized)
-      && /\b(?:envie|informe|diga|passe|compartilhe|me(?:\s+)?(?:diga|informe|passe)|provide|send|share|tell me|indique)\b/u.test(normalized)
+      && asksForIdentifier
   }
 
   const statusCode = canonical.facts.statusCode
