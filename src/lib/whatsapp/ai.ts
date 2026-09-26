@@ -26,6 +26,18 @@ const GEMINI_MODEL = process.env.WHATSAPP_AI_GEMINI_MODEL || 'gemini-2.5-flash'
 const OPENAI_MODEL = process.env.WHATSAPP_AI_OPENAI_MODEL || process.env.OPENAI_TEXT_MODEL || 'gpt-4.1-nano'
 const REQUEST_TIMEOUT_MS = Number(process.env.WHATSAPP_AI_TIMEOUT_MS || 20000)
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      timeout = setTimeout(() => reject(new Error(message)), timeoutMs)
+    }),
+  ]).finally(() => {
+    if (timeout) clearTimeout(timeout)
+  })
+}
+
 const WHATSAPP_INTENTS = [
   'order_status',
   'store_hours',
@@ -692,8 +704,13 @@ async function callGemini(task: WhatsAppAiTask, prompt: string): Promise<Provide
 
   const order = nextRoundRobinOrder(GEMINI_KEYS.length, geminiRoundRobinCursor)
   geminiRoundRobinCursor = (geminiRoundRobinCursor + 1) % GEMINI_KEYS.length
+  const deadline = Date.now() + REQUEST_TIMEOUT_MS
 
   for (const keyIndex of order) {
+    const remainingMs = deadline - Date.now()
+    if (remainingMs <= 0) {
+      return { provider: 'gemini', keyIndex, error: `Gemini excedeu o limite total em ${task}.` }
+    }
     const key = GEMINI_KEYS[keyIndex]
     try {
       const genAI = new GoogleGenerativeAI(key)
@@ -723,10 +740,11 @@ async function callGemini(task: WhatsAppAiTask, prompt: string): Promise<Provide
         })
       }
 
-      const result = await Promise.race([
+      const result = await withTimeout(
         model.generateContent(payload),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Timeout Gemini.')), REQUEST_TIMEOUT_MS)),
-      ])
+        remainingMs,
+        'Timeout Gemini.'
+      )
 
       const rawText = normalizeWhitespace(result.response.text())
       if (!rawText) {
@@ -821,21 +839,33 @@ async function callOpenAI(task: WhatsAppAiTask, prompt: string): Promise<Provide
 }
 
 async function runWithFallback(task: WhatsAppAiTask, prompt: string) {
-  const providerErrors: string[] = []
   const attempts: Array<Promise<ProviderAttemptSuccess | ProviderAttemptFailure>> = [
     callGemini(task, prompt),
     callOpenAI(task, prompt),
   ]
-
-  for (const attempt of attempts) {
-    const result = await attempt
-    if ('rawText' in result) {
-      return { success: true as const, result, providerErrors }
+  return new Promise<
+    | { success: true; result: ProviderAttemptSuccess; providerErrors: string[] }
+    | { success: false; providerErrors: string[] }
+  >((resolve) => {
+    const providerErrors: string[] = []
+    let completed = 0
+    for (const attempt of attempts) {
+      attempt.then((result) => {
+        if ('rawText' in result) {
+          resolve({ success: true, result, providerErrors })
+          return
+        }
+        providerErrors.push(`${result.provider}:${result.error}`)
+        completed += 1
+        if (completed === attempts.length) resolve({ success: false, providerErrors })
+      }).catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error)
+        providerErrors.push(`provider:${message}`)
+        completed += 1
+        if (completed === attempts.length) resolve({ success: false, providerErrors })
+      })
     }
-    providerErrors.push(`${result.provider}:${result.error}`)
-  }
-
-  return { success: false as const, providerErrors }
+  })
 }
 
 function parseStructuredJson<T>(rawText: string, schema: z.ZodSchema<T>) {
