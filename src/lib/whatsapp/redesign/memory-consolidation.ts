@@ -106,6 +106,37 @@ export function applyConfirmedControlEvent(input: {
   })
 }
 
+// O snapshot de um turno reconstroi assuntos historicos. A transicao de OS
+// vem da ultima saida confirmada, nunca da proposta em sombra.
+export function reconcileConfirmedOrderStatusOutcome(input: {
+  summary: WhatsAppConversationSummary
+  orderStatus: WhatsAppConversationSummary['orderStatus']
+  latestControlEventAt: string | null
+  asOf: string
+}): WhatsAppConversationSummary {
+  const summary = WhatsAppConversationSummarySchema.parse(input.summary)
+  const outcome = input.orderStatus
+  if (!outcome) return summary
+  const outcomeAt = Date.parse(outcome.updatedAt)
+  const asOf = Date.parse(input.asOf)
+  const controlAt = input.latestControlEventAt ? Date.parse(input.latestControlEventAt) : Number.NEGATIVE_INFINITY
+  if (!Number.isFinite(outcomeAt) || !Number.isFinite(asOf)
+    || outcomeAt > asOf || outcomeAt < controlAt
+    || summary.humanControl === 'human_active') return summary
+
+  const waiting = outcome.lastAction === 'request_identifier'
+  return WhatsAppConversationSummarySchema.parse({
+    ...summary,
+    phase: waiting ? 'waiting_identifier' : 'active',
+    pendingAction: waiting ? 'awaiting_identifier' : 'none',
+    humanControl: 'ai_active',
+    humanActiveUntil: null,
+    handoffReason: null,
+    orderStatus: outcome,
+    updatedAt: new Date(Math.max(outcomeAt, Date.parse(summary.updatedAt))).toISOString(),
+  })
+}
+
 // Prepara o próximo resumo sem persistir nem assumir que um handoff proposto
 // em sombra foi enviado ao cliente ou aceito por um funcionário.
 export function proposeWhatsAppConversationSummary(input: {

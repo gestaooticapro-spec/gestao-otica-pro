@@ -25,6 +25,7 @@ import {
   applyConfirmedControlEvent,
   reconcileConfirmedHumanActivity,
   reconcileLegacyManualPause,
+  reconcileConfirmedOrderStatusOutcome,
   replayWhatsAppConversationSummary,
   type WhatsAppProcessedTurnForSummary,
 } from './memory-consolidation'
@@ -164,6 +165,20 @@ export class WhatsAppRedesignConversationStore {
       p_actor: input.actor,
       p_message_id: input.messageId ?? null,
       p_reason: input.reason ?? null,
+    })
+    if (error) throw error
+    return WhatsAppConversationSummarySchema.parse(data)
+  }
+
+  async recordOrderStatusOutcome(input: {
+    conversationId: number
+    messageId: string
+    action: 'request_identifier' | 'auto_reply'
+  }): Promise<WhatsAppConversationSummary> {
+    const { data, error } = await (this.client as any).rpc('record_whatsapp_redesign_order_outcome', {
+      p_conversation_id: input.conversationId,
+      p_message_id: input.messageId,
+      p_action: input.action,
     })
     if (error) throw error
     return WhatsAppConversationSummarySchema.parse(data)
@@ -400,13 +415,20 @@ export class WhatsAppRedesignConversationStore {
       latestControlEvent && latestHuman
       && Date.parse(latestHuman.occurred_at) > Date.parse(latestControlEvent.occurred_at)
     )
-    const summary = applyConfirmedControlEvent({
+    const controlSummary = applyConfirmedControlEvent({
       summary: legacySummary,
       event: latestControlEvent && !controlEventIsOlderThanHuman ? {
         action: latestControlEvent.action,
         occurredAt: latestControlEvent.occurred_at,
         reason: latestControlEvent.reason,
       } : null,
+      asOf: turn.closes_at,
+    })
+    const currentCanonical = buildConversationMemory(conversation, []).summary
+    const summary = reconcileConfirmedOrderStatusOutcome({
+      summary: controlSummary,
+      orderStatus: currentCanonical.orderStatus,
+      latestControlEventAt: latestControlEvent?.occurred_at ?? null,
       asOf: turn.closes_at,
     })
 

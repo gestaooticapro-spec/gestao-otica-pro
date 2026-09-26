@@ -47,6 +47,20 @@ registrado no `WHATSAPP_IA_REDESIGN_PLAN.md`.
 
 ## Historico
 
+- 26/09/2026: auditoria da continuidade da etapa 5 em
+  `docs/whatsapp-redesign-stage5-architecture-audit.md`. O erro observado em
+  `OS 1017` confirmou falha do planejador de ferramentas e queda para o
+  roteador legado; memoria do redesign e estado legado divergiram. Ha uma
+  contingencia delimitada para OS explicita, mas a etapa 5 continua em
+  andamento e nao deve ser ampliada antes de unificar decisao, memoria e
+  resultado enviado em sequencias completas.
+- 26/09/2026: implementada a acao canonica `lookup_order_status` para OS,
+  separando escolha de ferramenta pela IA da transicao operacional. A memoria
+  de identificador/status passa a ser atualizada apenas por saida confirmada,
+  com migracao `20260926120000_whatsapp_order_status_confirmed_outcome.sql`.
+  Pendente aplicar a migracao antes do deploy e validar a sequencia completa
+  no piloto; a etapa 5 nao esta concluida.
+
 - 26/09/2026: corrigido o roteamento do estado `silent`: agora ele suprime
   somente a repetição da mesma mensagem; uma pergunta diferente pode continuar
   pelo atendimento/redesign. `human_pause` permanece como bloqueio humano

@@ -296,6 +296,9 @@ export async function captureWhatsAppShadowOutbound(input: WhatsAppShadowOutboun
 
     const store = new WhatsAppRedesignConversationStore()
     const role = inferShadowOutboundRole(input.messageType, input.payload)
+    const canonical = asRecord(asRecord(input.payload)?.canonical)
+    const canonicalAction = normalizedText(canonical?.action)
+    const canonicalIntent = normalizedText(canonical?.intent)
     const storedMessage = await store.recordMessage(identity(input.channel, input.remotePhone, mode), {
       sourceKey: `outbound:${input.outboundMessageId}`,
       providerMessageId: input.providerMessageId,
@@ -306,6 +309,10 @@ export async function captureWhatsAppShadowOutbound(input: WhatsAppShadowOutboun
       metadata: {
         messageType: input.messageType,
         deliveryStatus: 'sent',
+        canonical: {
+          intent: canonicalIntent,
+          action: canonicalAction,
+        },
       },
     })
     if (role === 'human') {
@@ -318,8 +325,14 @@ export async function captureWhatsAppShadowOutbound(input: WhatsAppShadowOutboun
         messageId: storedMessage.id,
       })
     }
-    const canonical = asRecord(asRecord(input.payload)?.canonical)
-    const canonicalAction = normalizedText(canonical?.action)
+    if (role === 'assistant' && canonicalIntent === 'order_status'
+      && (canonicalAction === 'request_identifier' || canonicalAction === 'auto_reply')) {
+      await store.recordOrderStatusOutcome({
+        conversationId: storedMessage.conversation_id,
+        messageId: storedMessage.id,
+        action: canonicalAction,
+      })
+    }
     if (canonicalAction === 'human_handoff' || canonicalAction === 'repeat_handoff'
       || canonicalAction === 'acknowledge_attachment') {
       await store.recordControlEvent({

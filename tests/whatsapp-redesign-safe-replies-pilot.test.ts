@@ -51,11 +51,11 @@ test('piloto consulta OS apenas com intencao confiavel e sem pedido humano ou an
   })
   const orderDecision = WhatsAppSystemDecisionSchema.parse({
     ...decision,
-    action: 'human_handoff',
-    fallbackReply: 'Fallback: vou chamar um atendente para consultar a OS.',
-    facts: { decisionReason: 'topic_requires_human:order_status' },
-    humanHandoffTiming: { mode: 'during_open_hours', nextOpenSchedule: null },
-    humanization: { ...decision.humanization, mustIdentifyIara: true, mustMentionHumanHandoff: true },
+    action: 'lookup_order_status',
+    fallbackReply: 'Consultar a OS antes de responder.',
+    facts: { decisionReason: 'order_status_requires_authorized_lookup' },
+    humanHandoffTiming: null,
+    humanization: decision.humanization,
   })
 
   assert.equal(shouldLookupOrderStatusInStoreOnePilot({ classification: orderClassification, decision: orderDecision }), true)
@@ -72,6 +72,7 @@ test('piloto consulta OS apenas com intencao confiavel e sem pedido humano ou an
     ...orderDecision,
     action: 'repeat_handoff',
     facts: { decisionReason: 'topic_requires_human:vision_exam' },
+    humanHandoffTiming: { mode: 'during_open_hours', nextOpenSchedule: null },
   })
   assert.equal(shouldLookupOrderStatusInStoreOnePilot({
     classification: { ...orderClassification, intent: 'vision_exam' },

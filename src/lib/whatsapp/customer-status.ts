@@ -2700,6 +2700,7 @@ export async function resolveCustomerStatus(
   }
 
   let useOrderStatusToolAgentForCurrentInbound = false
+  let redesignAwaitingOrderIdentifier = false
   let redesignConversationHistory: string[] = []
   const isRepeatedMessageDuringSilentWindow = state?.state === 'silent'
     && isRepeatedSilentInbound(effectiveMessageText, state.metadata)
@@ -2748,8 +2749,12 @@ export async function resolveCustomerStatus(
           classification,
           decision,
           messageText: effectiveMessageText,
+          awaitingIdentifier: turnContext.memory.summary.pendingAction === 'awaiting_identifier'
+            && turnContext.memory.summary.activeTopic === 'order_status',
         })
         useOrderStatusToolAgentForCurrentInbound = useOrderStatusToolAgent
+        redesignAwaitingOrderIdentifier = turnContext.memory.summary.pendingAction === 'awaiting_identifier'
+          && turnContext.memory.summary.activeTopic === 'order_status'
         const explicitOrderNumber = extractExplicitOrderNumber(effectiveMessageText)
         if (!useOrderStatusToolAgent && explicitOrderNumber) {
           const orderMatch = await findOpenOsByOrderNumberOnly(channel.store_id, `OS ${explicitOrderNumber}`)
@@ -3322,6 +3327,10 @@ export async function resolveCustomerStatus(
           : null,
         pendingHumanHandoff: state?.state === 'awaiting_human',
       },
+      deferReplyWhen: (calls) => useOrderStatusToolAgentForCurrentInbound
+        && calls.length === 1
+        && (calls[0].name === 'lookup_open_orders'
+          || calls[0].name === 'lookup_open_orders_by_identifier'),
       executeTool: async (call: WhatsAppToolCall): Promise<WhatsAppToolResult> => {
         if (call.name === 'lookup_open_orders') {
           const customer = await findCustomerByPhone(channel.store_id, normalizedPhone)
@@ -3460,6 +3469,56 @@ export async function resolveCustomerStatus(
 
     for (let index = 0; index < toolAgent.aiResults.length; index += 1) {
       await recordAiResult(index === 0 ? 'tool_agent_plan' : 'tool_agent_reply', toolAgent.aiResults[index])
+    }
+
+    if (useOrderStatusToolAgentForCurrentInbound) {
+      const explicitNumber = extractExplicitOrderNumber(effectiveMessageText)
+      const awaitingIdentifier = redesignAwaitingOrderIdentifier
+        || preAiRoute === 'waiting_identifier_lookup'
+        || preAiRoute === 'retry_identifier_lookup'
+      const chosenIdentifierLookup = toolAgent.toolCalls.some((call) => call.name === 'lookup_open_orders_by_identifier')
+      const useIdentifier = Boolean(explicitNumber || awaitingIdentifier || chosenIdentifierLookup)
+      const chosenLookup = toolAgent.toolResults.find((result) => result.tool === (
+        useIdentifier ? 'lookup_open_orders_by_identifier' : 'lookup_open_orders'
+      ))
+      const lookupFailed = chosenLookup?.data.code === 'tool_execution_failed'
+      if (!lookupFailed) {
+        if (useIdentifier) {
+          // Uma resposta ao pedido anterior de identificador nunca volta ao menu
+          // nem recebe outra solicitacao identica sem tentar a busca primeiro.
+          const orderMatch = explicitNumber
+            ? await findOpenOsByOrderNumberOnly(channel.store_id, `OS ${explicitNumber}`)
+            : await findOpenOsByIdentifier(channel.store_id, effectiveMessageText || undefined)
+          if (orderMatch) {
+            await consumeForceAiOverrideIfNeeded()
+            return createStatusReply(
+              channel, inbound.id, normalizedPhone, orderMatch.customer, orderMatch.serviceOrder,
+              mergeMetadata(baseMetadata, { reason: toolAgent.success ? 'order_agent_lookup' : 'order_agent_contingency' }),
+              null,
+              { ...finalWriterContext, conversationHistory: redesignConversationHistory.length > 0
+                ? redesignConversationHistory : finalWriterContext.conversationHistory }
+            )
+          }
+        } else {
+          await consumeForceAiOverrideIfNeeded()
+          return handleStatusByPhone(
+            channel, inbound.id, normalizedPhone, baseMetadata, null,
+            { ...finalWriterContext, conversationHistory: redesignConversationHistory.length > 0
+              ? redesignConversationHistory : finalWriterContext.conversationHistory }
+          )
+        }
+      }
+      await consumeForceAiOverrideIfNeeded()
+      const text = notFoundHandoffText()
+      await setCurrentAutomatedHandoff(mergeMetadata(baseMetadata, {
+        reason: lookupFailed ? 'order_lookup_unavailable' : 'order_identifier_not_found',
+        ...buildDecisionMetadata({ intent: 'order_status', action: 'human_handoff', outboundType: 'human_handoff' }),
+      }))
+      return createCurrentOutbound(text, 'human_handoff', {
+        ...buildWhatsAppCanonicalPayload({
+          intent: 'order_status', action: 'human_handoff', outboundType: 'human_handoff', canonicalReply: text,
+        }),
+      })
     }
 
     if (toolAgent.success && toolAgent.replyText) {

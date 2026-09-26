@@ -12,6 +12,7 @@ export const PENDING_RELEASE_CHANGES: readonly string[] = [
   'Pedidos de status sem OS vinculada aceitam a pergunta natural da IA solicitando um identificador, inclusive formas como “poderia me passar”, sem recorrer ao texto fixo.',
   'Uma resposta automática não silencia perguntas novas durante a janela temporária; somente a repetição da mesma mensagem é suprimida, sem alterar a pausa humana.',
   'Uma OS informada explicitamente no WhatsApp continua sendo consultada pelo agente de IA mesmo que a classificação inicial confunda o assunto.',
+  'A consulta de OS usa decisão própria no redesign; saídas confirmadas sincronizam pedido de identificador e status com a memória, e falhas do planejador não repetem o pedido ao cliente.',
   'A resposta humanizada sobre uma OS preserva a etapa oficial do pedido; se a IA desviar do status, o sistema usa a informação confirmada.',
   'As respostas redigidas pela IA passam a usar exclusivamente OpenAI; respostas de contingência ficam reservadas a falhas reais de geração, e validações semânticas respeitam o tipo de resposta solicitado.',
   'As respostas de WhatsApp ficam menos sujeitas a atrasos quando um provedor de IA demora, usando primeiro a resposta válida que chegar.',

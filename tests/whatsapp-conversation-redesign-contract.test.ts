@@ -40,10 +40,12 @@ import {
   applyConfirmedControlEvent,
   proposeWhatsAppConversationSummary,
   reconcileConfirmedHumanActivity,
+  reconcileConfirmedOrderStatusOutcome,
   reconcileLegacyManualPause,
   replayWhatsAppConversationSummary,
 } from '../src/lib/whatsapp/redesign/memory-consolidation'
 import { WhatsAppRedesignConversationStore } from '../src/lib/whatsapp/redesign/store'
+import { shouldUseOrderStatusToolAgent } from '../src/lib/whatsapp/redesign/safe-replies-pilot'
 import {
   classifyWhatsAppShadowOutcome,
   compareWhatsAppShadowWithLegacy,
@@ -52,6 +54,83 @@ import {
 } from '../src/lib/whatsapp/redesign/shadow-comparison'
 
 const BASE_TIME = '2026-09-18T12:00:00.000Z'
+
+test('OS no redesign exige consulta aprovada, nao handoff proposto', () => {
+  const result = buildWhatsAppShadowDecision({
+    classification: {
+      intent: 'order_status', confidence: 0.95, topicRelation: 'change_topic',
+      requestsHuman: false, mentionsAttachment: false,
+      entities: { customerName: null, patientName: null, cpf: null, orderNumber: null },
+    },
+    memory: { summary: defaultConversationSummary(BASE_TIME), messages: [] },
+    now: BASE_TIME, hoursFacts: null, storeLocationReply: null,
+    hasCurrentTurnAttachment: false,
+  })
+  assert.equal(result.draft.action, 'lookup_order_status')
+})
+
+test('saida confirmada de OS reconcilia pedido de identificador e status sem revogar humano ativo', () => {
+  const requestedAt = '2026-09-18T12:01:00.000Z'
+  const outcome = {
+    lastAction: 'request_identifier' as const, attempts: 1,
+    messageId: '00000000-0000-4000-8000-000000000001', updatedAt: requestedAt,
+  }
+  const waiting = reconcileConfirmedOrderStatusOutcome({
+    summary: defaultConversationSummary(BASE_TIME), orderStatus: outcome,
+    latestControlEventAt: null, asOf: '2026-09-18T12:02:00.000Z',
+  })
+  assert.equal(waiting.phase, 'waiting_identifier')
+  assert.equal(waiting.pendingAction, 'awaiting_identifier')
+  const resolved = reconcileConfirmedOrderStatusOutcome({
+    summary: waiting,
+    orderStatus: { ...outcome, lastAction: 'auto_reply', updatedAt: '2026-09-18T12:03:00.000Z' },
+    latestControlEventAt: null, asOf: '2026-09-18T12:04:00.000Z',
+  })
+  assert.equal(resolved.pendingAction, 'none')
+  assert.equal(reconcileConfirmedOrderStatusOutcome({
+    summary: waiting, orderStatus: outcome,
+    latestControlEventAt: '2026-09-18T12:02:30.000Z', asOf: '2026-09-18T12:03:00.000Z',
+  }).pendingAction, 'awaiting_identifier')
+  const humanActive = reconcileConfirmedHumanActivity({
+    summary: waiting, humanMessageAt: '2026-09-18T12:02:00.000Z', asOf: '2026-09-18T12:02:00.000Z',
+  })
+  assert.equal(reconcileConfirmedOrderStatusOutcome({
+    summary: humanActive, orderStatus: outcome,
+    latestControlEventAt: null, asOf: '2026-09-18T12:03:00.000Z',
+  }).humanControl, 'human_active')
+})
+
+test('sequencia de OS mantem a pendencia para uma resposta curta no turno seguinte', () => {
+  const waiting = reconcileConfirmedOrderStatusOutcome({
+    summary: { ...defaultConversationSummary(BASE_TIME), activeTopic: 'order_status' },
+    orderStatus: {
+      lastAction: 'request_identifier', attempts: 1,
+      messageId: '00000000-0000-4000-8000-000000000002',
+      updatedAt: '2026-09-18T12:01:00.000Z',
+    },
+    latestControlEventAt: null,
+    asOf: '2026-09-18T12:02:00.000Z',
+  })
+  const classification = {
+    intent: 'unknown' as const, confidence: 0.42, topicRelation: 'continue_topic' as const,
+    requestsHuman: false, mentionsAttachment: false,
+    entities: { customerName: null, patientName: null, cpf: null, orderNumber: null },
+  }
+  const decision = buildWhatsAppShadowDecision({
+    classification, memory: { summary: waiting, messages: [] },
+    now: '2026-09-18T12:02:00.000Z', hoursFacts: null,
+    storeLocationReply: null, hasCurrentTurnAttachment: false,
+  }).draft
+  assert.equal(shouldUseOrderStatusToolAgent({
+    enabled: true, classification, decision, messageText: '1017',
+    awaitingIdentifier: waiting.pendingAction === 'awaiting_identifier',
+  }), true)
+  assert.equal(shouldUseOrderStatusToolAgent({
+    enabled: true,
+    classification: { ...classification, intent: 'greeting' },
+    decision, messageText: 'Bom dia', awaitingIdentifier: true,
+  }), false)
+})
 
 test('comparacao da etapa 3 extrai somente evidencias estruturadas', () => {
   const shadow = extractWhatsAppShadowDecisionEvidence({

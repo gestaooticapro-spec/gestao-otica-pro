@@ -97,6 +97,12 @@ export const WhatsAppConversationSummarySchema = z.object({
   handoffReason: z.string().trim().max(500).nullable(),
   lastHumanActivityAt: z.string().datetime().nullable(),
   humanActiveUntil: z.string().datetime().nullable(),
+  orderStatus: z.object({
+    lastAction: z.enum(['request_identifier', 'auto_reply']),
+    attempts: z.number().int().min(0),
+    messageId: z.string().uuid(),
+    updatedAt: z.string().datetime(),
+  }).strict().optional(),
   updatedAt: z.string().datetime(),
 }).strict()
 export type WhatsAppConversationSummary = z.infer<typeof WhatsAppConversationSummarySchema>
@@ -135,6 +141,7 @@ export const WhatsAppRedesignActionSchema = z.enum([
   'answer_store_hours',
   'answer_store_location',
   'answer_official_pix',
+  'lookup_order_status',
   'acknowledge_attachment',
   'recognize_continuation',
   'human_handoff',

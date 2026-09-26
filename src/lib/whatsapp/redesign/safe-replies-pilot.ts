@@ -48,7 +48,7 @@ export function shouldLookupOrderStatusInStoreOnePilot(input: {
   ].some((pattern) => pattern.test(normalizedText))
   const explicitHumanRequest = /\b(?:quero|preciso|gostaria de) (?:falar|conversar) com (?:um )?(?:atendente|humano|pessoa)\b/u.test(normalizedText)
   const classifierRecognizedOrderStatus = input.classification.intent === 'order_status'
-    && input.decision.facts.decisionReason === 'topic_requires_human:order_status'
+    && input.decision.action === 'lookup_order_status'
 
   return !input.classification.requestsHuman
     && !explicitHumanRequest
@@ -57,7 +57,7 @@ export function shouldLookupOrderStatusInStoreOnePilot(input: {
       (explicitOrderStatus && input.decision.action !== 'no_reply')
       || (
         input.classification.confidence >= WHATSAPP_REDESIGN_MIN_CONFIDENCE
-        && (input.decision.action === 'human_handoff' || input.decision.action === 'repeat_handoff')
+        && input.decision.action === 'lookup_order_status'
         && classifierRecognizedOrderStatus
       )
     )
@@ -68,13 +68,17 @@ export function shouldUseOrderStatusToolAgent(input: {
   classification: WhatsAppRedesignClassification
   decision: WhatsAppSystemDecisionDraft
   messageText?: string | null
+  awaitingIdentifier?: boolean
 }) {
   const hasExplicitOrderNumber = Boolean(extractExplicitOrderNumber(input.messageText))
   const classificationSupportsOrderLookup = input.classification.intent === 'order_status'
     && input.classification.confidence >= WHATSAPP_REDESIGN_MIN_CONFIDENCE
 
   return input.enabled
-    && (classificationSupportsOrderLookup || hasExplicitOrderNumber)
+    && (classificationSupportsOrderLookup || hasExplicitOrderNumber
+      || (input.awaitingIdentifier === true
+        && (input.classification.intent === 'order_status'
+          || input.classification.intent === 'unknown')))
     && !input.classification.requestsHuman
     && !input.classification.mentionsAttachment
     && input.decision.action !== 'no_reply'

@@ -223,6 +223,23 @@ export function buildWhatsAppShadowDecision(
     }
   }
 
+  if (classification.intent === 'order_status'
+    && classification.confidence >= WHATSAPP_REDESIGN_MIN_CONFIDENCE) {
+    return {
+      reason: 'order_status_requires_authorized_lookup',
+      draft: WhatsAppSystemDecisionDraftSchema.parse({
+        action: 'lookup_order_status',
+        fallbackReply: 'Consultar a OS com os dados autorizados antes de responder.',
+        facts: {
+          classificationIntent: 'order_status',
+          decisionReason: 'order_status_requires_authorized_lookup',
+        },
+        humanHandoffTiming: null,
+        humanization: humanization(false),
+      }),
+    }
+  }
+
   if (classification.intent === 'greeting' && classification.confidence >= WHATSAPP_REDESIGN_MIN_CONFIDENCE) {
     return {
       reason: 'greeting_without_operational_request',

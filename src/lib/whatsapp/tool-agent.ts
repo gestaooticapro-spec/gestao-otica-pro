@@ -29,6 +29,7 @@ export type WhatsAppToolAgentOutcome = {
 export async function runWhatsAppToolAgent(input: {
   assistant: WhatsAppToolAgentInput
   executeTool: (call: WhatsAppToolCall) => Promise<WhatsAppToolResult>
+  deferReplyWhen?: (calls: WhatsAppToolCall[]) => boolean
 }): Promise<WhatsAppToolAgentOutcome> {
   const plan = await planWhatsAppToolAgent(input.assistant)
   const aiResults: Array<WhatsAppAiResult<unknown>> = [plan]
@@ -74,6 +75,10 @@ export async function runWhatsAppToolAgent(input: {
         },
       })
     }
+  }
+
+  if (input.deferReplyWhen?.(toolCalls)) {
+    return { success: true, replyText: null, toolCalls, toolResults, aiResults }
   }
 
   const reply = await writeWhatsAppToolAgentReply(input.assistant, toolResults)
