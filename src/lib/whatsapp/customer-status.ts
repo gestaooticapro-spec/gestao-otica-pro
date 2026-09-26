@@ -73,6 +73,7 @@ import {
   resolveStoreOnePilotReplyText,
   selectStoreOnePilotSafeReply,
   shouldLookupOrderStatusInStoreOnePilot,
+  shouldUseOrderStatusToolAgent,
 } from './redesign/safe-replies-pilot'
 
 const SAME_STATUS_SILENCE_WINDOW_MS = 2 * 60 * 60 * 1000
@@ -2672,14 +2673,15 @@ export async function resolveCustomerStatus(
     state = null
   }
 
+  let useOrderStatusToolAgentForCurrentInbound = false
+  let redesignConversationHistory: string[] = []
   if (isStoreOneSafeRepliesPilotEnabled(channel.store_id, automationSettings)
     && shadowCapture.captured && 'turnId' in shadowCapture
     && typeof shadowCapture.turnId === 'string'
     && controlMode !== 'force_human'
     && controlMode !== 'force_ai'
-    && !['human_pause', 'awaiting_human', 'waiting_human_after_attachment', 'waiting_identifier', 'silent'].includes(state?.state ?? '')) {
+    && !['human_pause', 'waiting_human_after_attachment', 'silent'].includes(state?.state ?? '')) {
     let pilotReply: ReturnType<typeof selectStoreOnePilotSafeReply> = null
-    let pilotConversationHistory: string[] = []
     try {
       const redesignStore = new WhatsAppRedesignConversationStore()
       const processing = await processWhatsAppRedesignShadowTurns({
@@ -2707,13 +2709,19 @@ export async function resolveCustomerStatus(
         const classification = WhatsAppRedesignClassificationSchema.parse(shadowProcessing.classification)
         const decision = WhatsAppSystemDecisionSchema.parse(shadowProcessing.decision)
         const currentTurnMessageIds = new Set(turnContext.turnMessages.map((message) => message.id))
-        pilotConversationHistory = turnContext.memory.messages
+        redesignConversationHistory = turnContext.memory.messages
           .filter((message) => !currentTurnMessageIds.has(message.id))
           .map((message) => `${message.role === 'customer' ? 'Cliente' : message.role === 'human' ? 'Atendente' : 'IA'}: ${message.text || `[${message.kind}]`}`)
           .slice(-8)
 
+        const useOrderStatusToolAgent = shouldUseOrderStatusToolAgent({
+          enabled: isWhatsAppAiResponderEnabled(automationSettings),
+          classification,
+          decision,
+        })
+        useOrderStatusToolAgentForCurrentInbound = useOrderStatusToolAgent
         const explicitOrderNumber = extractExplicitOrderNumber(effectiveMessageText)
-        if (explicitOrderNumber) {
+        if (!useOrderStatusToolAgent && explicitOrderNumber) {
           const orderMatch = await findOpenOsByOrderNumberOnly(channel.store_id, `OS ${explicitOrderNumber}`)
           if (orderMatch) {
             const statusMetadata = appendAiSessionMessage(
@@ -2733,14 +2741,14 @@ export async function resolveCustomerStatus(
                 enabled: WHATSAPP_AI_FINAL_WRITER_ENABLED && isWhatsAppAiResponderEnabled(automationSettings),
                 storeName: storeProfile.name,
                 userMessageText: effectiveMessageText,
-                conversationHistory: pilotConversationHistory,
+                conversationHistory: redesignConversationHistory,
                 onResult: async (result) => { await logAiResult(channel, inbound.id, 'reply_humanization', result) },
               }
             )
           }
         }
 
-        if (shouldLookupOrderStatusInStoreOnePilot({
+        if (!useOrderStatusToolAgent && shouldLookupOrderStatusInStoreOnePilot({
           classification,
           decision,
           messageText: turnContext.turnMessages
@@ -2758,7 +2766,7 @@ export async function resolveCustomerStatus(
               enabled: WHATSAPP_AI_FINAL_WRITER_ENABLED && isWhatsAppAiResponderEnabled(automationSettings),
               storeName: storeProfile.name,
               userMessageText: effectiveMessageText,
-              conversationHistory: pilotConversationHistory,
+              conversationHistory: redesignConversationHistory,
               onResult: async (result) => { await logAiResult(channel, inbound.id, 'reply_humanization', result) },
             }
           )
@@ -2767,13 +2775,15 @@ export async function resolveCustomerStatus(
         // O caminho ao vivo usa a mesma decisão já persistida para auditoria; não
         // faz uma segunda chamada de classificação nem espera o cron de sombra.
         if (decision.action === 'no_reply') return ignoreInbound(inbound.id)
-        pilotReply = selectStoreOnePilotSafeReply({
-          classification,
-          decision,
-          turnMessages: turnContext.turnMessages,
-          officialPixKey: storeProfile.pix_key ?? null,
-          officialPixHolder: storeProfile.razao_social || storeProfile.name,
-        })
+        if (!useOrderStatusToolAgent) {
+          pilotReply = selectStoreOnePilotSafeReply({
+            classification,
+            decision,
+            turnMessages: turnContext.turnMessages,
+            officialPixKey: storeProfile.pix_key ?? null,
+            officialPixHolder: storeProfile.razao_social || storeProfile.name,
+          })
+        }
       }
     } catch {
       // Falha no piloto preserva o roteador anterior sem revelar mensagens ou chaves em logs.
@@ -2786,7 +2796,7 @@ export async function resolveCustomerStatus(
       try {
         generationResult = await generateWhatsAppRedesignReply({
           ...pilotReply.replyInput,
-          conversationHistory: pilotConversationHistory,
+          conversationHistory: redesignConversationHistory,
           storeName: storeProfile.name,
         })
         await logAiResult(channel, inbound.id, 'redesign_reply_generation', generationResult)
@@ -2957,6 +2967,28 @@ export async function resolveCustomerStatus(
       }),
     }))
     return ignoreInbound(inbound.id)
+  }
+
+  // Um numero de OS explicito e suficiente para a consulta, inclusive quando
+  // o piloto nao foi elegivel por a conversa estar aguardando um atendente.
+  // Pausa humana manual continua prevalecendo; force_human ja foi tratado acima.
+  const explicitOrderNumber = extractExplicitOrderNumber(effectiveMessageText)
+  if (explicitOrderNumber && state?.state !== 'human_pause'
+    && !isWhatsAppToolAgentEnabled(automationSettings)
+    && !useOrderStatusToolAgentForCurrentInbound) {
+    const orderMatch = await findOpenOsByOrderNumberOnly(channel.store_id, `OS ${explicitOrderNumber}`)
+    if (orderMatch) {
+      return createStatusReply(
+        channel,
+        inbound.id,
+        normalizedPhone,
+        orderMatch.customer,
+        orderMatch.serviceOrder,
+        baseMetadata,
+        null,
+        finalWriterContext
+      )
+    }
   }
   
   let isExceptionalClosure = false
@@ -3244,12 +3276,14 @@ export async function resolveCustomerStatus(
   // O agente com ferramentas fica depois das protecoes obrigatorias (anexo,
   // handoff humano e Status sem contexto), mas antes dos fluxos legados. Assim
   // uma campanha ativa deixa de prender a conversa em um unico assunto.
-  if (toolAgentEnabled) {
+  if (toolAgentEnabled || useOrderStatusToolAgentForCurrentInbound) {
     const toolPostSaleContext = livePostSaleContext ?? recoveredPostSaleContext
     const toolAgent = await runWhatsAppToolAgent({
       assistant: {
         messageText: effectiveMessageText || '',
-        conversationHistory: aiReplyContext.conversationHistory,
+        conversationHistory: redesignConversationHistory.length > 0
+          ? redesignConversationHistory
+          : aiReplyContext.conversationHistory,
         recentContext,
         storeName: storeProfile.name,
         basePrompt: automationSettings?.ai_responder?.prompt || null,
@@ -3451,7 +3485,7 @@ export async function resolveCustomerStatus(
     }
   }
 
-  if (preAiRoute === 'retry_identifier_lookup') {
+  if (preAiRoute === 'retry_identifier_lookup' && !toolAgentEnabled && !useOrderStatusToolAgentForCurrentInbound) {
     const paymentLookup = await findOpenInstallmentsByIdentifier(channel.store_id, effectiveMessageText || undefined)
     if (paymentLookup) {
       await consumeForceAiOverrideIfNeeded()
@@ -3488,7 +3522,7 @@ export async function resolveCustomerStatus(
     }
   }
 
-  if (preAiRoute === 'waiting_identifier_lookup') {
+  if (preAiRoute === 'waiting_identifier_lookup' && !toolAgentEnabled && !useOrderStatusToolAgentForCurrentInbound) {
     const isDisambiguatingOpenOrders = toMetadataRecord(state?.metadata).reason === 'multiple_open_orders_identifier_requested'
     const paymentLookup = isDisambiguatingOpenOrders
       ? null

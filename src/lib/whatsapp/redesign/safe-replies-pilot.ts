@@ -63,6 +63,19 @@ export function shouldLookupOrderStatusInStoreOnePilot(input: {
     )
 }
 
+export function shouldUseOrderStatusToolAgent(input: {
+  enabled: boolean
+  classification: WhatsAppRedesignClassification
+  decision: WhatsAppSystemDecisionDraft
+}) {
+  return input.enabled
+    && input.classification.intent === 'order_status'
+    && input.classification.confidence >= WHATSAPP_REDESIGN_MIN_CONFIDENCE
+    && !input.classification.requestsHuman
+    && !input.classification.mentionsAttachment
+    && input.decision.action !== 'no_reply'
+}
+
 export function extractExplicitOrderNumber(messageText: string | null | undefined) {
   const normalized = (messageText ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .toLocaleLowerCase('pt-BR')

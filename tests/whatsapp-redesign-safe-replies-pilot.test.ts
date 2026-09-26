@@ -10,6 +10,7 @@ import {
   resolveStoreOnePilotReplyText,
   selectStoreOnePilotSafeReply,
   shouldLookupOrderStatusInStoreOnePilot,
+  shouldUseOrderStatusToolAgent,
 } from '../src/lib/whatsapp/redesign/safe-replies-pilot'
 import { buildWhatsAppRedesignReplyPrompt } from '../src/lib/whatsapp/ai'
 
@@ -91,6 +92,33 @@ test('piloto consulta OS apenas com intencao confiavel e sem pedido humano ou an
     classification: { ...orderClassification, intent: 'store_hours' },
     decision,
     messageText: 'Meu óculos está pronto? Quero falar com um atendente.',
+  }), false)
+})
+
+test('consulta de OS confiavel segue para o agente de ferramentas quando habilitado', () => {
+  const orderClassification = WhatsAppRedesignClassificationSchema.parse({
+    ...classification,
+    intent: 'order_status',
+    confidence: 0.94,
+  })
+  const handoffDecision = WhatsAppSystemDecisionSchema.parse({
+    ...decision,
+    action: 'human_handoff',
+    facts: { decisionReason: 'topic_requires_human:order_status' },
+    humanHandoffTiming: { mode: 'during_open_hours', nextOpenSchedule: null },
+    humanization: { ...decision.humanization, mustIdentifyIara: true, mustMentionHumanHandoff: true },
+  })
+
+  assert.equal(shouldUseOrderStatusToolAgent({
+    enabled: true, classification: orderClassification, decision: handoffDecision,
+  }), true)
+  assert.equal(shouldUseOrderStatusToolAgent({
+    enabled: false, classification: orderClassification, decision: handoffDecision,
+  }), false)
+  assert.equal(shouldUseOrderStatusToolAgent({
+    enabled: true,
+    classification: { ...orderClassification, requestsHuman: true },
+    decision: handoffDecision,
   }), false)
 })
 

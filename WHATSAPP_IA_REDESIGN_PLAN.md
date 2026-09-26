@@ -43,7 +43,7 @@ a expansão gradual prevista na Etapa 6.
 | 2. Consolidar memória e controle humano | Concluída | Persistir assuntos, anexos e eventos de controle; validação SQL transacional aprovada. |
 | 3. Validar decisões em sombra | Concluída | Comparação agregada e cenários controlados sem trocar o fluxo que responde. |
 | 4. Usar a decisão canônica no piloto ao vivo | **Concluída** | Validar respostas e handoffs reais, origem IA/fallback, mudança de assunto, anexos, controle humano e idempotência pós-deploy. O piloto permanece ativo; desligá-lo não é requisito. |
-| 5. Implementar consultas operacionais | **Em andamento — OS/retirada** | Acrescentar somente consultas aprovadas com dados verificáveis. A implementação atual conecta a decisão do piloto à busca existente de OS, sem selecionar silenciosamente entre múltiplos pedidos. Consulta automática de produtos/estoque está fora do escopo atual: esses pedidos sempre vão para um atendente até decisão futura explícita. |
+| 5. Implementar consultas operacionais | **Em andamento — OS/retirada** | Acrescentar somente consultas aprovadas com dados verificáveis. Com classificação confiável de `order_status`, o agente de ferramentas da IA escolhe a consulta por telefone ou identificador e redige com base no resultado; a busca determinística explícita fica como contingência de indisponibilidade da IA. Nunca selecionar silenciosamente entre múltiplas OS. Consulta automática de produtos/estoque está fora do escopo atual: esses pedidos sempre vão para um atendente até decisão futura explícita. |
 | 6. Operação completa e migração | Pendente | Completar a operação, migrar gradualmente loja por loja e aposentar o legado somente após equivalência comprovada. |
 
 ### Evidências já observadas no piloto ao vivo

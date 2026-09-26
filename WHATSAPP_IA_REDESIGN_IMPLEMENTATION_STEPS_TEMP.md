@@ -28,14 +28,17 @@ registrado no `WHATSAPP_IA_REDESIGN_PLAN.md`.
    Loja 1 respostas e handoffs reais, mudanca de assunto, origem IA/fallback,
    anexos, ausencia de duplicidade e idempotencia pos-deploy. O piloto fica
    ativo por decisao do usuario; reversao nao e requisito.~~
-5. **EM ANDAMENTO — OS/retirada.** A decisao confiavel do piloto passa a
-   consultar o estagio real da OS pelo telefone; se a busca falhar, pede um
-   identificador, e se houver mais de uma OS pede o numero do pedido para
-   desambiguar. A resposta segue pela redacao final com IA baseada nos fatos da
-   OS. Consulta automatica de produtos/estoque continua fora do escopo: sempre
-   encaminhar a atendente. Parcelas, exame, reclamacao, troca e garantia ficam
-   para depois. A conclusao desta etapa depende de deploy Ready e validacao ao
-   vivo do caminho por telefone, identificador e ambiguidade quando aplicavel.
+5. **EM ANDAMENTO — OS/retirada.** Com uma classificacao confiavel de status
+   de OS, o agente de ferramentas da IA escolhe entre consultar pelo telefone
+   ou pelo identificador informado, executa somente consultas aprovadas e
+   redige a resposta a partir dos fatos encontrados. A busca deterministica
+   explicita fica como contingencia se a chamada da IA estiver indisponivel;
+   nao substitui a decisao da IA no caminho normal. Se houver mais de uma OS,
+   nao selecionar silenciosamente: pedir o numero para desambiguar. Consulta
+   automatica de produtos/estoque continua fora do escopo: encaminhar a um
+   atendente. Parcelas, exame, reclamacao, troca e garantia ficam para depois.
+   A conclusao depende de deploy Ready e validacao ao vivo por telefone,
+   identificador e ambiguidade quando aplicavel.
 6. **PENDENTE — Operacao completa e migracao.** Exibir contexto e decisoes na
    Central, integrar disparos automaticos, migrar loja por loja e aposentar o
    roteador legado quando a equivalencia estiver comprovada.
