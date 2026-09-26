@@ -59,6 +59,21 @@ test('piloto consulta OS apenas com intencao confiavel e sem pedido humano ou an
   assert.equal(shouldLookupOrderStatusInStoreOnePilot({
     classification: { ...orderClassification, mentionsAttachment: true }, decision: orderDecision,
   }), false)
+  const repeatedHandoffDecision = WhatsAppSystemDecisionSchema.parse({
+    ...orderDecision,
+    action: 'repeat_handoff',
+    facts: { decisionReason: 'topic_requires_human:vision_exam' },
+  })
+  assert.equal(shouldLookupOrderStatusInStoreOnePilot({
+    classification: { ...orderClassification, intent: 'vision_exam' },
+    decision: repeatedHandoffDecision,
+    messageText: 'Meu óculos ficou pronto?',
+  }), true)
+  assert.equal(shouldLookupOrderStatusInStoreOnePilot({
+    classification: { ...orderClassification, intent: 'vision_exam' },
+    decision: repeatedHandoffDecision,
+    messageText: 'Quero fazer óculos novos.',
+  }), false)
 })
 
 test('selecao do piloto prepara texto fixo somente como fallback, nunca como texto ao vivo', () => {

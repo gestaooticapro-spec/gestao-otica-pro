@@ -2711,7 +2711,14 @@ export async function resolveCustomerStatus(
           .map((message) => `${message.role === 'customer' ? 'Cliente' : message.role === 'human' ? 'Atendente' : 'IA'}: ${message.text || `[${message.kind}]`}`)
           .slice(-8)
 
-        if (shouldLookupOrderStatusInStoreOnePilot({ classification, decision })) {
+        if (shouldLookupOrderStatusInStoreOnePilot({
+          classification,
+          decision,
+          messageText: turnContext.turnMessages
+            .filter((message) => message.role === 'customer' && message.kind === 'text')
+            .map((message) => message.text ?? '')
+            .join(' '),
+        })) {
           return await handleStatusByPhone(
             channel,
             inbound.id,

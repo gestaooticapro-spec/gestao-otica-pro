@@ -36,13 +36,24 @@ export function isStoreOneSafeRepliesPilotEnabled(
 export function shouldLookupOrderStatusInStoreOnePilot(input: {
   classification: WhatsAppRedesignClassification
   decision: WhatsAppSystemDecisionDraft
+  messageText?: string | null
 }) {
-  return input.classification.intent === 'order_status'
-    && input.classification.confidence >= WHATSAPP_REDESIGN_MIN_CONFIDENCE
+  const normalizedText = (input.messageText ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('pt-BR').replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim()
+  const explicitOrderStatus = [
+    /\b(?:meu|minha) (?:oculos|pedido|os) (?:ja )?(?:ficou|esta|ta|t[aá]) pronto\b/u,
+    /\b(?:qual|como) (?:esta|ta|t[aá]) (?:o )?(?:status|andamento) (?:do|da|de) (?:meu|minha) (?:pedido|os|oculos)\b/u,
+    /\b(?:status|andamento) (?:do|da) (?:meu|minha) (?:pedido|os|oculos)\b/u,
+    /\b(?:meu|minha) (?:pedido|os) (?:esta|ta|t[aá]) pronto\b/u,
+  ].some((pattern) => pattern.test(normalizedText))
+  const classifierRecognizedOrderStatus = input.classification.intent === 'order_status'
+    && input.decision.facts.decisionReason === 'topic_requires_human:order_status'
+
+  return input.classification.confidence >= WHATSAPP_REDESIGN_MIN_CONFIDENCE
     && !input.classification.requestsHuman
     && !input.classification.mentionsAttachment
-    && input.decision.action === 'human_handoff'
-    && input.decision.facts.decisionReason === 'topic_requires_human:order_status'
+    && (input.decision.action === 'human_handoff' || input.decision.action === 'repeat_handoff')
+    && (classifierRecognizedOrderStatus || explicitOrderStatus)
 }
 
 function selectStoreOnePilotSafeReplyBase(input: {
