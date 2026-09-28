@@ -771,6 +771,7 @@ test('decisao sombra usa somente horario oficial para responder sobre expediente
       next_open_schedule: '',
       full_weekly_schedule: 'Segunda-feira: 08:00 - 18:00',
     },
+    currentTurnTexts: ['Qual é o horário de atendimento hoje?'],
     storeLocationReply: null,
     hasCurrentTurnAttachment: false,
   })
@@ -778,6 +779,54 @@ test('decisao sombra usa somente horario oficial para responder sobre expediente
   assert.equal(result.draft.action, 'answer_store_hours')
   assert.match(result.draft.fallbackReply || '', /abertos agora/i)
   assert.equal(result.draft.facts.isStoreOpenNow, true)
+})
+
+test('pergunta se os oculos estao prontos prioriza consulta de OS sobre horario', () => {
+  const result = buildWhatsAppShadowDecision({
+    storeId: 1,
+    classification: {
+      intent: 'store_hours', confidence: 0.94, topicRelation: 'change_topic',
+      requestsHuman: false, mentionsAttachment: false,
+      entities: { customerName: null, patientName: null, cpf: null, orderNumber: null },
+    },
+    memory: { summary: defaultConversationSummary(BASE_TIME), messages: [message(1)] },
+    now: BASE_TIME,
+    hoursFacts: {
+      is_open_now: false, is_exceptional_closure: false,
+      today_schedule: '08:30 às 18:00', next_open_schedule: 'Amanhã às 08:30',
+      full_weekly_schedule: 'Segunda-feira: 08:30 - 18:00',
+    },
+    currentTurnTexts: ['A cliente perguntou se o óculos estava pronto.'],
+    storeLocationReply: null,
+    hasCurrentTurnAttachment: false,
+  })
+
+  assert.equal(result.reason, 'explicit_order_readiness_precedes_store_hours')
+  assert.equal(result.draft.action, 'lookup_order_status')
+})
+
+test('a prioridade OS sobre horario fica restrita a Loja 1', () => {
+  const result = buildWhatsAppShadowDecision({
+    storeId: 2,
+    classification: {
+      intent: 'store_hours', confidence: 0.94, topicRelation: 'change_topic',
+      requestsHuman: false, mentionsAttachment: false,
+      entities: { customerName: null, patientName: null, cpf: null, orderNumber: null },
+    },
+    memory: { summary: defaultConversationSummary(BASE_TIME), messages: [message(1)] },
+    now: BASE_TIME,
+    hoursFacts: {
+      is_open_now: false, is_exceptional_closure: false,
+      today_schedule: '08:30 às 18:00', next_open_schedule: 'Amanhã às 08:30',
+      full_weekly_schedule: 'Segunda-feira: 08:30 - 18:00',
+    },
+    currentTurnTexts: ['A cliente perguntou se o óculos estava pronto.'],
+    storeLocationReply: null,
+    hasCurrentTurnAttachment: false,
+  })
+
+  assert.equal(result.reason, 'official_store_hours_available')
+  assert.equal(result.draft.action, 'answer_store_hours')
 })
 
 test('pergunta em espanhol sobre amanha responde no idioma e no dia solicitado', () => {

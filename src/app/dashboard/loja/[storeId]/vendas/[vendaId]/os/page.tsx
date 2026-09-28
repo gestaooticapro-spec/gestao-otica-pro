@@ -34,6 +34,16 @@ import {
 } from '@/lib/actions/evaluation.actions'
 
 type ServiceOrderWithLinks = any
+
+function SaveServiceOrderButton() {
+    const { pending } = useFormStatus()
+
+    return (
+        <button type="submit" disabled={pending} className="px-6 py-2 text-xs font-bold rounded-lg border border-cyan-500/20 bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 shadow-[0_0_20px_rgba(6,182,212,0.15)] transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-wait">
+            {pending ? <Loader2 className="animate-spin h-4 w-4" /> : <Save className="h-4 w-4" />} {pending ? 'SALVANDO OS' : 'SALVAR OS'}
+        </button>
+    )
+}
 type Dependente = Database['public']['Tables']['dependentes']['Row']
 type LensEye = 'OD' | 'OE' | 'AMBOS'
 type EvaluationUnlinkAuthorizer = Pick<
@@ -267,7 +277,6 @@ function ServiceOrderFormContent({
     const vendaUrl = returnTo || `/dashboard/loja/${storeId}/vendas/${vendaId}/experimental`
     const handleReturnToSale = () => window.location.assign(vendaUrl)
 
-    const { pending: isSaving } = useFormStatus()
     const [isDeleting, startDeleteTransition] = useTransition()
 
     // WhatsApp Logic State
@@ -1272,9 +1281,7 @@ ${tokenLab ? `\nFoto das medidas:\nhttps://gestao-otica-pro.vercel.app/lab/${tok
                             {isDeleting ? <Loader2 className="animate-spin h-3 w-3" /> : <Trash2 className="h-3 w-3" />} EXCLUIR
                         </button>
                     )}
-                    <button type="submit" disabled={isSaving} className="px-6 py-2 text-xs font-bold rounded-lg border border-cyan-500/20 bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 shadow-[0_0_20px_rgba(6,182,212,0.15)] transition-all flex items-center gap-2">
-                        {isSaving ? <Loader2 className="animate-spin h-4 w-4" /> : <Save className="h-4 w-4" />} SALVAR OS
-                    </button>
+                    <SaveServiceOrderButton />
                 </div>
 
                 {/* Hidden Inputs */}

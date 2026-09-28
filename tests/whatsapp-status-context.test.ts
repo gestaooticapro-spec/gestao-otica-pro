@@ -32,7 +32,7 @@ test('rejeita humanizacao de OS que troca a etapa oficial por assunto de horario
     canonicalReply: 'Oi! Seu óculos ficou pronto e já pode ser retirado na loja.',
     facts: { statusCode: 'ready_for_pickup' },
   })
-  const result = applyWhatsAppHumanizationOutcome(canonical, canonical.canonical.canonicalReply, {
+  const result = applyWhatsAppHumanizationOutcome(canonical, {
     success: true,
     provider: 'openai',
     model: 'test-model',
@@ -40,10 +40,29 @@ test('rejeita humanizacao de OS que troca a etapa oficial por assunto de horario
     replyText: 'Oi! Hoje atendemos das 08:30 às 18:00.',
   })
 
-  assert.equal(result.text, canonical.canonical.canonicalReply)
+  assert.equal(result.shouldSend, false)
+  assert.equal(result.text, null)
   assert.equal(result.payload.humanization.success, false)
   assert.equal('rejectionReason' in result.payload.humanization
     ? result.payload.humanization.rejectionReason : null, 'order_status_not_preserved')
+})
+
+test('falha da IA nao envia o texto canonico como contingencia', () => {
+  const canonical = buildWhatsAppCanonicalPayload({
+    intent: 'order_status',
+    action: 'auto_reply',
+    outboundType: 'os_status',
+    canonicalReply: 'Seu óculos está em produção no laboratório.',
+    facts: { statusCode: 'in_lab' },
+  })
+  const result = applyWhatsAppHumanizationOutcome(canonical, {
+    success: false,
+    error: 'OpenAI indisponível',
+  })
+
+  assert.equal(result.shouldSend, false)
+  assert.equal(result.text, null)
+  assert.equal(result.payload.humanization.success, false)
 })
 
 test('aceita humanizacao natural que preserva a etapa pronta para retirada', () => {
@@ -54,7 +73,7 @@ test('aceita humanizacao natural que preserva a etapa pronta para retirada', () 
     canonicalReply: 'Oi! Seu óculos ficou pronto e já pode ser retirado na loja.',
     facts: { statusCode: 'ready_for_pickup' },
   })
-  const result = applyWhatsAppHumanizationOutcome(canonical, canonical.canonical.canonicalReply, {
+  const result = applyWhatsAppHumanizationOutcome(canonical, {
     success: true,
     provider: 'openai',
     model: 'test-model',
@@ -63,6 +82,7 @@ test('aceita humanizacao natural que preserva a etapa pronta para retirada', () 
   })
 
   assert.equal(result.text, 'Boa notícia: seu óculos está pronto para retirar!')
+  assert.equal(result.shouldSend, true)
   assert.equal(result.payload.humanization.success, true)
 })
 
@@ -73,7 +93,7 @@ test('aceita humanizacao que pede identificador antes de consultar uma OS', () =
     outboundType: 'identifier_prompt',
     canonicalReply: 'Envie o CPF, número do pedido ou nome completo.',
   })
-  const result = applyWhatsAppHumanizationOutcome(canonical, canonical.canonical.canonicalReply, {
+  const result = applyWhatsAppHumanizationOutcome(canonical, {
     success: true,
     provider: 'openai',
     model: 'test-model',
@@ -82,6 +102,7 @@ test('aceita humanizacao que pede identificador antes de consultar uma OS', () =
   })
 
   assert.equal(result.text, 'Para eu localizar seu pedido, me informe o número da OS ou o nome completo do titular, por favor.')
+  assert.equal(result.shouldSend, true)
   assert.equal(result.payload.humanization.success, true)
 })
 
@@ -93,7 +114,7 @@ test('aceita pedido natural de identificador com verbo no infinitivo', () => {
     canonicalReply: 'Envie o número do pedido para localizar a OS.',
   })
   const replyText = 'Para eu localizar seu pedido, você poderia me passar o número do pedido?'
-  const result = applyWhatsAppHumanizationOutcome(canonical, canonical.canonical.canonicalReply, {
+  const result = applyWhatsAppHumanizationOutcome(canonical, {
     success: true,
     provider: 'openai',
     model: 'test-model',
@@ -102,9 +123,10 @@ test('aceita pedido natural de identificador com verbo no infinitivo', () => {
   })
 
   assert.equal(result.text, replyText)
+  assert.equal(result.shouldSend, true)
   assert.equal(result.payload.humanization.success, true)
 
-  const contextualReply = applyWhatsAppHumanizationOutcome(canonical, canonical.canonical.canonicalReply, {
+  const contextualReply = applyWhatsAppHumanizationOutcome(canonical, {
     success: true,
     provider: 'openai',
     model: 'test-model',
@@ -121,7 +143,7 @@ test('rejeita humanizacao do pedido de identificador que inventa status da OS', 
     outboundType: 'identifier_prompt',
     canonicalReply: 'Envie o CPF, número do pedido ou nome completo.',
   })
-  const result = applyWhatsAppHumanizationOutcome(canonical, canonical.canonical.canonicalReply, {
+  const result = applyWhatsAppHumanizationOutcome(canonical, {
     success: true,
     provider: 'openai',
     model: 'test-model',
@@ -129,7 +151,8 @@ test('rejeita humanizacao do pedido de identificador que inventa status da OS', 
     replyText: 'Seu óculos já está pronto para retirada.',
   })
 
-  assert.equal(result.text, canonical.canonical.canonicalReply)
+  assert.equal(result.shouldSend, false)
+  assert.equal(result.text, null)
   assert.equal(result.payload.humanization.success, false)
 })
 
@@ -141,11 +164,12 @@ test('aceita encaminhamento humanizado de OS nao localizada sem status oficial',
     canonicalReply: 'Sou a IAra, assistente virtual. Nossa equipe vai conferir essa OS.',
   })
   const replyText = 'Sou a IAra, assistente virtual. Não localizei essa OS; vou pedir à nossa equipe que confira e continue com você por aqui.'
-  const result = applyWhatsAppHumanizationOutcome(canonical, canonical.canonical.canonicalReply, {
+  const result = applyWhatsAppHumanizationOutcome(canonical, {
     success: true, provider: 'openai', model: 'test-model', attempts: 1, replyText,
   })
 
   assert.equal(result.text, replyText)
+  assert.equal(result.shouldSend, true)
   assert.equal(result.payload.humanization.success, true)
 })
 
@@ -162,9 +186,11 @@ test('rejeita encaminhamento de OS sem IAra, sem equipe ou com status inventado'
     'Sou a IAra. Não localizei essa OS.',
     'Sou a IAra. Nossa equipe vai conferir; seu óculos está pronto.',
   ]) {
-    const result = applyWhatsAppHumanizationOutcome(canonical, canonical.canonical.canonicalReply, {
-      success: true, provider: 'openai', model: 'test-model', attempts: 1, replyText,
+    const result = applyWhatsAppHumanizationOutcome(canonical, {
+    success: true, provider: 'openai', model: 'test-model', attempts: 1, replyText,
     })
+    assert.equal(result.shouldSend, false)
+    assert.equal(result.text, null)
     assert.equal(result.payload.humanization.success, false)
   }
 })

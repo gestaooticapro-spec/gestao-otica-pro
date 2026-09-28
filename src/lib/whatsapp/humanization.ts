@@ -96,12 +96,12 @@ export function decideWhatsAppHumanization(
 
 export function applyWhatsAppHumanizationOutcome(
   payload: PayloadRecord,
-  fallbackText: string,
   outcome: WhatsAppHumanizationOutcome
 ) {
   if (!outcome.success) {
     return {
-      text: fallbackText,
+      shouldSend: false as const,
+      text: null,
       payload: {
         ...payload,
         humanization: {
@@ -114,19 +114,36 @@ export function applyWhatsAppHumanizationOutcome(
   }
 
   const statusPreserved = preservesOrderStatus(payload, outcome.replyText)
+  if (!statusPreserved) {
+    return {
+      shouldSend: false as const,
+      text: null,
+      payload: {
+        ...payload,
+        humanization: {
+          enabled: true,
+          success: false,
+          provider: outcome.provider,
+          model: outcome.model,
+          attempts: outcome.attempts,
+          rejectionReason: 'order_status_not_preserved',
+        },
+      } satisfies PayloadRecord,
+    }
+  }
+
   return {
-    text: statusPreserved ? outcome.replyText : fallbackText,
+    shouldSend: true as const,
+    text: outcome.replyText,
     payload: {
       ...payload,
       humanization: {
         enabled: true,
-        success: statusPreserved,
+        success: true,
         provider: outcome.provider,
         model: outcome.model,
         attempts: outcome.attempts,
-        ...(statusPreserved
-          ? { replyText: outcome.replyText }
-          : { rejectionReason: 'order_status_not_preserved' }),
+        replyText: outcome.replyText,
       },
     } satisfies PayloadRecord,
   }

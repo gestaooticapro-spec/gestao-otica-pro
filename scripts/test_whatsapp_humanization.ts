@@ -34,24 +34,23 @@ const nonCandidateCanonical = extractWhatsAppCanonicalReply(buildWhatsAppCanonic
 const nonCandidatePlan = decideWhatsAppHumanization(true, nonCandidateCanonical)
 assert.equal(nonCandidatePlan.decision, 'skip_not_candidate')
 
-const fallbackApplied = applyWhatsAppHumanizationOutcome(
+const failedApplied = applyWhatsAppHumanizationOutcome(
   storeHoursPayload as never,
-  'Texto canônico',
   {
     success: false,
     error: 'timeout',
   }
 )
-assert.equal(fallbackApplied.text, 'Texto canônico')
-assert.equal((fallbackApplied.payload.humanization as { success?: boolean }).success, false)
+assert.equal(failedApplied.shouldSend, false)
+assert.equal(failedApplied.text, null)
+assert.equal((failedApplied.payload.humanization as { success?: boolean }).success, false)
 
 const successApplied = applyWhatsAppHumanizationOutcome(
   storeHoursPayload as never,
-  'Texto canônico',
   {
     success: true,
-    provider: 'gemini',
-    model: 'gemini-2.5-flash',
+    provider: 'openai',
+    model: 'test-model',
     attempts: 1,
     replyText: 'Oi! Hoje atendemos das 08:00 as 18:00.',
   }

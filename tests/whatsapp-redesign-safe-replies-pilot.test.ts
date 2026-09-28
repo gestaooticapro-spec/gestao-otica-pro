@@ -13,6 +13,7 @@ import {
   shouldUseOrderStatusToolAgent,
 } from '../src/lib/whatsapp/redesign/safe-replies-pilot'
 import { buildWhatsAppRedesignReplyPrompt } from '../src/lib/whatsapp/ai'
+import { enforceWhatsAppIntentEvidence, isExplicitOrderReadinessQuestion } from '../src/lib/whatsapp/redesign/intent-guards'
 
 const classification = WhatsAppRedesignClassificationSchema.parse({
   intent: 'store_hours', confidence: 0.98, topicRelation: 'change_topic',
@@ -139,7 +140,7 @@ test('consulta de OS confiavel segue para o agente de ferramentas quando habilit
   }), false)
 })
 
-test('selecao do piloto prepara texto fixo somente como fallback, nunca como texto ao vivo', () => {
+test('o piloto nao carrega texto fixo de contingencia', () => {
   const base = {
     classification, decision,
     turnMessages: [{ kind: 'text', text: 'Qual o horário?' }],
@@ -148,7 +149,7 @@ test('selecao do piloto prepara texto fixo somente como fallback, nunca como tex
   const hoursReply = selectStoreOnePilotSafeReply(base)
   assert.equal(hoursReply?.action, 'answer_store_hours')
   assert.equal(hoursReply?.messageType, 'store_hours')
-  assert.equal(hoursReply?.fallbackText, 'Fallback horário oficial de hoje.')
+  assert.equal('fallbackText' in (hoursReply ?? {}), false)
   assert.equal('text' in (hoursReply ?? {}), false)
 
   const handoff = WhatsAppSystemDecisionSchema.parse({
@@ -205,22 +206,26 @@ test('geracao contextual preserva a marca e nunca afirma disponibilidade em esto
     success: true,
     data: { reply_text: 'Sou a IAra e temos lentes Varilux disponíveis em estoque.' },
   })
-  assert.equal(unsafeStockClaim.generatedBy, 'fallback')
-  assert.equal(unsafeStockClaim.fallbackReason, 'unsafe_stock_claim')
+  assert.equal(unsafeStockClaim.shouldSend, false)
+  assert.equal(unsafeStockClaim.generatedBy, 'suppressed')
+  assert.equal(unsafeStockClaim.reason, 'unsafe_stock_claim')
   const missingProduct = resolveStoreOnePilotReplyText(candidate, {
     success: true,
     data: { reply_text: 'Sou a IAra e vou pedir para a equipe consultar a disponibilidade.' },
   })
-  assert.equal(missingProduct.generatedBy, 'fallback')
-  assert.equal(missingProduct.fallbackReason, 'required_product_omitted')
-  assert.equal(missingProduct.text, candidate.fallbackText)
-  assert.equal(resolveStoreOnePilotReplyText(candidate, { success: false }).fallbackReason, 'provider_failure')
+  assert.equal(missingProduct.shouldSend, false)
+  assert.equal(missingProduct.generatedBy, 'suppressed')
+  assert.equal(missingProduct.reason, 'required_product_omitted')
+  const providerFailure = resolveStoreOnePilotReplyText(candidate, { success: false })
+  assert.equal(providerFailure.shouldSend, false)
+  assert.equal(providerFailure.reason, 'provider_failure')
 
   const missingIdentity = resolveStoreOnePilotReplyText(candidate, {
     success: true,
     data: { reply_text: 'Vou pedir para a equipe verificar as lentes Varilux para você.' },
   })
-  assert.equal(missingIdentity.fallbackReason, 'assistant_identity_omitted')
+  assert.equal(missingIdentity.shouldSend, false)
+  assert.equal(missingIdentity.reason, 'assistant_identity_omitted')
   assert.equal(resolveStoreOnePilotReplyText(candidate, {
     success: true,
     data: { reply_text: 'Sou a IAra e vou pedir para a equipe verificar as lentes Varilux para você.' },
@@ -246,11 +251,12 @@ test('handoff gerado precisa preservar o encaminhamento humano', () => {
     success: true,
     data: { reply_text: 'Sou a IAra, claro, vou ajudar você com isso.' },
   })
-  assert.equal(missingHandoff.generatedBy, 'fallback')
-  assert.equal(missingHandoff.fallbackReason, 'handoff_omitted')
+  assert.equal(missingHandoff.shouldSend, false)
+  assert.equal(missingHandoff.generatedBy, 'suppressed')
+  assert.equal(missingHandoff.reason, 'handoff_omitted')
 })
 
-test('Pix gerado inclui a chave oficial e usa o texto fixo so se a resposta falhar', () => {
+test('Pix gerado inclui a chave oficial e e suprimido se a resposta falhar na validacao', () => {
   const pixDecision = WhatsAppSystemDecisionSchema.parse({
     ...decision, action: 'answer_official_pix', fallbackReply: 'Fallback da chave Pix oficial.',
   })
@@ -267,7 +273,7 @@ test('Pix gerado inclui a chave oficial e usa o texto fixo so se a resposta falh
   }).generatedBy, 'ai')
   assert.equal(resolveStoreOnePilotReplyText(candidate, {
     success: true, data: { reply_text: 'Use a chave da loja para pagar.' },
-  }).fallbackReason, 'official_key_omitted')
+  }).reason, 'official_key_omitted')
   assert.equal(selectStoreOnePilotSafeReply({
     classification: { ...classification, intent: 'unknown' }, decision: pixDecision,
     turnMessages: [{ kind: 'text', text: 'Paguei a parcela no Pix' }],
@@ -275,7 +281,7 @@ test('Pix gerado inclui a chave oficial e usa o texto fixo so se a resposta falh
   }), null)
 })
 
-test('horario oficial deve aparecer na resposta gerada ou aciona fallback seguro', () => {
+test('horario oficial ausente na resposta gerada suprime o envio', () => {
   const candidate = selectStoreOnePilotSafeReply({
     classification,
     decision: WhatsAppSystemDecisionSchema.parse({
@@ -291,5 +297,19 @@ test('horario oficial deve aparecer na resposta gerada ou aciona fallback seguro
   }).generatedBy, 'ai')
   assert.equal(resolveStoreOnePilotReplyText(candidate, {
     success: true, data: { reply_text: 'Sim, abrimos amanhã.' },
-  }).fallbackReason, 'official_hours_omitted')
+  }).reason, 'official_hours_omitted')
+})
+
+test('pergunta sobre oculos pronto e roteada para OS, nao para horario', () => {
+  const message = 'A cliente perguntou se o óculos estava pronto.'
+  assert.equal(isExplicitOrderReadinessQuestion(message), true)
+  assert.equal(enforceWhatsAppIntentEvidence({
+    route: 'store_hours', intent: 'store_hours', messageText: message,
+  }), 'order_status')
+  assert.equal(enforceWhatsAppIntentEvidence({
+    route: 'store_hours', intent: 'store_hours', messageText: 'Amanhã a loja abre?',
+  }), 'store_hours')
+  assert.equal(enforceWhatsAppIntentEvidence({
+    route: 'store_hours', intent: 'store_hours', messageText: 'Meu óculos está bonito.',
+  }), 'fallback')
 })

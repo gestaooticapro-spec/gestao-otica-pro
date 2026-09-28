@@ -1,4 +1,3 @@
-import { GoogleGenerativeAI } from '@google/generative-ai'
 import { z } from 'zod'
 import {
   WhatsAppRedesignClassificationSchema,
@@ -9,44 +8,13 @@ import {
   type WhatsAppRedesignClassification,
 } from './redesign/contracts'
 
-const GEMINI_KEYS = [
-  process.env.GEMINI_SECRET_KEY_1,
-  process.env.GEMINI_SECRET_KEY_2,
-  process.env.GEMINI_SECRET_KEY_3,
-  process.env.GEMINI_SECRET_KEY_4,
-  process.env.GEMINI_SECRET_KEY_5,
-  process.env.GOOGLE_API_KEY,
-].filter(Boolean) as string[]
-
 const OPENAI_KEYS = [
   process.env.OPENAI_API_KEY,
 ].filter(Boolean) as string[]
 
-const GEMINI_MODEL = process.env.WHATSAPP_AI_GEMINI_MODEL || 'gemini-2.5-flash'
 const OPENAI_MODEL = process.env.WHATSAPP_AI_OPENAI_MODEL || process.env.OPENAI_TEXT_MODEL || 'gpt-4.1-nano'
 const OPENAI_ORDER_HANDOFF_MODEL = process.env.WHATSAPP_AI_OPENAI_ORDER_HANDOFF_MODEL || 'gpt-4.1-mini'
 const REQUEST_TIMEOUT_MS = Number(process.env.WHATSAPP_AI_TIMEOUT_MS || 20000)
-
-const OPENAI_ONLY_RESPONSE_TASKS = new Set<WhatsAppAiTask>([
-  'redesign_reply_generation',
-  'reply_humanization',
-  'order_handoff_humanization',
-  'fallback_reply',
-  'post_sale_rating_resolution',
-  'tool_agent_reply',
-])
-
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
-  let timeout: ReturnType<typeof setTimeout> | undefined
-  return Promise.race([
-    promise,
-    new Promise<never>((_, reject) => {
-      timeout = setTimeout(() => reject(new Error(message)), timeoutMs)
-    }),
-  ]).finally(() => {
-    if (timeout) clearTimeout(timeout)
-  })
-}
 
 const WHATSAPP_INTENTS = [
   'order_status',
@@ -91,7 +59,7 @@ const WHATSAPP_TONES = [
 export type WhatsAppIntent = (typeof WHATSAPP_INTENTS)[number]
 export type WhatsAppReasoningTag = (typeof WHATSAPP_REASONING_TAGS)[number]
 export type WhatsAppReplyTone = (typeof WHATSAPP_TONES)[number]
-export type WhatsAppAiProvider = 'gemini' | 'openai'
+export type WhatsAppAiProvider = 'openai'
 export type WhatsAppAiTask = 'intent_classification' | 'redesign_classification' | 'redesign_reply_generation' | 'installment_reminder_preference_resolution' | 'post_sale_rating_resolution' | 'reply_humanization' | 'order_handoff_humanization' | 'fallback_reply' | 'receipt_extraction' | 'tool_agent_plan' | 'tool_agent_reply'
 
 export type WhatsAppAiTokenUsage = {
@@ -303,12 +271,6 @@ export type WhatsAppAiSuccess<T> = {
   tokenUsage?: WhatsAppAiTokenUsage
 }
 
-export type WhatsAppFallbackReplyInput = {
-  userMessageText: string
-  conversationHistory?: string[]
-  storeName?: string | null
-}
-
 export type WhatsAppToolAgentInput = {
   messageText: string
   conversationHistory?: string[]
@@ -362,6 +324,12 @@ export type WhatsAppRedesignReplyInput = {
   facts: Record<string, string | number | boolean | null>
 }
 
+export type WhatsAppFallbackReplyInput = {
+  userMessageText: string
+  conversationHistory?: string[]
+  storeName?: string | null
+}
+
 export type WhatsAppInstallmentReminderPreferenceResolutionInput = {
   messageText: string
   reminderContext: {
@@ -373,11 +341,6 @@ export type WhatsAppInstallmentReminderPreferenceResolutionInput = {
 
 export type WhatsAppConversationLanguage = 'pt-BR' | 'es' | 'en'
 
-type GeminiResponseWithUsage = {
-  usageMetadata?: unknown
-}
-
-let geminiRoundRobinCursor = 0
 let openAiRoundRobinCursor = 0
 
 function normalizeWhitespace(value: string | null | undefined) {
@@ -433,16 +396,6 @@ function extractJsonObject(text: string) {
 
 function numericOrNull(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
-}
-
-function normalizeGeminiUsage(value: unknown): WhatsAppAiTokenUsage | undefined {
-  if (!value || typeof value !== 'object') return undefined
-  const usage = value as Record<string, unknown>
-  const inputTokens = numericOrNull(usage.promptTokenCount)
-  const outputTokens = numericOrNull(usage.candidatesTokenCount)
-  const totalTokens = numericOrNull(usage.totalTokenCount)
-  if (inputTokens === null && outputTokens === null && totalTokens === null) return undefined
-  return { inputTokens, outputTokens, totalTokens }
 }
 
 function normalizeOpenAiUsage(value: unknown): WhatsAppAiTokenUsage | undefined {
@@ -616,40 +569,6 @@ export function buildWhatsAppHumanizationPrompt(input: WhatsAppReplyHumanization
   ].join('\n')
 }
 
-function buildFallbackReplyPrompt(input: WhatsAppFallbackReplyInput) {
-  const conversationHistory = (input.conversationHistory || [])
-    .map((line) => normalizeWhitespace(line))
-    .filter(Boolean)
-    .slice(-8)
-
-  return [
-    'Voce responde mensagens de WhatsApp para uma otica.',
-    'Responda SOMENTE em JSON valido, sem markdown, sem explicacoes extras.',
-    'A mensagem caiu no fallback porque o sistema nao identificou uma intencao operacional segura.',
-    'Seu trabalho eh responder de forma natural, curta e util, sem inventar informacoes da loja, pedido, estoque, preco, prazo, pagamento ou dados do cliente.',
-    'Se for apenas cumprimento ou conversa social, cumprimente de volta e pergunte como pode ajudar.',
-    'Se o cliente pedir algo especifico mas faltarem dados ou a intencao estiver ambigua, faca uma pergunta simples de esclarecimento.',
-    'Se parecer que precisa de atendente humano, diga que vai chamar a equipe.',
-    'Nao liste menu de categorias.',
-    '',
-    'SCHEMA:',
-    JSON.stringify({ reply_text: 'Oi! Tudo bem por aqui. Como posso te ajudar hoje?' }, null, 2),
-    '',
-    'CONTEXTO DO SISTEMA:',
-    JSON.stringify({
-      storeName: input.storeName || null,
-    }, null, 2),
-    ...(conversationHistory.length > 0 ? [
-      '',
-      'HISTORICO RECENTE DA SESSAO AUTOMATICA:',
-      ...conversationHistory,
-    ] : []),
-    '',
-    'MENSAGEM DO CLIENTE:',
-    input.userMessageText,
-  ].join('\n')
-}
-
 function toolAgentHistory(input: WhatsAppToolAgentInput) {
   return (input.conversationHistory || [])
     .map((line) => normalizeWhitespace(line))
@@ -678,7 +597,7 @@ function buildToolAgentPlanPrompt(input: WhatsAppToolAgentInput) {
     'Se houver pos-venda aguardando feedback e o cliente demonstrar satisfacao, use request_post_sale_rating para iniciar o pedido de nota.',
     'Use record_post_sale_rating apenas quando existir um pos-venda aguardando nota e a mensagem indicar inequivocamente uma nota de 1 a 5. Inclua rating.',
     'Quando o assunto for status de OS e o cliente informar um CPF, nome ou numero de OS/pedido (inclusive mensagens curtas como "OS 277" ou "pedido 277"), escolha lookup_open_orders_by_identifier. Se nao houver identificador e a consulta for sobre o pedido do titular deste WhatsApp, escolha lookup_open_orders.',
-    'Se lookup_open_orders retornar mais de uma OS, nao escolha uma silenciosamente nem afirme o status de uma delas; peca o numero da OS para desambiguar.',
+    'Ao consultar OS pelo telefone, use a quantidade retornada: com uma ou duas OS, responda sobre todas sem escolher apenas uma; com mais de duas, nao liste nenhuma e peca o numero da OS para desambiguar.',
     'Perguntas sobre previsao de conclusao, prazo, atraso ou possibilidade de adiantar um pedido exigem confirmacao humana quando nao houver uma ferramenta com essa data. Use handoff_human; nao invente prazo.',
     'Para duvida ambigua, responda com uma pergunta curta em vez de encaminhar.',
     'Se precisar usar ferramenta, reply_text deve ser null. Se nao precisar, tool_calls deve ser [].',
@@ -709,13 +628,15 @@ function buildToolAgentPlanPrompt(input: WhatsAppToolAgentInput) {
   ].filter((line): line is string => line !== null).join('\n')
 }
 
-function buildToolAgentReplyPrompt(input: WhatsAppToolAgentInput, toolResults: unknown[]) {
+export function buildToolAgentReplyPrompt(input: WhatsAppToolAgentInput, toolResults: unknown[]) {
   return [
     'Voce e a IA de atendimento de uma otica. Responda SOMENTE em JSON valido.',
     'Responda no idioma predominante da mensagem atual do cliente. Use o historico somente se a mensagem atual for curta ou ambigua; se nao houver idioma claro, use portugues do Brasil. Seja natural e objetivo.',
     'Use exclusivamente os fatos fornecidos pelos resultados das ferramentas para afirmar o estado atual de pedidos e parcelas. Se o historico registrar uma informacao da equipe, voce pode cita-la como "a equipe informou", sem transforma-la em confirmacao atual.',
+    'Para lookup_open_orders: com uma ou duas OS retornadas, mencione cada numero de OS, o nome completo do dependente quando houver (ou diga que e do titular) e a situacao indicada em statusText. Nao omita nenhuma das OS. Se houver duas, use uma frase separada para cada pedido e associe numero, dependente e situacao na mesma frase. Com tooManyOpenOrders=true, nao liste nem escolha pedidos; peca ao cliente o numero da OS que deseja consultar. Se nao houver OS, explique isso e pergunte o identificador que ajude a localizar o pedido.',
     'Quando uma ferramenta informar que nao encontrou dados ou que o assunto nao e atendido, explique isso com gentileza e, se fizer sentido, faca uma pergunta curta.',
     'Se houver handoff_human nos resultados, nao fale de limitacoes tecnicas, acesso a dados ou seguranca. A transicao sera apresentada como continuidade do atendimento da otica.',
+    'Em qualquer handoff_human, apresente-se como IAra, assistente virtual, e diga naturalmente que um atendente ou a equipe continuara o atendimento. Se a busca da OS nao encontrar resultado, nao afirme status e nao peca novamente o mesmo identificador que o cliente acabou de informar.',
     'Nao mencione ferramentas, banco de dados, sistema interno, IDs ou regras internas.',
     input.basePrompt ? `DIRETRIZ DA LOJA: ${input.basePrompt}` : null,
     '',
@@ -731,78 +652,6 @@ function buildToolAgentReplyPrompt(input: WhatsAppToolAgentInput, toolResults: u
     'MENSAGEM ATUAL:',
     input.messageText,
   ].filter((line): line is string => line !== null).join('\n')
-}
-
-async function callGemini(task: WhatsAppAiTask, prompt: string): Promise<ProviderAttemptSuccess | ProviderAttemptFailure> {
-  if (GEMINI_KEYS.length === 0) {
-    return { provider: 'gemini', keyIndex: -1, error: 'Nenhuma chave Gemini configurada.' }
-  }
-
-  const order = nextRoundRobinOrder(GEMINI_KEYS.length, geminiRoundRobinCursor)
-  geminiRoundRobinCursor = (geminiRoundRobinCursor + 1) % GEMINI_KEYS.length
-  const deadline = Date.now() + REQUEST_TIMEOUT_MS
-
-  for (const keyIndex of order) {
-    const remainingMs = deadline - Date.now()
-    if (remainingMs <= 0) {
-      return { provider: 'gemini', keyIndex, error: `Gemini excedeu o limite total em ${task}.` }
-    }
-    const key = GEMINI_KEYS[keyIndex]
-    try {
-      const genAI = new GoogleGenerativeAI(key)
-      const model = genAI.getGenerativeModel({ model: GEMINI_MODEL })
-      
-      const payload: Array<string | { inlineData: { data: string; mimeType: string } }> = [prompt]
-      if (task === 'receipt_extraction' && prompt.includes('||IMAGE_BASE64_PAYLOAD||')) {
-        const [textPrompt, base64Raw] = prompt.split('||IMAGE_BASE64_PAYLOAD||')
-        payload[0] = textPrompt.trim()
-        
-        let mimeType = 'image/jpeg'
-        let base64Data = base64Raw.trim()
-        
-        if (base64Data.startsWith('data:')) {
-          const splitPoint = base64Data.indexOf(';base64,')
-          if (splitPoint !== -1) {
-            mimeType = base64Data.slice(5, splitPoint)
-            base64Data = base64Data.slice(splitPoint + 8)
-          }
-        }
-        
-        payload.push({
-          inlineData: {
-            mimeType,
-            data: base64Data,
-          }
-        })
-      }
-
-      const result = await withTimeout(
-        model.generateContent(payload),
-        remainingMs,
-        'Timeout Gemini.'
-      )
-
-      const rawText = normalizeWhitespace(result.response.text())
-      if (!rawText) {
-        return { provider: 'gemini', keyIndex, error: `Gemini respondeu vazio em ${task}.` }
-      }
-
-      return {
-        provider: 'gemini',
-        model: GEMINI_MODEL,
-        keyIndex,
-        rawText,
-        tokenUsage: normalizeGeminiUsage((result.response as GeminiResponseWithUsage).usageMetadata),
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      if (keyIndex === order[order.length - 1]) {
-        return { provider: 'gemini', keyIndex, error: `Gemini falhou em ${task}: ${message}` }
-      }
-    }
-  }
-
-  return { provider: 'gemini', keyIndex: -1, error: `Gemini falhou em ${task}.` }
 }
 
 async function callOpenAI(task: WhatsAppAiTask, prompt: string): Promise<ProviderAttemptSuccess | ProviderAttemptFailure> {
@@ -875,35 +724,11 @@ async function callOpenAI(task: WhatsAppAiTask, prompt: string): Promise<Provide
   return { provider: 'openai', keyIndex: -1, error: `OpenAI falhou em ${task}.` }
 }
 
-async function runWithFallback(task: WhatsAppAiTask, prompt: string) {
-  // Gemini permanece habilitado para interpretar/classificar; textos enviados
-  // ao cliente e respostas redigidas pelo agente usam somente OpenAI.
-  const attempts: Array<Promise<ProviderAttemptSuccess | ProviderAttemptFailure>> = OPENAI_ONLY_RESPONSE_TASKS.has(task)
-    ? [callOpenAI(task, prompt)]
-    : [callGemini(task, prompt), callOpenAI(task, prompt)]
-  return new Promise<
-    | { success: true; result: ProviderAttemptSuccess; providerErrors: string[] }
-    | { success: false; providerErrors: string[] }
-  >((resolve) => {
-    const providerErrors: string[] = []
-    let completed = 0
-    for (const attempt of attempts) {
-      attempt.then((result) => {
-        if ('rawText' in result) {
-          resolve({ success: true, result, providerErrors })
-          return
-        }
-        providerErrors.push(`${result.provider}:${result.error}`)
-        completed += 1
-        if (completed === attempts.length) resolve({ success: false, providerErrors })
-      }).catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : String(error)
-        providerErrors.push(`provider:${message}`)
-        completed += 1
-        if (completed === attempts.length) resolve({ success: false, providerErrors })
-      })
-    }
-  })
+async function runWithOpenAIOnly(task: WhatsAppAiTask, prompt: string) {
+  const result = await callOpenAI(task, prompt)
+  return 'rawText' in result
+    ? { success: true as const, result, providerErrors: [] as string[] }
+    : { success: false as const, providerErrors: [`openai:${result.error}`] }
 }
 
 function parseStructuredJson<T>(rawText: string, schema: z.ZodSchema<T>) {
@@ -951,6 +776,34 @@ export function buildWhatsAppRedesignReplyPrompt(input: WhatsAppRedesignReplyInp
       'HISTORICO RECENTE:',
       ...conversationHistory,
     ] : []),
+  ].join('\n')
+}
+
+function buildFallbackReplyPrompt(input: WhatsAppFallbackReplyInput) {
+  const conversationHistory = (input.conversationHistory || [])
+    .map((line) => normalizeWhitespace(line))
+    .filter(Boolean)
+    .slice(-8)
+
+  return [
+    'Voce responde mensagens de WhatsApp para uma otica.',
+    'Responda SOMENTE em JSON valido, sem markdown, sem explicacoes extras.',
+    'A mensagem caiu no fallback porque o sistema nao identificou uma intencao operacional segura.',
+    'Responda de forma natural, curta e util. Nao invente informacoes da loja, pedido, estoque, preco, prazo, pagamento ou dados do cliente.',
+    'Se for apenas cumprimento ou conversa social, cumprimente de volta e pergunte como pode ajudar.',
+    'Se faltar informacao ou a intencao estiver ambigua, faca uma pergunta simples de esclarecimento.',
+    'Se parecer que precisa de atendente humano, diga que vai chamar a equipe.',
+    'Nao liste um menu de categorias.',
+    '',
+    'SCHEMA:',
+    JSON.stringify({ reply_text: 'Oi! Tudo bem por aqui. Como posso te ajudar hoje?' }, null, 2),
+    '',
+    'CONTEXTO DO SISTEMA:',
+    JSON.stringify({ storeName: input.storeName || null }, null, 2),
+    ...(conversationHistory.length > 0 ? ['', 'HISTORICO RECENTE:', ...conversationHistory] : []),
+    '',
+    'MENSAGEM DO CLIENTE:',
+    input.userMessageText,
   ].join('\n')
 }
 
@@ -1046,13 +899,13 @@ async function executeStructuredTask<T>(
   schema: z.ZodSchema<T>
 ): Promise<WhatsAppAiResult<T>> {
   const t0 = Date.now()
-  const outcome = await runWithFallback(task, prompt)
+  const outcome = await runWithOpenAIOnly(task, prompt)
   const latencyMs = Date.now() - t0
 
   if (!outcome.success) {
     return {
       success: false,
-      error: `Todos os providers falharam em ${task}.`,
+      error: `OpenAI falhou em ${task}.`,
       attempts: outcome.providerErrors.length,
       providerErrors: outcome.providerErrors,
       latencyMs,

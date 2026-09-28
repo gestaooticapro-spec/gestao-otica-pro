@@ -1,4 +1,5 @@
 import type { StoreHoursFacts } from '../store-hours-logic'
+import { isExplicitOrderReadinessQuestion, isExplicitStoreHoursQuestion } from './intent-guards'
 import {
   WHATSAPP_REDESIGN_MIN_CONFIDENCE,
   WhatsAppSystemDecisionDraftSchema,
@@ -52,6 +53,7 @@ function handoffDraft(
 }
 
 export type WhatsAppShadowDecisionInput = {
+  storeId?: number
   classification: WhatsAppRedesignClassification
   memory: WhatsAppConversationMemory
   now: string
@@ -165,7 +167,26 @@ export function buildWhatsAppShadowDecision(
     }
   }
 
-  if (classification.intent === 'store_hours' && input.hoursFacts
+  const currentTurnText = (input.currentTurnTexts ?? []).join(' ')
+  if (input.storeId === 1 && isExplicitOrderReadinessQuestion(currentTurnText)) {
+    return {
+      reason: 'explicit_order_readiness_precedes_store_hours',
+      draft: WhatsAppSystemDecisionDraftSchema.parse({
+        action: 'lookup_order_status',
+        fallbackReply: 'Consultar a OS com os dados autorizados antes de responder.',
+        facts: {
+          classificationIntent: classification.intent,
+          decisionReason: 'explicit_order_readiness_precedes_store_hours',
+        },
+        humanHandoffTiming: null,
+        humanization: humanization(false),
+      }),
+    }
+  }
+
+  if (classification.intent === 'store_hours'
+    && (input.storeId !== 1 || isExplicitStoreHoursQuestion(currentTurnText))
+    && input.hoursFacts
     && classification.confidence >= WHATSAPP_REDESIGN_MIN_CONFIDENCE) {
     const requestedDay = requestedHoursDay(input.currentTurnTexts ?? [])
     if (requestedDay === 'tomorrow' && input.tomorrowHoursFacts) {

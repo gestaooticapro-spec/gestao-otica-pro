@@ -28,6 +28,17 @@ import PrescriptionHistoryModal from '@/components/modals/PrescriptionHistoryMod
 import { PrintProtocoloButton } from '@/components/vendas/PrintProtocoloButton'
 
 type ServiceOrderWithLinks = any
+
+function SaveServiceOrderButton() {
+    const { pending } = useFormStatus()
+
+    return (
+        <button type="submit" disabled={pending} className="h-10 px-5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-black uppercase tracking-[0.12em] border border-cyan-400/20 shadow-lg shadow-cyan-500/10 disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-2">
+            {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            {pending ? 'Salvando OS' : 'Salvar OS'}
+        </button>
+    )
+}
 type Dependente = Database['public']['Tables']['dependentes']['Row']
 type LensEye = 'OD' | 'OE' | 'AMBOS'
 
@@ -293,7 +304,6 @@ export default function ServiceOrderFormContent({
     const searchParams = useSearchParams()
     const targetOsId = searchParams.get('os_id')
 
-    const { pending: isSaving } = useFormStatus()
     const [isDeleting, startDeleteTransition] = useTransition()
 
     const [currentIndex, setCurrentIndex] = useState(() => {
@@ -901,9 +911,7 @@ Obs.: ${obsOs}`.trim();
                             {isDeleting ? <Loader2 className="animate-spin h-3 w-3" /> : <Trash2 className="h-3 w-3" />} EXCLUIR
                         </button>
                     )}
-                    <button type="submit" disabled={isSaving} className={`${baseButtonStyle} bg-cyan-600 text-white hover:bg-cyan-500 px-6 text-sm shadow-lg shadow-cyan-500/20 border border-cyan-400/20`}>
-                        {isSaving ? <Loader2 className="animate-spin h-4 w-4" /> : <Save className="h-4 w-4" />} SALVAR OS
-                    </button>
+                    <SaveServiceOrderButton />
                 </div>
 
                 {/* Hidden Inputs */}

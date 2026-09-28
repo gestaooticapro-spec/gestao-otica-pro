@@ -114,6 +114,7 @@ async function processClaimedTurn(input: {
       .map((message) => message.text ?? '')
   )
   const decisionResult = buildWhatsAppShadowDecision({
+    storeId: context.conversation.store_id,
     classification,
     memory: context.memory,
     now: decisionAt.toISOString(),

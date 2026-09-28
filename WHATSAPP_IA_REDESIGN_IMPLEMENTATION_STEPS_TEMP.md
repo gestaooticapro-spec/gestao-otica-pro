@@ -35,15 +35,53 @@ registrado no `WHATSAPP_IA_REDESIGN_PLAN.md`.
    explicita fica como contingencia se a chamada da IA estiver indisponivel;
    nao substitui a decisao da IA no caminho normal. Um numero de OS escrito
    explicitamente tambem direciona a mensagem ao agente mesmo quando a
-   classificacao inicial confunde o assunto. Se houver mais de uma OS,
-   nao selecionar silenciosamente: pedir o numero para desambiguar. Consulta
-   automatica de produtos/estoque continua fora do escopo: encaminhar a um
-   atendente. Parcelas, exame, reclamacao, troca e garantia ficam para depois.
+   classificacao inicial confunde o assunto. Com uma ou duas OS abertas, a IA
+   deve informar cada numero, dependente e situacao; acima de duas, deve pedir
+   o identificador sem selecionar pedidos. Consulta automatica de
+   produtos/estoque continua fora do escopo: encaminhar a um atendente.
+   Parcelas, exame, reclamacao, troca e garantia ficam para depois.
    A conclusao depende de deploy Ready e validacao ao vivo por telefone,
    identificador e ambiguidade quando aplicavel.
 6. **PENDENTE — Operacao completa e migracao.** Exibir contexto e decisoes na
    Central, integrar disparos automaticos, migrar loja por loja e aposentar o
    roteador legado quando a equivalencia estiver comprovada.
+
+## Bateria pendente da etapa 5 — executar com vendas/OS ficticias
+
+Esta bateria ainda **nao foi executada ao vivo**. Primeiro, criar registros
+ficticios isolados para os cenarios abaixo; depois executar todos os casos com
+um telefone de teste controlado e apagar os registros de teste ao final. Nao
+usar conversas ou cadastros de clientes reais como fixture. Os testes internos
+de preparacao dos fatos, prompt e semantica de memoria ja passaram, mas nao
+chamaram a API, nao consultaram OS reais e nao substituem esta bateria.
+
+1. **Uma OS em aberto pelo telefone:** confirmar que a resposta informa numero
+   da OS, dependente (ou titular) e situacao real.
+2. **Duas OS em aberto pelo telefone:** confirmar que uma unica resposta da IA
+   inclui as duas OS, o nome de cada dependente (ou titular) e a situacao
+   correspondente a cada uma; nao pode omitir nem misturar os dados.
+3. **Mais de duas OS em aberto:** confirmar que a IA pede o numero da OS e nao
+   lista nem escolhe uma amostra dos pedidos.
+4. **Identificador informado apos a pergunta da IA:** responder com numero de
+   OS e confirmar que a consulta resolve a OS correta, sem repetir o pedido de
+   identificador.
+5. **OS inexistente:** confirmar que nao inventa situacao e nao entra em ciclo
+   repetindo o mesmo pedido; o encaminhamento deve ser redigido pela IA no
+   caminho normal.
+6. **Situacoes distintas:** preparar OS em producao, lente chegada aguardando
+   armacao, em montagem e pronta para retirada; confirmar que numero,
+   dependente e situacao permanecem associados a OS correta.
+7. **Falha real do provedor ou da ferramenta:** validar a contingencia, sem
+   afirmar status nao confirmado e sem deixar a conversa bloqueada.
+8. **Continuidade apos a resposta:** depois de listar duas OS, mandar uma nova
+   pergunta sobre uma delas e confirmar que o fluxo continua, sem silencio
+   indevido, pausa humana indevida ou resposta duplicada.
+
+**Evidencias para cada caso:** uma unica saida vinculada ao inbound; consulta
+de ferramenta correta; resposta originada no OpenAI ou contingencia identificada
+como falha real; fatos iguais aos fixtures; estado de conversa/memoria coerente
+com o envio e sem bloqueio que impeca a proxima mensagem. Registrar somente
+resultado agregado, sem telefones, nomes ou conteudo pessoal no roteiro.
 
 ## Historico
 
@@ -60,6 +98,20 @@ registrado no `WHATSAPP_IA_REDESIGN_PLAN.md`.
   com migracao `20260926120000_whatsapp_order_status_confirmed_outcome.sql`.
   Pendente aplicar a migracao antes do deploy e validar a sequencia completa
   no piloto; a etapa 5 nao esta concluida.
+- 28/09/2026: endurecido o caminho antes da bateria ao vivo. Para uma OS
+  explicita ou identificador pendente, uma resposta nao pode usar o resultado
+  de uma busca por telefone no lugar da busca pelo identificador; se a
+  ferramenta correta nao executou, o piloto nao responde com fatos de outra
+  consulta. Respostas com uma ou duas OS tambem sao verificadas para garantir
+  que numero, dependente (ou titular) e situacao correta aparecam associados;
+  se faltar informacao ou houver mistura, nao envia e encaminha para a equipe.
+  Quando a IA decide encaminhar uma OS nao localizada, a resposta passa por
+  redacao e validacao de IAra/status em vez de ser substituida por texto fixo.
+  O estado legado so e atualizado depois que a saida foi aceita para envio; a
+  memoria do redesign continua sendo atualizada pela confirmacao de entrega.
+  Typecheck e testes internos passaram; nenhum WhatsApp, fixture ou banco de
+  clientes foi usado. A bateria ao vivo e os criterios de saida da etapa 5
+  continuam pendentes.
 
 - 26/09/2026: corrigido o roteamento do estado `silent`: agora ele suprime
   somente a repetição da mesma mensagem; uma pergunta diferente pode continuar
@@ -266,3 +318,11 @@ registrado no `WHATSAPP_IA_REDESIGN_PLAN.md`.
   pelo escritor final com IA; nao se altera o roteamento de produtos/estoque,
   que continua com atendente. Typecheck e 70 testes focados passaram. Aguardar
   deploy e validar ao vivo antes de fechar a etapa.
+- 28/09/2026: a consulta pelo telefone foi ajustada localmente para entregar a
+  IA os fatos de ate duas OS (numero, dependente e situacao); acima de duas, a
+  IA recebe instrucao para pedir identificador sem selecionar pedidos. O fluxo
+  nao adia mais a redacao da IA neste caminho. Saidas geradas agora registram
+  `order_status/auto_reply` ou `order_status/request_identifier` e mantem a
+  conversa no estado correspondente, em vez de `unknown`. Typecheck e 91 testes
+  focados passaram. Deploy e bateria com fixtures ficticios continuam
+  pendentes; ver “Bateria pendente da etapa 5”.
