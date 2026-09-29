@@ -9,6 +9,7 @@ export type Release = {
 // altera o Dashboard ou o modal de histórico.
 export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'A busca de recebimentos encontra clientes por nome com ou sem acentos e por documento, mostra todas as parcelas em aberto e permite carregar mais resultados.',
   'Na Loja 1, perguntas pelo status de OS classificam-se pela intencao, e a resposta usa GPT-4.1 mini para esclarecer nomes nao vinculados ao WhatsApp e informar cada OS do titular em uma frase propria, com numero e situacao oficial.',
   'Na Loja 1, consultas automáticas de OS respondem somente sobre pedidos vinculados ao WhatsApp do cliente; nomes citados na pergunta não abrem pedidos de outro cadastro, e OS ou CPF informados precisam corresponder ao titular desse número.',
   'Na Loja 1, respostas de OS exigem a consulta pelo identificador correto e validam numero, dependente ou titular e situacao de cada pedido; encaminhamentos sao redigidos e validados pela IA, e o estado so muda depois que a saida e aceita.',

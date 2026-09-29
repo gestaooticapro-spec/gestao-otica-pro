@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useTransition, useRef, useEffect } from 'react'
+import { useState, useTransition, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { X, Search, Calendar, Loader2, Wallet, ArrowLeft, ShoppingBag, CheckCircle2, AlertTriangle, ArrowDownCircle, Printer, MessageCircle, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { searchPendenciasCliente, receberParcela } from '@/lib/actions/vendas.actions'
+import { receberParcela } from '@/lib/actions/vendas.actions'
+import { searchPendenciasCliente, getPendenciasClienteById, type ReceivableSearchCursor } from '@/lib/actions/receivable-search.actions'
 import { sendInstallmentReceiptWhatsApp } from '@/lib/actions/manual-whatsapp.actions'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import { printParcela } from '@/components/financeiro/PrintParcelaButton'
@@ -118,7 +119,10 @@ export default function ParcelaSearchModal({
     const [query, setQuery] = useState('')
     const [results, setResults] = useState<any[]>([])
     const [hasSearched, setHasSearched] = useState(false)
-    const [isSearching, startSearch] = useTransition()
+    const [isSearching, setIsSearching] = useState(false)
+    const [isLoadingMore, setIsLoadingMore] = useState(false)
+    const [nextCursor, setNextCursor] = useState<ReceivableSearchCursor | null>(null)
+    const [searchError, setSearchError] = useState('')
 
 
     const [selectedClientData, setSelectedClientData] = useState<any>(null)
@@ -139,6 +143,9 @@ export default function ParcelaSearchModal({
     const [pixCharges, setPixCharges] = useState<Record<number, PixInstallmentCharge>>({})
     const [pixInstallment, setPixInstallment] = useState<any>(null)
     const searchInputRef = useRef<HTMLInputElement>(null)
+    const searchRequestRef = useRef(0)
+    const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const loadMorePendingRef = useRef(false)
     const receiptAttemptRef = useRef<{ signature: string; key: string } | null>(null)
 
     const valorTotalRecebido = parseMoney(valorTotalPagoStr)
@@ -150,6 +157,41 @@ export default function ParcelaSearchModal({
     const formasRecebimentoCompletas =
         valorTotalRecebido > 0 &&
         Math.abs(diferencaFormasRecebimento) <= 0.01
+
+    const runSearch = useCallback(async (searchTerm: string, cursor: ReceivableSearchCursor | null, requestId: number) => {
+        if (searchRequestRef.current !== requestId) return
+        const append = cursor !== null
+        setSearchError('')
+        if (append) {
+            setIsLoadingMore(true)
+        } else {
+            loadMorePendingRef.current = false
+            setResults([])
+            setNextCursor(null)
+            setHasSearched(false)
+            setIsSearching(true)
+        }
+
+        try {
+            const response = await searchPendenciasCliente(storeId, searchTerm, cursor)
+            if (searchRequestRef.current !== requestId) return
+
+            setResults(previous => append ? [...previous, ...response.results] : response.results)
+            setNextCursor(response.nextCursor)
+            setHasSearched(true)
+        } catch (error) {
+            if (searchRequestRef.current !== requestId) return
+            console.error('[Recebimento] Erro na busca:', error)
+            setSearchError('Não foi possível buscar clientes. Tente novamente.')
+            setHasSearched(true)
+        } finally {
+            if (append) loadMorePendingRef.current = false
+            if (searchRequestRef.current === requestId) {
+                setIsSearching(false)
+                setIsLoadingMore(false)
+            }
+        }
+    }, [storeId])
 
     useEffect(() => {
         setMounted(true)
@@ -174,6 +216,8 @@ export default function ParcelaSearchModal({
             }
             setResults([])
             setHasSearched(false)
+            setNextCursor(null)
+            setSearchError('')
             setPaidParcelaIds([])
             setIsSendingReceipt(false)
             setReceiptSent(false)
@@ -196,47 +240,65 @@ export default function ParcelaSearchModal({
     }, [isOpen, selectedClientData, pixProvider, storeId])
 
     useEffect(() => {
-        if (!isOpen) return
+        const requestId = ++searchRequestRef.current
+        setResults([])
+        setNextCursor(null)
+        setSearchError('')
+        setHasSearched(false)
+        setIsSearching(false)
+        setIsLoadingMore(false)
+        loadMorePendingRef.current = false
+        if (!isOpen || query.trim().length < 3) return
 
         const timer = setTimeout(() => {
-            if (query.trim().length >= 3) {
-                startSearch(async () => {
-                    try {
-                        const res = await searchPendenciasCliente(storeId, query)
-                        setResults(res as any[])
-                        setHasSearched(true)
-                    } catch (error) {
-                        console.error("[DEBUG] Erro na busca:", error)
-                    }
-                })
-            } else {
-                setResults([])
-                setHasSearched(false)
-            }
+            searchTimerRef.current = null
+            void runSearch(query.trim(), null, requestId)
         }, 300)
+        searchTimerRef.current = timer
 
-        return () => clearTimeout(timer)
-    }, [query, storeId, isOpen])
+        return () => {
+            clearTimeout(timer)
+            if (searchTimerRef.current === timer) searchTimerRef.current = null
+            searchRequestRef.current += 1
+        }
+    }, [query, storeId, isOpen, runSearch])
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault()
+        if (query.trim().length < 3) return
+        if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+        searchTimerRef.current = null
+        void runSearch(query.trim(), null, ++searchRequestRef.current)
+    }
+
+    const handleLoadMore = () => {
+        if (!nextCursor || isSearching || isLoadingMore || loadMorePendingRef.current) return
+        loadMorePendingRef.current = true
+        void runSearch(query.trim(), nextCursor, searchRequestRef.current)
     }
 
     const handleSelectClient = (clientData: any) => {
+        searchRequestRef.current += 1
+        setIsSearching(false)
+        setIsLoadingMore(false)
         setSelectedClientData(clientData)
         setStep('details')
     }
 
     const refreshSelectedClientData = async () => {
         const customerId = Number(selectedClientData?.cliente?.id)
-        const searchTerm = String(selectedClientData?.cliente?.cpf || selectedClientData?.cliente?.full_name || '').trim()
-        if (!Number.isSafeInteger(customerId) || !searchTerm) return
+        if (!Number.isSafeInteger(customerId)) return
 
-        const clients = await searchPendenciasCliente(storeId, searchTerm) as any[]
-        const refreshedClient = clients.find((candidate) => Number(candidate?.cliente?.id) === customerId)
-        if (refreshedClient) {
-            setSelectedClientData(refreshedClient)
-            return
+        try {
+            const refreshedClient = await getPendenciasClienteById(storeId, customerId)
+            if (refreshedClient) {
+                setSelectedClientData(refreshedClient)
+                return
+            }
+        } catch (error) {
+            console.error('[Recebimento] Erro ao atualizar parcelas:', error)
+            setSearchError('Não foi possível atualizar as parcelas. Reabra o recebimento.')
+            toast.error('Não foi possível atualizar as parcelas. Reabra o recebimento.')
         }
 
         // Quando a ultima parcela foi quitada, o cliente deixa de pertencer a
@@ -245,8 +307,9 @@ export default function ParcelaSearchModal({
         setSelectedClientData(null)
         setSelectedParcela(null)
         setPixCharges({})
-        setResults(clients)
-        setHasSearched(true)
+        setResults([])
+        setNextCursor(null)
+        setHasSearched(false)
         setStep('search')
     }
 
@@ -459,7 +522,10 @@ export default function ParcelaSearchModal({
                                     <input
                                         ref={searchInputRef}
                                         value={query}
-                                        onChange={e => setQuery(e.target.value)}
+                                        onChange={e => {
+                                            searchRequestRef.current += 1
+                                            setQuery(e.target.value)
+                                        }}
                                         placeholder="Nome do cliente..."
                                         className="w-full h-12 bg-white/5 border border-white/10 rounded-xl shadow-sm focus:ring-1 focus:ring-amber-500/50 focus:border-amber-500/50 outline-none font-bold text-slate-200 text-lg pl-12 placeholder:text-slate-600 transition-all"
                                     />
@@ -483,7 +549,19 @@ export default function ParcelaSearchModal({
                                         </button>
                                     ))}
 
-                                    {results.length === 0 && !isSearching && hasSearched && (
+                                    {nextCursor && !searchError && (
+                                        <button type="button" onClick={handleLoadMore} disabled={isLoadingMore} className="w-full rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-xs font-bold uppercase tracking-wide text-amber-400 hover:bg-amber-500/10 disabled:opacity-50">
+                                            {isLoadingMore ? 'Carregando clientes...' : 'Mostrar mais clientes'}
+                                        </button>
+                                    )}
+
+                                    {searchError && (
+                                        <div role="alert" className="text-center py-8 text-amber-400 font-medium">
+                                            {searchError}
+                                        </div>
+                                    )}
+
+                                    {results.length === 0 && !isSearching && hasSearched && !searchError && (
                                         <div className="text-center py-12 text-slate-500 font-medium">
                                             Nenhum cliente encontrado.
                                         </div>

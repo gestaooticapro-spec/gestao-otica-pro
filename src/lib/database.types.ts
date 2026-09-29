@@ -1162,6 +1162,7 @@ export interface Database {
           id: number
           store_id: number
           full_name: string
+          receivable_search_name: string
           razao_social: string | null
           nome_fantasia: string | null
           person_type: 'PF' | 'PJ'
@@ -1212,6 +1213,7 @@ export interface Database {
           id?: number
           store_id: number
           full_name: string
+          receivable_search_name?: string
           razao_social?: string | null
           nome_fantasia?: string | null
           person_type?: 'PF' | 'PJ'
@@ -1227,6 +1229,7 @@ export interface Database {
         Update: {
           id?: number
           full_name?: string
+          receivable_search_name?: string
           razao_social?: string | null
           nome_fantasia?: string | null
           [key: string]: any
