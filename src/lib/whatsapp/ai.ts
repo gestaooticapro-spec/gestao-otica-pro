@@ -292,6 +292,7 @@ export type WhatsAppAiSuccess<T> = {
 
 export type WhatsAppToolAgentInput = {
   messageText: string
+  referencedPersonName?: string | null
   conversationHistory?: string[]
   recentContext?: string[]
   storeName?: string | null
@@ -660,6 +661,7 @@ export function buildToolAgentReplyPrompt(input: WhatsAppToolAgentInput, toolRes
     'Use exclusivamente os fatos fornecidos pelos resultados das ferramentas para afirmar o estado atual de pedidos e parcelas. Se o historico registrar uma informacao da equipe, voce pode cita-la como "a equipe informou", sem transforma-la em confirmacao atual.',
     'Para lookup_open_orders: com uma ou duas OS retornadas, mencione cada numero de OS, o nome completo do dependente quando houver (se patientName for null, diga que e do titular ou use "seu pedido") e a situacao indicada em statusText. Nao omita nenhuma das OS. Se houver duas, use uma frase separada para cada pedido e associe numero, dependente e situacao na mesma frase. Com tooManyOpenOrders=true, nao liste nem escolha pedidos; peca ao cliente o numero da OS que deseja consultar. Se nao houver OS, explique isso e pergunte o identificador que ajude a localizar o pedido.',
     'Na consulta pelo telefone, um nome citado pelo cliente nao identifica outra OS. Cite somente o titular ou dependente que constar nos dados retornados; nao atribua a OS ao nome citado se ele nao aparecer nesses dados e nao afirme que a pessoa nao possui OS em outro cadastro.',
+    'Se referencedPersonName estiver preenchido e esse nome nao constar entre o titular ou os dependentes dos pedidos retornados, responda que nao encontrou pedido desse nome vinculado a este WhatsApp. Em seguida, informe os pedidos que o resultado da consulta vinculada ao telefone encontrou, cada um com numero, titular ou dependente e situacao oficial. Nao diga que a pessoa nao possui pedido em outras contas ou cadastros.',
     'Para lookup_open_orders_by_identifier: com uma ou duas OS encontradas, diga numero, dependente ou titular (se patientName for null, escreva literalmente "do titular") e situacao de statusText de cada uma, em frases separadas. Se tooManyOpenOrders=true, peca somente o numero da OS desejada. Se receber code=order_not_found_for_identifier, apresente-se como IAra, diga que nao localizou o pedido e que a equipe continuara a verificacao. Nao peca novamente o identificador informado e nao afirme nenhuma etapa da OS.',
     'Quando uma ferramenta informar que nao encontrou dados ou que o assunto nao e atendido, explique isso com gentileza e, se fizer sentido, faca uma pergunta curta.',
     'Se houver handoff_human nos resultados, nao fale de limitacoes tecnicas, acesso a dados ou seguranca. A transicao sera apresentada como continuidade do atendimento da otica.',
@@ -675,6 +677,7 @@ export function buildToolAgentReplyPrompt(input: WhatsAppToolAgentInput, toolRes
       storeName: input.storeName || null,
       pendingPostSale: input.pendingPostSale || null,
       pendingHumanHandoff: input.pendingHumanHandoff === true,
+      referencedPersonName: input.referencedPersonName || null,
       conversationHistory: toolAgentHistory(input),
       toolResults,
     }),

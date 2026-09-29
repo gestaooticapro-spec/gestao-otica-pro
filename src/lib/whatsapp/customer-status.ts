@@ -15,6 +15,7 @@ import {
   generateWhatsAppRedesignReply,
   generateWhatsAppFallbackReply,
   humanizeWhatsAppReply,
+  writeWhatsAppToolAgentReply,
   extractReceiptWithVision,
   detectWhatsAppConversationLanguage,
   type WhatsAppReceiptExtraction,
@@ -2878,6 +2879,7 @@ export async function resolveCustomerStatus(
   }
 
   let orderLookupPlan: StoreOneOrderLookupPlan | null = null
+  let referencedOrderPersonName: string | null = null
   let redesignConversationHistory: string[] = []
   const isRepeatedMessageDuringSilentWindow = state?.state === 'silent'
     && isRepeatedSilentInbound(effectiveMessageText, state.metadata)
@@ -2914,6 +2916,9 @@ export async function resolveCustomerStatus(
           && !Array.isArray(turnMetadata.shadowProcessing)
           ? turnMetadata.shadowProcessing as Record<string, unknown> : {}
         const classification = WhatsAppRedesignClassificationSchema.parse(shadowProcessing.classification)
+        referencedOrderPersonName = classification.entities.patientName
+          || classification.entities.customerName
+          || null
         const decision = WhatsAppSystemDecisionSchema.parse(shadowProcessing.decision)
         const currentTurnMessageIds = new Set(turnContext.turnMessages.map((message) => message.id))
         redesignConversationHistory = turnContext.memory.messages
@@ -3628,6 +3633,7 @@ export async function resolveCustomerStatus(
       plan: orderLookupPlan,
       assistant: {
         messageText: effectiveMessageText || '',
+        referencedPersonName: referencedOrderPersonName,
         conversationHistory: redesignConversationHistory,
         recentContext,
         storeName: storeProfile.name,
@@ -3635,6 +3641,9 @@ export async function resolveCustomerStatus(
         pendingHumanHandoff: state?.state === 'awaiting_human',
       },
       executeLookup: executeOrderLookup,
+      writeReply: (assistant, results, options) => writeWhatsAppToolAgentReply(
+        assistant, results, { ...options, model: 'gpt-4.1-mini' }
+      ),
     })
     for (let index = 0; index < agent.aiResults.length; index += 1) {
       await recordAiResult(agent.aiResultTasks[index], agent.aiResults[index])

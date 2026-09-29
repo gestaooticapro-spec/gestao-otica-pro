@@ -4,7 +4,8 @@ import dotenv from 'dotenv'
 dotenv.config({ path: '.env.local', quiet: true })
 
 async function main() {
-  const { classifyWhatsAppRedesignConversation } = await import('../src/lib/whatsapp/ai')
+  const { classifyWhatsAppRedesignConversation, writeWhatsAppToolAgentReply } = await import('../src/lib/whatsapp/ai')
+  const { runStoreOneOrderStatusTurn } = await import('../src/lib/whatsapp/redesign/order-status-live')
   const summary = {
     activeTopic: 'vision_exam' as const,
     secondaryTopics: [],
@@ -45,6 +46,31 @@ async function main() {
     console.log(`${passed ? 'OK' : 'FAIL'}: ${text} -> ${actual} (esperado: ${expected})`)
     if (!passed) failed = true
   }
+
+  const orders = [
+    { orderNumber: '1043', patientName: null, status: 'lens_arrived_assembling', statusText: 'Está na fila de montagem, com a lente já chegada.' },
+    { orderNumber: '1041', patientName: null, status: 'lens_in_production', statusText: 'Está em produção no laboratório.' },
+  ]
+  const statusTurn = await runStoreOneOrderStatusTurn({
+    plan: { tool: 'lookup_open_orders', source: 'canonical_decision' },
+    assistant: {
+      messageText: 'Como está o óculos do Odair?',
+      referencedPersonName: 'Odair',
+      storeName: 'Ótica de teste',
+    },
+    executeLookup: async (call) => ({
+      tool: call.name,
+      ok: true,
+      data: { customerName: 'Cliente de teste', multipleOpenOrders: true, tooManyOpenOrders: false, orders },
+    }),
+    writeReply: (assistant, results, options) => writeWhatsAppToolAgentReply(
+      assistant, results, { ...options, model: 'gpt-4.1-mini' }
+    ),
+  })
+  const replyValid = statusTurn.disposition.kind === 'send'
+  console.log(`${replyValid ? 'OK' : 'FAIL'}: consulta e validacao da resposta com nome nao vinculado (${statusTurn.disposition.kind}${statusTurn.disposition.kind === 'suppress' ? `: ${statusTurn.disposition.reason}` : ''})`)
+  if (!replyValid) failed = true
+
   if (failed) process.exitCode = 1
 }
 

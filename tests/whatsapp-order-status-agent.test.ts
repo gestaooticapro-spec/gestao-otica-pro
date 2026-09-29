@@ -57,6 +57,31 @@ test('prompt de resposta entrega a decisao e os fatos das duas OS para a IA', ()
   assert.match(prompt, /uma frase separada para cada pedido/u)
 })
 
+test('prompt orienta a desambiguar nome citado e listar as OS realmente vinculadas ao WhatsApp', () => {
+  const facts = [
+    { orderNumber: '1043', patientName: null, status: 'lens_arrived_assembling', statusText: 'Está na fila de montagem, com a lente já chegada.' },
+    { orderNumber: '1041', patientName: null, status: 'lens_in_production', statusText: 'Está em produção no laboratório.' },
+  ]
+  const prompt = buildToolAgentReplyPrompt({
+    messageText: 'Como está o óculos do Odair?',
+    referencedPersonName: 'Odair',
+  }, [{
+    tool: 'lookup_open_orders',
+    ok: true,
+    data: { customerName: 'Jaime Rodrigues Junior', ...prepareOpenOrdersForAgent(facts) },
+  }])
+
+  assert.match(prompt, /referencedPersonName/u)
+  assert.match(prompt, /Odair/u)
+  assert.match(prompt, /nao encontrou pedido desse nome vinculado a este WhatsApp/u)
+  assert.match(prompt, /informe os pedidos que o resultado da consulta vinculada ao telefone encontrou/u)
+  assert.deepEqual(validateOrderAgentReply(
+    'Não encontrei OS de Odair vinculada a este WhatsApp. No cadastro vinculado a este número, a OS 1043 do titular está na fila de montagem, com a lente já chegada. A OS 1041 do titular está em produção no laboratório.',
+    facts,
+    { allowPossessiveOwnerReference: true }
+  ), { valid: true })
+})
+
 test('prompt instrui a IA a pedir identificador quando ha mais de duas OS', () => {
   const prepared = prepareOpenOrdersForAgent([order('1005'), order('1006'), order('1007')])
   const prompt = buildToolAgentReplyPrompt({
