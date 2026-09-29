@@ -46,6 +46,18 @@ a expansão gradual prevista na Etapa 6.
 | 5. Implementar consultas operacionais | **Em andamento — OS/retirada** | Acrescentar somente consultas aprovadas com dados verificáveis. Com classificação confiável de `order_status`, o agente de ferramentas da IA escolhe a consulta por telefone ou identificador e redige com base no resultado; a busca determinística explícita fica como contingência de indisponibilidade da IA. Nunca selecionar silenciosamente entre múltiplas OS. Consulta automática de produtos/estoque está fora do escopo atual: esses pedidos sempre vão para um atendente até decisão futura explícita. |
 | 6. Operação completa e migração | Pendente | Completar a operação, migrar gradualmente loja por loja e aposentar o legado somente após equivalência comprovada. |
 
+### Prioridade atual: continuidade das ações iniciadas pela loja
+
+Em 29/09/2026, o usuário decidiu pausar a bateria de OS/retirada e avançar
+para a conversa que continua após disparos proativos de pós-venda e lembretes
+de parcelas. O primeiro recorte implementado na Loja 1 preserva o pós-venda
+pendente ao responder outro assunto, retoma a avaliação quando o cliente volta
+a ela e só registra uma nota explícita enquanto aguarda avaliação. Mensagens
+sem intenção confiável são silenciadas sem fallback genérico e sem converter o
+contexto em `human_pause`. A simulação local cobre OS, retirada, retorno à
+avaliação e registro de nota; ainda faltam deploy e validação ao vivo. Lembretes
+de parcelas e suas respostas continuam como próximo recorte depois desta base.
+
 ### Evidências já observadas no piloto ao vivo
 
 - O usuário confirmou respostas reais de horário — inclusive correção para a

@@ -326,3 +326,12 @@ resultado agregado, sem telefones, nomes ou conteudo pessoal no roteiro.
   conversa no estado correspondente, em vez de `unknown`. Typecheck e 91 testes
   focados passaram. Deploy e bateria com fixtures ficticios continuam
   pendentes; ver “Bateria pendente da etapa 5”.
+- 29/09/2026: por decisao do usuario, a bateria de OS/retirada fica pausada e o
+  trabalho avanca para a continuidade das acoes iniciadas pela loja. Na Loja 1,
+  o pos-venda pendente agora sobrevive a consultas intercaladas sobre OS e
+  retirada; uma classificacao incerta silencia sem fallback e sem criar
+  `human_pause`; a nota e gravada apenas se estiver explicita na mensagem atual
+  e a etapa aguardando avaliacao. Simulacao local cobrindo a sequencia
+  intercalada passou; typecheck e 130 testes do redesenho passaram. Ainda faltam
+  deploy e validacao ao vivo com dados ficticios. Lembretes de parcelas ainda
+  nao foram alterados.

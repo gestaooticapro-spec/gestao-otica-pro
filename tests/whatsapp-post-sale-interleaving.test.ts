@@ -1,0 +1,71 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import {
+  decidePostSaleTurnDisposition,
+  extractPostSaleRatingForStage,
+  getPostSaleForcedToolCall,
+  transitionPostSaleContextAfterTurn,
+  type PostSaleContext,
+} from '../src/lib/whatsapp/post-sale-followup'
+
+const MIN_CONFIDENCE = 0.72
+
+function classify(intent: string, automationCandidate = true, confidence = 0.95) {
+  return decidePostSaleTurnDisposition({
+    classificationSucceeded: true,
+    confidence,
+    automationCandidate,
+    intent,
+    minimumConfidence: MIN_CONFIDENCE,
+  })
+}
+
+test('mantem o pos-venda pendente ao intercalar OS e retirada antes da nota', () => {
+  let context: PostSaleContext = {
+    postSalesId: 34,
+    serviceOrderId: 56,
+    stage: 'awaiting_feedback',
+  }
+
+  assert.equal(classify('order_status'), 'route_other_topic')
+  context = transitionPostSaleContextAfterTurn(context, 'preserve')!
+  assert.equal(context.stage, 'awaiting_feedback')
+
+  assert.equal(classify('post_sale_positive'), 'handle_post_sale')
+  assert.deepEqual(getPostSaleForcedToolCall({
+    context,
+    disposition: 'handle_post_sale',
+    intent: 'post_sale_positive',
+    explicitRating: null,
+  }), { name: 'request_post_sale_rating' })
+  context = transitionPostSaleContextAfterTurn(context, 'rating_requested')!
+  assert.equal(context.stage, 'awaiting_rating')
+
+  assert.equal(classify('pickup_or_scheduling'), 'route_other_topic')
+  assert.equal(extractPostSaleRatingForStage('Vou aí buscar.', context.stage), null)
+  context = transitionPostSaleContextAfterTurn(context, 'preserve')!
+  assert.equal(context.stage, 'awaiting_rating')
+
+  assert.equal(extractPostSaleRatingForStage('Obrigado. Nota 5.', context.stage), 5)
+  assert.deepEqual(getPostSaleForcedToolCall({
+    context,
+    disposition: 'handle_post_sale',
+    intent: null,
+    explicitRating: 5,
+  }), { name: 'record_post_sale_rating', rating: 5 })
+  context = transitionPostSaleContextAfterTurn(context, 'rating_recorded')!
+  assert.equal(context.stage, 'completed')
+  assert.equal(extractPostSaleRatingForStage('Nota 4', context.stage), null)
+})
+
+test('mensagem incerta suprime resposta sem converter o acompanhamento em handoff', () => {
+  assert.equal(classify('unknown', false), 'suppress_preserving_context')
+  assert.equal(classify('store_hours', true, 0.4), 'suppress_preserving_context')
+  assert.equal(decidePostSaleTurnDisposition({
+    classificationSucceeded: false,
+    confidence: 0,
+    automationCandidate: false,
+    intent: null,
+    minimumConfidence: MIN_CONFIDENCE,
+  }), 'suppress_preserving_context')
+})

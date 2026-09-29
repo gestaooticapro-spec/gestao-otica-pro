@@ -32,6 +32,71 @@ export type PostSaleContext = {
   ratingPromptCount?: number | null
 }
 
+export type PostSaleTurnDisposition = 'handle_post_sale' | 'route_other_topic' | 'suppress_preserving_context'
+
+export type PostSaleForcedToolCall =
+  | { name: 'request_post_sale_rating' }
+  | { name: 'record_post_sale_rating'; rating: number }
+
+export function getPostSaleForcedToolCall(input: {
+  context: PostSaleContext | null
+  disposition: PostSaleTurnDisposition | null
+  intent: string | null
+  explicitRating: number | null
+}): PostSaleForcedToolCall | null {
+  if (!input.context?.postSalesId || input.disposition !== 'handle_post_sale') return null
+
+  if (input.context.stage === 'awaiting_rating' && input.explicitRating) {
+    return { name: 'record_post_sale_rating', rating: input.explicitRating }
+  }
+
+  if (input.context.stage === 'awaiting_feedback' && input.intent === 'post_sale_positive') {
+    return { name: 'request_post_sale_rating' }
+  }
+
+  return null
+}
+
+export function decidePostSaleTurnDisposition(input: {
+  classificationSucceeded: boolean
+  confidence: number
+  automationCandidate: boolean
+  intent: string | null
+  minimumConfidence: number
+}): PostSaleTurnDisposition {
+  if (
+    !input.classificationSucceeded
+    || input.confidence < input.minimumConfidence
+    || !input.intent
+    || input.intent === 'unknown'
+  ) {
+    return 'suppress_preserving_context'
+  }
+
+  if (input.intent === 'post_sale_positive'
+    || input.intent === 'complaint_or_adaptation'
+    || input.intent === 'human_agent_request') {
+    return 'handle_post_sale'
+  }
+
+  return input.automationCandidate
+    ? 'route_other_topic'
+    : 'suppress_preserving_context'
+}
+
+export function transitionPostSaleContextAfterTurn(
+  context: PostSaleContext | null,
+  outcome: 'preserve' | 'rating_requested' | 'rating_recorded' | 'post_sale_handoff'
+): PostSaleContext | null {
+  if (!context) return null
+  if (outcome === 'rating_recorded') return { ...context, stage: 'completed' }
+  if (outcome === 'rating_requested' && context.stage === 'awaiting_feedback') {
+    return { ...context, stage: 'awaiting_rating', ratingPromptCount: 1 }
+  }
+  if (outcome === 'post_sale_handoff') return { ...context, stage: 'handoff' }
+  return context
+}
+
 export type StalePostSaleFollowupRecovery =
   | 'reschedule'
   | 'finalize_sent'

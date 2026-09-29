@@ -46,9 +46,13 @@ import {
 } from './humanization'
 import { findOpenInstallmentsByPhone } from '@/lib/actions/consultas.actions'
 import {
+  decidePostSaleTurnDisposition,
   extractPostSaleRatingForStage,
+  getPostSaleForcedToolCall,
   readPostSaleContext,
+  transitionPostSaleContextAfterTurn,
   type PostSaleContext,
+  type PostSaleTurnDisposition,
 } from './post-sale-followup'
 import { concludePostSaleFromWhatsApp, recordPostSaleInteraction } from './post-sales'
 import {
@@ -3028,7 +3032,7 @@ export async function resolveCustomerStatus(
   }
 
   const effectiveState = effectiveStateForControl(state, controlMode)
-  const baseMetadata = appendAiSessionMessage(
+  let baseMetadata = appendAiSessionMessage(
     mergeMetadata(state?.metadata, inboundContextMetadata),
     'customer',
     effectiveMessageText
@@ -3041,6 +3045,18 @@ export async function resolveCustomerStatus(
     ? persistentPostSaleMemory.context
     : null
   const postSaleContextWasRecovered = !livePostSaleContext && Boolean(recoveredPostSaleContext)
+  const activePostSaleContext = livePostSaleContext ?? recoveredPostSaleContext
+  const pendingPostSaleContext = activePostSaleContext?.stage === 'completed'
+    ? null
+    : activePostSaleContext
+  if (channel.store_id === 1 && recoveredPostSaleContext) {
+    baseMetadata = mergeMetadata(baseMetadata, {
+      postSaleContext: recoveredPostSaleContext as unknown as Json,
+    })
+  }
+  let recoveredPostSaleClassification: WhatsAppAiResult<WhatsAppIntentClassification> | null = null
+  let postSaleTurnClassification: WhatsAppAiResult<WhatsAppIntentClassification> | null = null
+  let postSaleTurnDisposition: PostSaleTurnDisposition | null = null
   const persistedConversationHistory = isWhatsAppToolAgentEnabled(automationSettings)
     ? await loadPersistedConversationHistory(channel, normalizedPhone, inbound.id)
     : []
@@ -3699,9 +3715,72 @@ export async function resolveCustomerStatus(
     })
   }
 
+  const explicitPostSaleRating = extractPostSaleRatingForStage(
+    effectiveMessageText,
+    pendingPostSaleContext?.stage
+  )
+  if (channel.store_id === 1 && pendingPostSaleContext) {
+    if (explicitPostSaleRating) {
+      postSaleTurnDisposition = 'handle_post_sale'
+    } else {
+      postSaleTurnClassification = await classifyWhatsAppIntent({
+        messageText: effectiveMessageText || '',
+        channelLabel: channel.instance_key,
+        storeName: storeProfile.name,
+        conversationState: state?.state ?? null,
+        recentContext,
+        conversationHistory,
+        hasRecentAttachment: hasRecentAttachmentContext(state),
+        hasOpenOrder: hasKnownOpenOrderContext(state),
+        handoffActive: false,
+      })
+      await recordAiResult('intent_classification', postSaleTurnClassification)
+      postSaleTurnDisposition = decidePostSaleTurnDisposition({
+        classificationSucceeded: postSaleTurnClassification.success,
+        confidence: postSaleTurnClassification.success ? postSaleTurnClassification.data.confidence : 0,
+        automationCandidate: postSaleTurnClassification.success
+          ? postSaleTurnClassification.data.automation_candidate
+          : false,
+        intent: postSaleTurnClassification.success ? postSaleTurnClassification.data.intent : null,
+        minimumConfidence: AI_AUTOMATION_MIN_CONFIDENCE,
+      })
+      recoveredPostSaleClassification = postSaleTurnClassification
+    }
+
+    if (postSaleTurnDisposition === 'suppress_preserving_context') {
+      await setCurrentConversationState('ai_session', AI_SESSION_MS, mergeMetadata(baseMetadata, {
+        reason: 'post_sale_message_suppressed_without_clear_intent',
+        postSaleContext: pendingPostSaleContext as unknown as Json,
+        ...buildDecisionMetadata({
+          intent: postSaleTurnClassification?.success ? postSaleTurnClassification.data.intent : null,
+          confidence: postSaleTurnClassification?.success ? postSaleTurnClassification.data.confidence : null,
+          action: 'suppress_reply',
+          outboundType: null,
+        }),
+      }))
+      return withAiDiagnostics(await ignoreInbound(inbound.id, {
+        stage: 'post_sale_interleaving',
+        reason: 'unclear_intent_preserved_pending_post_sale',
+        route: 'post_sale_context',
+        intent: postSaleTurnClassification?.success ? postSaleTurnClassification.data.intent : null,
+        action: 'suppress_reply',
+      }))
+    }
+  }
+
   // Assuntos fora do piloto de OS preservam o agente atual.
   if (toolAgentEnabled) {
-    const toolPostSaleContext = livePostSaleContext ?? recoveredPostSaleContext
+    const toolPostSaleContext = channel.store_id === 1
+      ? postSaleTurnDisposition === 'handle_post_sale' ? pendingPostSaleContext : null
+      : activePostSaleContext
+    const forcedPostSaleToolCall = channel.store_id === 1
+      ? getPostSaleForcedToolCall({
+        context: toolPostSaleContext,
+        disposition: postSaleTurnDisposition,
+        intent: postSaleTurnClassification?.success ? postSaleTurnClassification.data.intent : null,
+        explicitRating: explicitPostSaleRating,
+      })
+      : null
     const toolAgent = await runWhatsAppToolAgent({
       assistant: {
         messageText: effectiveMessageText || '',
@@ -3716,6 +3795,7 @@ export async function resolveCustomerStatus(
           : null,
         pendingHumanHandoff: state?.state === 'awaiting_human',
       },
+      forcedToolCalls: forcedPostSaleToolCall ? [forcedPostSaleToolCall] : undefined,
       executeTool: async (call: WhatsAppToolCall): Promise<WhatsAppToolResult> => {
         if (call.name === 'lookup_open_orders' || call.name === 'lookup_open_orders_by_identifier') {
           return executeOrderLookup(call)
@@ -3778,6 +3858,13 @@ export async function resolveCustomerStatus(
           if (!toolPostSaleContext?.postSalesId || toolPostSaleContext.stage !== 'awaiting_feedback') {
             return { tool: call.name, ok: false, data: { code: 'no_feedback_pending' } }
           }
+          if (channel.store_id === 1 && (
+            postSaleTurnDisposition !== 'handle_post_sale'
+            || !postSaleTurnClassification?.success
+            || postSaleTurnClassification.data.intent !== 'post_sale_positive'
+          )) {
+            return { tool: call.name, ok: false, data: { code: 'current_message_is_not_confirmed_post_sale_feedback' } }
+          }
           await recordPostSaleInteractionIfPossible({
             channel,
             postSaleContext: toolPostSaleContext,
@@ -3794,6 +3881,10 @@ export async function resolveCustomerStatus(
         if (call.name === 'record_post_sale_rating') {
           if (!toolPostSaleContext?.postSalesId || toolPostSaleContext.stage !== 'awaiting_rating' || !call.rating) {
             return { tool: call.name, ok: false, data: { code: 'no_rating_pending' } }
+          }
+          if (channel.store_id === 1
+            && extractPostSaleRatingForStage(effectiveMessageText, toolPostSaleContext.stage) !== call.rating) {
+            return { tool: call.name, ok: false, data: { code: 'rating_not_explicitly_present_in_current_message' } }
           }
 
           await concludePostSaleFromWhatsApp({
@@ -3841,11 +3932,22 @@ export async function resolveCustomerStatus(
         && toolAgent.toolResults.some((result) => result.tool === 'record_post_sale_rating' && result.ok)
       const ratingRequested = toolAgent.toolCalls.some((call) => call.name === 'request_post_sale_rating')
         && toolAgent.toolResults.some((result) => result.tool === 'request_post_sale_rating' && result.ok)
-      const nextPostSaleContext = ratingRecorded && toolPostSaleContext
-        ? { ...toolPostSaleContext, stage: 'completed' }
-        : ratingRequested && toolPostSaleContext
-          ? { ...toolPostSaleContext, stage: 'awaiting_rating', ratingPromptCount: 1 }
-          : toolPostSaleContext
+      const nextPostSaleContext = channel.store_id === 1
+        ? transitionPostSaleContextAfterTurn(
+          activePostSaleContext,
+          ratingRecorded
+            ? 'rating_recorded'
+            : ratingRequested
+              ? 'rating_requested'
+              : handedOff && postSaleTurnDisposition === 'handle_post_sale'
+                ? 'post_sale_handoff'
+                : 'preserve'
+        )
+        : ratingRecorded && toolPostSaleContext
+          ? { ...toolPostSaleContext, stage: 'completed' }
+          : ratingRequested && toolPostSaleContext
+            ? { ...toolPostSaleContext, stage: 'awaiting_rating', ratingPromptCount: 1 }
+            : toolPostSaleContext
       const semantics = resolveToolAgentReplySemantics({
         handedOff,
         orderStatusAction: null,
@@ -4093,8 +4195,7 @@ export async function resolveCustomerStatus(
     })
   }
 
-  let recoveredPostSaleClassification: WhatsAppAiResult<WhatsAppIntentClassification> | null = null
-  if (postSaleContextWasRecovered && recoveredPostSaleContext) {
+  if (postSaleContextWasRecovered && recoveredPostSaleContext && channel.store_id !== 1) {
     const recoveredRating = extractPostSaleRatingForStage(effectiveMessageText, recoveredPostSaleContext.stage)
     let shouldResumePostSale = Boolean(recoveredRating)
 
@@ -4130,10 +4231,10 @@ export async function resolveCustomerStatus(
     }
   }
 
-  const postSaleContext = livePostSaleContext ?? recoveredPostSaleContext
+  const postSaleContext = activePostSaleContext
   const postSaleRatingOutcome = readPostSaleRatingOutcome(effectiveMessageText, postSaleContext)
 
-  if (postSaleContext) {
+  if (postSaleContext && !(channel.store_id === 1 && postSaleTurnDisposition === 'route_other_topic')) {
     if (postSaleRatingOutcome?.rating && postSaleContext.postSalesId) {
       await consumeForceAiOverrideIfNeeded()
       await concludePostSaleFromWhatsApp({
@@ -4621,7 +4722,7 @@ export async function resolveCustomerStatus(
 
   if (canUseAiForFreeform(effectiveMessageText || undefined)) {
     const storeProfile = await loadStoreProfile(channel.store_id)
-    const classification = await classifyWhatsAppIntent({
+    const classification = postSaleTurnClassification ?? await classifyWhatsAppIntent({
       messageText: effectiveMessageText!,
       channelLabel: channel.instance_key,
       storeName: storeProfile.name,
@@ -4634,7 +4735,7 @@ export async function resolveCustomerStatus(
     })
 
     // Log the AI classification
-    await recordAiResult('intent_classification', classification)
+    if (!postSaleTurnClassification) await recordAiResult('intent_classification', classification)
 
     const storeHoursText = buildStoreHoursText(storeProfile)
     const storeLocationText = buildStoreLocationReply(storeProfile)
