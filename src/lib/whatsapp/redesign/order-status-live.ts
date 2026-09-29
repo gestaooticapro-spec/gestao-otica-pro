@@ -42,20 +42,22 @@ export function planStoreOneOrderLookup(input: {
 
   const messageDigits = (input.messageText || '').replace(/\D/gu, '')
   const explicitCpf = messageDigits.length === 11
-  const entityValues = [classification.entities.orderNumber, classification.entities.cpf,
-    classification.entities.customerName, classification.entities.patientName]
-  const identifierInCurrentMessage = entityValues.some((value) => {
+  // Nomes citados na pergunta nao autorizam consultar OS de outro cadastro.
+  // A consulta por nome usa apenas o cliente associado ao WhatsApp.
+  const entityValues = [classification.entities.orderNumber, classification.entities.cpf]
+  const numericIdentifierInCurrentMessage = entityValues.some((value) => {
     if (!value) return false
     const digits = value.replace(/\D/gu, '')
-    return digits.length >= 3 ? messageDigits.includes(digits)
-      : normalize(input.messageText || '').includes(normalize(value))
+    return digits.length >= 3 && messageDigits.includes(digits)
   })
-  const byIdentifier = Boolean(explicitNumber || explicitCpf || pendingIdentifier
-    || (canonicalOrderDecision && identifierInCurrentMessage))
+  const bareOrderNumber = /^\s*\d{1,10}\s*$/u.test(input.messageText || '')
+  const byIdentifier = Boolean(explicitNumber || explicitCpf
+    || (pendingIdentifier && bareOrderNumber)
+    || (canonicalOrderDecision && numericIdentifierInCurrentMessage))
   return {
     tool: byIdentifier ? 'lookup_open_orders_by_identifier' : 'lookup_open_orders',
     source: explicitNumber ? 'explicit_identifier'
-      : pendingIdentifier ? 'pending_identifier' : 'canonical_decision',
+      : pendingIdentifier && byIdentifier ? 'pending_identifier' : 'canonical_decision',
   }
 }
 

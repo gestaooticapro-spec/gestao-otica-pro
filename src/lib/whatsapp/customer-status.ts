@@ -1718,7 +1718,7 @@ async function findOpenOsForCustomer(storeId: number, customerId: number, limit 
   }))
 }
 
-async function findOpenOsByNumber(storeId: number, value: string): Promise<{ customer: CustomerRow; serviceOrder: OpenOsRow } | null> {
+async function findOpenOsByNumber(storeId: number, value: string, customerId?: number): Promise<{ customer: CustomerRow; serviceOrder: OpenOsRow } | null> {
   const supabase = createAdminClient()
   const digits = digitsOnly(value)
   if (!digits) return null
@@ -1739,6 +1739,8 @@ async function findOpenOsByNumber(storeId: number, value: string): Promise<{ cus
     .is('dt_entregue_em', null)
     .order('created_at', { ascending: false })
     .limit(1)
+
+  if (customerId !== undefined) query = query.eq('customer_id', customerId)
 
   if (/^\d+$/.test(digits)) {
     query = query.or(`id.eq.${Number(digits)},protocolo_fisico.eq.${digits}`)
@@ -1767,14 +1769,14 @@ async function findOpenOsByNumber(storeId: number, value: string): Promise<{ cus
   }
 }
 
-async function findOpenOsByOrderNumberOnly(storeId: number, message: string | undefined) {
+async function findOpenOsByOrderNumberOnly(storeId: number, message: string | undefined, customerId?: number) {
   const digits = digitsOnly(message)
   if (!digits || digits.length >= 11) return null
 
   for (const candidate of numberCandidates(message)) {
     const candidateDigits = digitsOnly(candidate)
     if (!candidateDigits || candidateDigits.length >= 11) continue
-    const result = await findOpenOsByNumber(storeId, candidateDigits)
+    const result = await findOpenOsByNumber(storeId, candidateDigits, customerId)
     if (result) return result
   }
 
@@ -1813,6 +1815,24 @@ async function findOpenOsByIdentifier(
   }
 
   return null
+}
+
+async function findStoreOneOpenOsBySenderIdentifier(
+  phone: string,
+  message: string | undefined
+): Promise<{ customer: CustomerRow; serviceOrder: OpenOsRow } | null> {
+  const customer = await findCustomerByPhone(1, phone)
+  if (!customer) return null
+
+  const explicitNumber = extractExplicitOrderNumber(message)
+  const digits = digitsOnly(message)
+  if (!explicitNumber && digits.length === 11) {
+    if (digitsOnly(customer.cpf) !== digits) return null
+    const serviceOrder = await findLatestOpenOs(1, customer.id)
+    return serviceOrder ? { customer, serviceOrder } : null
+  }
+
+  return findOpenOsByOrderNumberOnly(1, explicitNumber ? `OS ${explicitNumber}` : message, customer.id)
 }
 
 async function loadStoreWhatsAppSettings(storeId: number) {
@@ -2356,6 +2376,16 @@ async function createStatusReply(
       stage: 'final_reply_generation', reason: 'ai_final_writer_disabled',
       route: 'order_status', intent: 'order_status', action: 'suppress_reply',
     })
+  }
+
+  if (channel.store_id === 1) {
+    const phoneCustomer = await findCustomerByPhone(channel.store_id, phone)
+    if (!phoneCustomer || phoneCustomer.id !== customer.id) {
+      return ignoreInbound(inboundMessageId, {
+        stage: 'order_status', reason: 'order_not_linked_to_sender_phone',
+        route: 'order_status', intent: 'order_status', action: 'suppress_reply',
+      })
+    }
   }
 
   // Loja 1: buscar uma OS por número/CPF/nome não vincula a identidade do
@@ -3192,7 +3222,9 @@ export async function resolveCustomerStatus(
     && state?.state !== 'human_pause'
     && !isWhatsAppToolAgentEnabled(automationSettings)
     && !orderLookupPlan) {
-    const orderMatch = await findOpenOsByOrderNumberOnly(channel.store_id, `OS ${explicitOrderNumber}`)
+    const orderMatch = channel.store_id === 1
+      ? await findStoreOneOpenOsBySenderIdentifier(normalizedPhone, `OS ${explicitOrderNumber}`)
+      : await findOpenOsByOrderNumberOnly(channel.store_id, `OS ${explicitOrderNumber}`)
     if (orderMatch) {
       return createStatusReply(
         channel,
@@ -3504,8 +3536,11 @@ export async function resolveCustomerStatus(
   }
 
   async function executeOrderLookup(call: WhatsAppToolCall): Promise<WhatsAppToolResult> {
+    const phoneCustomer = channel!.store_id === 1
+      ? await findCustomerByPhone(channel!.store_id, normalizedPhone) : null
     if (call.name === 'lookup_open_orders') {
-      const customer = await findCustomerByPhone(channel!.store_id, normalizedPhone)
+      const customer = channel!.store_id === 1
+        ? phoneCustomer : await findCustomerByPhone(channel!.store_id, normalizedPhone)
       if (!customer) return { tool: call.name, ok: false, data: { code: 'customer_not_found' } }
 
       const orders = await findOpenOsForCustomer(channel!.store_id, customer.id, 3)
@@ -3526,11 +3561,16 @@ export async function resolveCustomerStatus(
       }
     }
 
+    if (channel!.store_id === 1 && !phoneCustomer) {
+      return { tool: call.name, ok: false, data: { code: 'order_not_found_for_identifier' } }
+    }
     const explicitNumber = extractExplicitOrderNumber(effectiveMessageText)
     const cpfDigits = digitsOnly(effectiveMessageText)
     if (!explicitNumber && channel!.store_id === 1 && cpfDigits.length === 11) {
-      const customer = await findCustomerByCpf(channel!.store_id, cpfDigits)
-      if (!customer) return { tool: call.name, ok: false, data: { code: 'order_not_found_for_identifier' } }
+      if (digitsOnly(phoneCustomer!.cpf) !== cpfDigits) {
+        return { tool: call.name, ok: false, data: { code: 'order_not_found_for_identifier' } }
+      }
+      const customer = phoneCustomer!
       const orders = await findOpenOsForCustomer(channel!.store_id, customer.id, 3)
       if (orders.length === 0) {
         return { tool: call.name, ok: false, data: { code: 'order_not_found_for_identifier' } }
@@ -3548,9 +3588,14 @@ export async function resolveCustomerStatus(
       return { tool: call.name, ok: true,
         data: { customerName: customer.full_name, ...prepareOpenOrdersForAgent(orderFacts) } }
     }
-    const result = explicitNumber
-      ? await findOpenOsByOrderNumberOnly(channel!.store_id, `OS ${explicitNumber}`)
-      : await findOpenOsByIdentifier(channel!.store_id, effectiveMessageText || undefined)
+    const result = channel!.store_id === 1
+      ? await findOpenOsByOrderNumberOnly(
+        channel!.store_id, explicitNumber ? `OS ${explicitNumber}` : effectiveMessageText || undefined,
+        phoneCustomer!.id
+      )
+      : explicitNumber
+        ? await findOpenOsByOrderNumberOnly(channel!.store_id, `OS ${explicitNumber}`)
+        : await findOpenOsByIdentifier(channel!.store_id, effectiveMessageText || undefined)
     if (!result) return { tool: call.name, ok: false, data: { code: 'order_not_found_for_identifier' } }
 
     const settings = await loadStoreWhatsAppSettings(channel!.store_id)
@@ -3895,9 +3940,11 @@ export async function resolveCustomerStatus(
     }
 
     const isDisambiguatingOpenOrders = toMetadataRecord(state?.metadata).reason === 'multiple_open_orders_identifier_requested'
-    const result = isDisambiguatingOpenOrders
-      ? await findOpenOsByOrderNumberOnly(channel.store_id, effectiveMessageText || undefined)
-      : await findOpenOsByIdentifier(channel.store_id, effectiveMessageText || undefined)
+    const result = channel.store_id === 1
+      ? await findStoreOneOpenOsBySenderIdentifier(normalizedPhone, effectiveMessageText || undefined)
+      : isDisambiguatingOpenOrders
+        ? await findOpenOsByOrderNumberOnly(channel.store_id, effectiveMessageText || undefined)
+        : await findOpenOsByIdentifier(channel.store_id, effectiveMessageText || undefined)
     if (result) {
       await consumeForceAiOverrideIfNeeded()
       return createStatusReply(channel, inbound.id, normalizedPhone, result.customer, result.serviceOrder, baseMetadata, null, finalWriterContext)
@@ -3934,9 +3981,11 @@ export async function resolveCustomerStatus(
       })
     }
 
-    const result = isDisambiguatingOpenOrders
-      ? await findOpenOsByOrderNumberOnly(channel.store_id, effectiveMessageText || undefined)
-      : await findOpenOsByIdentifier(channel.store_id, effectiveMessageText || undefined)
+    const result = channel.store_id === 1
+      ? await findStoreOneOpenOsBySenderIdentifier(normalizedPhone, effectiveMessageText || undefined)
+      : isDisambiguatingOpenOrders
+        ? await findOpenOsByOrderNumberOnly(channel.store_id, effectiveMessageText || undefined)
+        : await findOpenOsByIdentifier(channel.store_id, effectiveMessageText || undefined)
     if (result) {
       await consumeForceAiOverrideIfNeeded()
       return createStatusReply(channel, inbound.id, normalizedPhone, result.customer, result.serviceOrder, baseMetadata, null, finalWriterContext)
@@ -4922,7 +4971,8 @@ export async function resolveCustomerStatus(
           ? await findLatestOpenOs(channel.store_id, customerByPhone.id)
           : null
 
-        if (shouldRequestThirdPartyIdentifier(classification.data, customerByPhone, serviceOrderByPhone)) {
+        if (channel.store_id !== 1
+          && shouldRequestThirdPartyIdentifier(classification.data, customerByPhone, serviceOrderByPhone)) {
           const text = thirdPartyIdentifierPromptText()
           await setCurrentConversationState('waiting_identifier', IDENTIFIER_WAIT_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
             reason: 'third_party_identifier_requested',
@@ -5343,7 +5393,9 @@ export async function simulateCustomerStatus(
       })
     }
 
-    const result = await findOpenOsByIdentifier(channel.store_id, effectiveMessageText || undefined)
+    const result = channel.store_id === 1
+      ? await findStoreOneOpenOsBySenderIdentifier(normalizedPhone, effectiveMessageText || undefined)
+      : await findOpenOsByIdentifier(channel.store_id, effectiveMessageText || undefined)
     if (result) {
       const automationSettingsForStatus = await loadStoreWhatsAppSettings(channel.store_id)
       const status = describeOpenOs(result.customer.full_name, result.serviceOrder, automationSettingsForStatus?.os_on_demand?.templates)
@@ -5484,7 +5536,8 @@ export async function simulateCustomerStatus(
         ? await findLatestOpenOs(channel.store_id, customerByPhone.id)
         : null
 
-      if (shouldRequestThirdPartyIdentifier(classification.data, customerByPhone, serviceOrderByPhone)) {
+      if (channel.store_id !== 1
+        && shouldRequestThirdPartyIdentifier(classification.data, customerByPhone, serviceOrderByPhone)) {
         const text = thirdPartyIdentifierPromptText()
         return buildResult({ shouldReply: true, phone: normalizedPhone, replyText: text }, {
           overrideMode: controlMode,

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import type { WhatsAppToolCall } from '../src/lib/whatsapp/tool-agent'
 import {
   WhatsAppRedesignClassificationSchema,
   WhatsAppSystemDecisionSchema,
@@ -75,6 +76,44 @@ test('Loja 1: pergunta, identificador e consulta usam uma busca por turno e nenh
   assert.deepEqual(second.agent.aiResultTasks, ['tool_agent_reply'])
   assert.equal(second.disposition.kind, 'send')
   assert.equal(second.disposition.kind === 'send' && second.disposition.action, 'auto_reply')
+})
+
+test('nome mencionado na pergunta nao muda a consulta vinculada ao WhatsApp', async () => {
+  const withName = { ...classification,
+    entities: { ...classification.entities, customerName: 'Odair', patientName: 'Odair' } }
+  const namedPlan = planStoreOneOrderLookup({ storeId: 1, enabled: true,
+    classification: withName, decision, messageText: 'Como esta o oculos do Odair?',
+    awaitingIdentifier: false })
+  assert.equal(namedPlan?.tool, 'lookup_open_orders')
+  const pendingNamePlan = planStoreOneOrderLookup({ storeId: 1, enabled: true,
+    classification: withName, decision, messageText: 'Odair',
+    awaitingIdentifier: true })
+  assert.equal(pendingNamePlan?.tool, 'lookup_open_orders')
+  assert.equal(pendingNamePlan?.source, 'canonical_decision')
+  assert.ok(namedPlan)
+
+  const ownOrder = order('1041', 'BIA', 'lens_in_production')
+  const lookup = async (call: WhatsAppToolCall) => {
+    assert.equal(call.name, 'lookup_open_orders')
+    return { tool: call.name, ok: true, data: { orders: [ownOrder] } }
+  }
+  const correct = await runStoreOneOrderStatusTurn({ plan: namedPlan,
+    assistant: { messageText: 'Como esta o oculos do Odair?' }, executeLookup: lookup,
+    writeReply: fakeWriter('A OS 1041, de BIA, esta em producao no laboratorio.'),
+  })
+  assert.equal(correct.disposition.kind, 'send')
+  const inventedPatient = await runStoreOneOrderStatusTurn({ plan: namedPlan,
+    assistant: { messageText: 'Como esta o oculos do Odair?' }, executeLookup: lookup,
+    writeReply: fakeWriter('A OS 1041, de Odair, esta em producao no laboratorio.'),
+  })
+  assert.equal(inventedPatient.disposition.kind, 'suppress')
+})
+
+test('numero da OS e CPF continuam sendo identificadores; nome sozinho nao e', () => {
+  assert.equal(plan('E a OS 1043, especificamente?')?.tool, 'lookup_open_orders_by_identifier')
+  assert.equal(plan('1043', true)?.tool, 'lookup_open_orders_by_identifier')
+  assert.equal(plan('CPF 582.120.431-34')?.tool, 'lookup_open_orders_by_identifier')
+  assert.equal(plan('Como esta o oculos do Odair?')?.tool, 'lookup_open_orders')
 })
 
 test('duas OS exigem numero, dependente e status de cada uma; status trocado e bloqueado', async () => {

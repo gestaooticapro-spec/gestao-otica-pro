@@ -9,6 +9,7 @@ export type Release = {
 // altera o Dashboard ou o modal de histórico.
 export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'Na Loja 1, consultas automáticas de OS respondem somente sobre pedidos vinculados ao WhatsApp do cliente; nomes citados na pergunta não abrem pedidos de outro cadastro, e OS ou CPF informados precisam corresponder ao titular desse número.',
   'Na Loja 1, respostas de OS exigem a consulta pelo identificador correto e validam numero, dependente ou titular e situacao de cada pedido; encaminhamentos sao redigidos e validados pela IA, e o estado so muda depois que a saida e aceita.',
   'A consulta de OS pelo WhatsApp apresenta pela IA ate dois pedidos em aberto, incluindo numero da OS, dependente e situacao; acima de dois ou sem vinculo por telefone, pede um identificador sem escolher pedidos. A resposta e o pedido de identificador atualizam a memoria de OS e mantem o fluxo conversacional.',
   'Encaminhamentos de OS nao localizada usam um modelo OpenAI mais capaz, validam a identificacao da IAra, o contato da equipe e a ausencia de status inventado; a IA e orientada a reformular com palavras proprias em vez de copiar o texto canonico.',
