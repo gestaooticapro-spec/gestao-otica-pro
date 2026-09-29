@@ -16,6 +16,25 @@ const OPENAI_MODEL = process.env.WHATSAPP_AI_OPENAI_MODEL || process.env.OPENAI_
 const OPENAI_ORDER_HANDOFF_MODEL = process.env.WHATSAPP_AI_OPENAI_ORDER_HANDOFF_MODEL || 'gpt-4.1-mini'
 const REQUEST_TIMEOUT_MS = Number(process.env.WHATSAPP_AI_TIMEOUT_MS || 20000)
 
+const WHATSAPP_TOOL_AGENT_REPLY_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    reply_text: { type: 'string' },
+  },
+  required: ['reply_text'],
+  additionalProperties: false,
+} as const
+
+export function openAiTextFormatForTask(task: WhatsAppAiTask) {
+  if (task !== 'tool_agent_reply') return null
+  return {
+    type: 'json_schema' as const,
+    name: 'whatsapp_tool_agent_reply',
+    strict: true,
+    schema: WHATSAPP_TOOL_AGENT_REPLY_JSON_SCHEMA,
+  }
+}
+
 const WHATSAPP_INTENTS = [
   'order_status',
   'store_hours',
@@ -676,6 +695,9 @@ async function callOpenAI(task: WhatsAppAiTask, prompt: string): Promise<Provide
         body: JSON.stringify({
           model,
           input: prompt,
+          ...(openAiTextFormatForTask(task)
+            ? { text: { format: openAiTextFormatForTask(task) } }
+            : {}),
         }),
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       })
