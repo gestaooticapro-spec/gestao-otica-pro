@@ -119,7 +119,8 @@ export type OrderAgentReplyValidation =
 
 export function validateOrderAgentReply(
   replyText: string,
-  orders: OpenOrderAgentFact[]
+  orders: OpenOrderAgentFact[],
+  options: { allowPossessiveOwnerReference?: boolean } = {}
 ): OrderAgentReplyValidation {
   if (orders.length === 0) return { valid: false, reason: 'no_order_facts' }
   if (orders.length > 2) return { valid: false, reason: 'too_many_orders' }
@@ -151,7 +152,9 @@ export function validateOrderAgentReply(
       if (!containsOrderReplyPhrase(sentence, order.patientName)) {
         return { valid: false, reason: 'missing_patient' }
       }
-    } else if (!/\b(titular|owner|account holder)\b/u.test(sentence)) {
+    } else if (!/\b(titular|owner|account holder)\b/u.test(sentence)
+      && !(options.allowPossessiveOwnerReference
+        && /\b(?:seu|sua|teu|tua)\s+(?:pedido|os)\b/u.test(sentence))) {
       return { valid: false, reason: 'missing_patient' }
     }
 

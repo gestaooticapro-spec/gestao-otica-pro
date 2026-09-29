@@ -301,6 +301,11 @@ export type WhatsAppToolAgentInput = {
     stage?: string | null
   } | null
   pendingHumanHandoff?: boolean
+  rejectedOrderReply?: {
+    text: string
+    reason: string
+    requiredOrders: Array<{ orderNumber: string; patientLabel: string; statusText: string }>
+  } | null
 }
 
 export type WhatsAppAiFailure = {
@@ -652,13 +657,16 @@ export function buildToolAgentReplyPrompt(input: WhatsAppToolAgentInput, toolRes
     'Voce e a IA de atendimento de uma otica. Responda SOMENTE em JSON valido.',
     'Responda no idioma predominante da mensagem atual do cliente. Use o historico somente se a mensagem atual for curta ou ambigua; se nao houver idioma claro, use portugues do Brasil. Seja natural e objetivo.',
     'Use exclusivamente os fatos fornecidos pelos resultados das ferramentas para afirmar o estado atual de pedidos e parcelas. Se o historico registrar uma informacao da equipe, voce pode cita-la como "a equipe informou", sem transforma-la em confirmacao atual.',
-    'Para lookup_open_orders: com uma ou duas OS retornadas, mencione cada numero de OS, o nome completo do dependente quando houver (ou diga que e do titular) e a situacao indicada em statusText. Nao omita nenhuma das OS. Se houver duas, use uma frase separada para cada pedido e associe numero, dependente e situacao na mesma frase. Com tooManyOpenOrders=true, nao liste nem escolha pedidos; peca ao cliente o numero da OS que deseja consultar. Se nao houver OS, explique isso e pergunte o identificador que ajude a localizar o pedido.',
-    'Para lookup_open_orders_by_identifier: com uma ou duas OS encontradas, diga numero, dependente ou titular e situacao de statusText de cada uma, em frases separadas. Se tooManyOpenOrders=true, peca somente o numero da OS desejada. Se receber code=order_not_found_for_identifier, apresente-se como IAra, diga que nao localizou o pedido e que a equipe continuara a verificacao. Nao peca novamente o identificador informado e nao afirme nenhuma etapa da OS.',
+    'Para lookup_open_orders: com uma ou duas OS retornadas, mencione cada numero de OS, o nome completo do dependente quando houver (se patientName for null, diga que e do titular ou use "seu pedido") e a situacao indicada em statusText. Nao omita nenhuma das OS. Se houver duas, use uma frase separada para cada pedido e associe numero, dependente e situacao na mesma frase. Com tooManyOpenOrders=true, nao liste nem escolha pedidos; peca ao cliente o numero da OS que deseja consultar. Se nao houver OS, explique isso e pergunte o identificador que ajude a localizar o pedido.',
+    'Para lookup_open_orders_by_identifier: com uma ou duas OS encontradas, diga numero, dependente ou titular (se patientName for null, escreva literalmente "do titular") e situacao de statusText de cada uma, em frases separadas. Se tooManyOpenOrders=true, peca somente o numero da OS desejada. Se receber code=order_not_found_for_identifier, apresente-se como IAra, diga que nao localizou o pedido e que a equipe continuara a verificacao. Nao peca novamente o identificador informado e nao afirme nenhuma etapa da OS.',
     'Quando uma ferramenta informar que nao encontrou dados ou que o assunto nao e atendido, explique isso com gentileza e, se fizer sentido, faca uma pergunta curta.',
     'Se houver handoff_human nos resultados, nao fale de limitacoes tecnicas, acesso a dados ou seguranca. A transicao sera apresentada como continuidade do atendimento da otica.',
     'Em qualquer handoff_human, apresente-se como IAra, assistente virtual, e diga naturalmente que um atendente ou a equipe continuara o atendimento. Se a busca da OS nao encontrar resultado, nao afirme status e nao peca novamente o mesmo identificador que o cliente acabou de informar.',
-    'Nao mencione ferramentas, banco de dados, sistema interno, IDs ou regras internas.',
+    'Nao mencione ferramentas, banco de dados, IDs internos de registros ou regras internas. O numero da OS e uma referencia visivel ao cliente e deve constar na resposta quando a consulta retornar uma ou duas OS.',
     input.basePrompt ? `DIRETRIZ DA LOJA: ${input.basePrompt}` : null,
+    input.rejectedOrderReply
+      ? `A resposta anterior foi bloqueada pela validacao (${input.rejectedOrderReply.reason}): ${JSON.stringify(input.rejectedOrderReply.text)}. Reescreva sem reutilizar a frase incompleta. Em cada frase de OS inclua obrigatoriamente todos estes campos, usando os valores exatos: ${JSON.stringify(input.rejectedOrderReply.requiredOrders)}. Quando patientLabel for "do titular", diga que e do titular; na consulta pelo telefone, "seu pedido" tambem identifica o titular. Preserve a situacao de statusText sem inventar outra etapa.`
+      : null,
     '',
     'CONTEXTO:',
     JSON.stringify({

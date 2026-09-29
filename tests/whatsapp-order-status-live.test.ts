@@ -95,6 +95,78 @@ test('duas OS exigem numero, dependente e status de cada uma; status trocado e b
   assert.equal(bad.disposition.kind, 'suppress')
 })
 
+test('resposta sem numero da OS e refeita com os mesmos fatos antes do envio', async () => {
+  const lookupPlan = plan('Qual e o status do meu oculos?')
+  assert.ok(lookupPlan)
+  let lookups = 0
+  let writes = 0
+  const result = await runStoreOneOrderStatusTurn({
+    plan: lookupPlan,
+    assistant: { messageText: 'Qual e o status do meu oculos?' },
+    executeLookup: async (call) => {
+      lookups += 1
+      return { tool: call.name, ok: true,
+        data: { orders: [{ orderNumber: '1041', patientName: null,
+          status: 'lens_in_production', statusText: 'Em producao no laboratorio' }] } }
+    },
+    writeReply: async (input) => {
+      writes += 1
+      if (writes === 1) {
+        assert.equal(input.rejectedOrderReply, undefined)
+        return fakeWriter('Seu pedido esta em producao no laboratorio.')()
+      }
+      assert.equal(input.rejectedOrderReply?.reason, 'missing_order')
+      return fakeWriter('A OS 1041, do titular, esta em producao no laboratorio.')()
+    },
+  })
+  assert.equal(lookups, 1)
+  assert.equal(writes, 2)
+  assert.deepEqual(result.agent.aiResultTasks, ['tool_agent_reply', 'tool_agent_reply'])
+  assert.equal(result.disposition.kind === 'send' && result.disposition.action, 'auto_reply')
+})
+
+test('pedido do titular pelo telefone aceita seu pedido, mas busca por identificador exige titular explicito', async () => {
+  const fact = { orderNumber: '1041', patientName: null,
+    status: 'lens_in_production', statusText: 'Em producao no laboratorio' }
+  const reply = 'Seu pedido numero 1041 esta em producao no laboratorio.'
+  const phonePlan = plan('Qual e o status do meu oculos?')
+  const identifierPlan = plan('OS 1041')
+  assert.ok(phonePlan)
+  assert.ok(identifierPlan)
+  const phone = await runStoreOneOrderStatusTurn({ plan: phonePlan,
+    assistant: { messageText: 'Qual e o status do meu oculos?' },
+    executeLookup: async (call) => ({ tool: call.name, ok: true, data: { orders: [fact] } }),
+    writeReply: fakeWriter(reply),
+  })
+  assert.equal(phone.disposition.kind, 'send')
+  const identifier = await runStoreOneOrderStatusTurn({ plan: identifierPlan,
+    assistant: { messageText: 'OS 1041' },
+    executeLookup: async (call) => ({ tool: call.name, ok: true, data: { orders: [fact] } }),
+    writeReply: fakeWriter(reply),
+  })
+  assert.equal(identifier.disposition.kind, 'suppress')
+})
+
+test('revisao ainda incompleta continua bloqueada', async () => {
+  const lookupPlan = plan('Qual e o status do meu oculos?')
+  assert.ok(lookupPlan)
+  let writes = 0
+  const result = await runStoreOneOrderStatusTurn({
+    plan: lookupPlan,
+    assistant: { messageText: 'Qual e o status do meu oculos?' },
+    executeLookup: async (call) => ({ tool: call.name, ok: true,
+      data: { orders: [{ orderNumber: '1041', patientName: null,
+        status: 'lens_in_production', statusText: 'Em producao no laboratorio' }] } }),
+    writeReply: async () => {
+      writes += 1
+      return fakeWriter('Seu pedido esta em producao no laboratorio.')()
+    },
+  })
+  assert.equal(writes, 2)
+  assert.equal(result.disposition.kind, 'suppress')
+  assert.equal(result.disposition.kind === 'suppress' && result.disposition.reason, 'missing_order')
+})
+
 test('OS inexistente aceita apenas encaminhamento sem status inventado nem repeticao do identificador', async () => {
   const lookupPlan = plan('Consegue verificar a OS 9999999999?')
   assert.equal(lookupPlan?.tool, 'lookup_open_orders_by_identifier')

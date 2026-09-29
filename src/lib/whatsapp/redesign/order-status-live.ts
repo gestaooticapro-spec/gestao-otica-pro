@@ -1,4 +1,4 @@
-import type { WhatsAppToolAgentInput } from '../ai'
+import { writeWhatsAppToolAgentReply, type WhatsAppToolAgentInput } from '../ai'
 import { validateOrderAgentReply, type OpenOrderAgentFact } from '../order-status-agent'
 import {
   runWhatsAppToolAgent,
@@ -132,7 +132,7 @@ export function resolveStoreOneOrderDisposition(input: {
       state: 'waiting_identifier', reason: 'order_identifier_requested', text: replyText, orderCount: 0 }
   }
   if (lookup.ok && orders.length >= 1 && orders.length <= 2) {
-    const validation = validateOrderAgentReply(replyText, orders)
+    const validation = validateOrderAgentReply(replyText, orders, { allowPossessiveOwnerReference: true })
     if (!validation.valid) return { kind: 'suppress', reason: validation.reason }
     return { kind: 'send', action: 'auto_reply', outboundType: 'os_status',
       state: 'ai_session', reason: 'order_status_auto_reply', text: replyText, orderCount: orders.length }
@@ -156,12 +156,32 @@ export async function runStoreOneOrderStatusTurn(input: {
     ),
   })
   const lookup = agent.toolResults.find((result) => result.tool === input.plan.tool)
-  return {
-    agent,
-    disposition: resolveStoreOneOrderDisposition({
-      plan: input.plan,
-      lookup,
-      replyText: agent.success ? agent.replyText : null,
-    }),
+  let disposition = resolveStoreOneOrderDisposition({
+    plan: input.plan,
+    lookup,
+    replyText: agent.success ? agent.replyText : null,
+  })
+  const correctableReasons = new Set(['missing_order', 'mixed_orders', 'missing_patient', 'missing_status'])
+  if (agent.success && agent.replyText && disposition.kind === 'suppress'
+    && correctableReasons.has(disposition.reason)) {
+    const orders = Array.isArray(lookup?.data.orders) ? lookup.data.orders as OpenOrderAgentFact[] : []
+    const revision = await (input.writeReply ?? writeWhatsAppToolAgentReply)({
+      ...input.assistant,
+      rejectedOrderReply: {
+        text: agent.replyText,
+        reason: disposition.reason,
+        requiredOrders: orders.map((order) => ({
+          orderNumber: order.orderNumber,
+          patientLabel: order.patientName || 'do titular',
+          statusText: order.statusText,
+        })),
+      },
+    }, agent.toolResults)
+    agent.aiResults.push(revision)
+    agent.aiResultTasks.push('tool_agent_reply')
+    disposition = revision.success
+      ? resolveStoreOneOrderDisposition({ plan: input.plan, lookup, replyText: revision.data.reply_text })
+      : { kind: 'suppress', reason: 'order_reply_revision_failed' }
   }
+  return { agent, disposition }
 }
