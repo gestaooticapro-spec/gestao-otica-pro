@@ -334,6 +334,7 @@ type ProviderAttemptFailure = {
 }
 
 export type WhatsAppRedesignClassificationInput = {
+  storeId?: number
   memory: WhatsAppConversationMemory
   turnMessages: WhatsAppConversationMessage[]
   elapsedSincePreviousMessageMs: number | null
@@ -860,6 +861,9 @@ function buildRedesignClassificationPrompt(input: WhatsAppRedesignClassification
     'Nunca escreva uma resposta para o cliente e nunca decida se uma mensagem sera enviada.',
     'Nao invente nomes, CPF, numero de OS, fatos da loja, resolucoes ou promessas.',
     'Identifique mudanca de assunto mesmo quando ela ocorrer dentro do mesmo turno.',
+    'Classifique pelo que o cliente quer saber no turno atual. Use a memoria para resolver referencias curtas, sem deixar que um assunto anterior substitua a pergunta atual.',
+    'order_status: o cliente quer saber a situacao, o andamento, se esta pronto ou se pode retirar o oculos, as lentes, o pedido ou a OS ja encomendados. Vale tambem quando menciona outra pessoa ou dependente.',
+    'vision_exam: o cliente pergunta sobre exame de vista, consulta, avaliacao de grau, agendamento ou valor desse atendimento. Perguntas sobre a entrega ou situacao de oculos encomendados pertencem a order_status.',
     'requestsHuman deve ser true somente quando o cliente pedir explicitamente uma pessoa ou atendente.',
     'mentionsAttachment deve considerar tanto o tipo da mensagem quanto referencias como foto, imagem, PDF, receita ou comprovante.',
     'Em entities.productMention, preserve literalmente o nome, marca ou modelo de produto/lente citado pelo cliente quando houver; caso contrario use null. Nunca invente nem generalize esse nome.',
@@ -872,7 +876,7 @@ function buildRedesignClassificationPrompt(input: WhatsAppRedesignClassification
     '',
     'SCHEMA EXATO:',
     JSON.stringify({
-      intent: 'vision_exam',
+      intent: 'unknown',
       confidence: 0.96,
       topicRelation: 'change_topic',
       requestsHuman: false,
@@ -992,7 +996,8 @@ export async function classifyWhatsAppRedesignConversation(
   return executeStructuredTask(
     'redesign_classification',
     buildRedesignClassificationPrompt(input),
-    WhatsAppRedesignClassificationSchema
+    WhatsAppRedesignClassificationSchema,
+    input.storeId === 1 ? 'gpt-4.1-mini' : undefined
   )
 }
 

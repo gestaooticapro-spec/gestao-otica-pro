@@ -98,6 +98,7 @@ async function processClaimedTurn(input: {
     : null
 
   const classificationResult = await input.classifier({
+    storeId: context.conversation.store_id,
     memory: context.memory,
     turnMessages: context.turnMessages,
     elapsedSincePreviousMessageMs: elapsedBeforeTurn(context),
