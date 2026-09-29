@@ -9,6 +9,7 @@ import {
   isStoreOneSafeRepliesPilotEnabled,
   resolveStoreOnePilotReplyText,
   selectStoreOnePilotSafeReply,
+  shouldForceStoreOnePhoneOrderStatusLookup,
   shouldLookupOrderStatusInStoreOnePilot,
   shouldUseOrderStatusToolAgent,
 } from '../src/lib/whatsapp/redesign/safe-replies-pilot'
@@ -166,9 +167,32 @@ test('pergunta explícita sobre status do óculos supera classificação equivoc
   assert.equal(shouldUseOrderStatusToolAgent({
     enabled: true, classification: misclassified, decision: handoffDecision, messageText: text,
   }), true)
+  assert.equal(shouldForceStoreOnePhoneOrderStatusLookup({
+    storeId: 1, classification: misclassified, decision: handoffDecision, messageText: text,
+  }), true)
+  assert.equal(shouldForceStoreOnePhoneOrderStatusLookup({
+    storeId: 2, classification: misclassified, decision: handoffDecision, messageText: text,
+  }), false)
   assert.equal(shouldLookupOrderStatusInStoreOnePilot({
     classification: misclassified, decision: handoffDecision, messageText: text,
   }), true)
+  assert.equal(shouldForceStoreOnePhoneOrderStatusLookup({
+    storeId: 1,
+    classification: misclassified,
+    decision: handoffDecision,
+    messageText: 'Qual é o status do meu óculos? Quero falar com um atendente.',
+  }), false)
+  assert.equal(shouldForceStoreOnePhoneOrderStatusLookup({
+    storeId: 1,
+    classification: misclassified,
+    decision: WhatsAppSystemDecisionSchema.parse({
+      ...handoffDecision,
+      action: 'no_reply',
+      fallbackReply: null,
+      humanHandoffTiming: null,
+    }),
+    messageText: text,
+  }), false)
   assert.equal(shouldUseOrderStatusToolAgent({
     enabled: true,
     classification: { ...misclassified, requestsHuman: true },

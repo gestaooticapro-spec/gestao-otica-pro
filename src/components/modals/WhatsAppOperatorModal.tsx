@@ -82,6 +82,8 @@ function suppressionReasonLabel(reason: string) {
     handoff_omitted: 'a resposta não informou que um atendente continuará o atendimento',
     human_pause_active: 'a conversa estava em pausa humana quando a mensagem chegou',
     order_status_not_preserved: 'a resposta não preservou o status confirmado da OS',
+    order_lookup_not_confirmed: 'a consulta de OS não foi confirmada pelo fluxo seguro',
+    order_status_reply_unavailable: 'a IA não conseguiu redigir uma resposta válida sobre a OS',
     provider_failure: 'a IA não conseguiu gerar uma resposta válida',
     redesign_decided_no_reply: 'a decisão do fluxo foi não responder',
     redesign_decision_unavailable: 'não foi possível obter uma decisão segura da IA',

@@ -82,6 +82,21 @@ export function shouldUseOrderStatusToolAgent(input: {
     && input.decision.action !== 'no_reply'
 }
 
+export function shouldForceStoreOnePhoneOrderStatusLookup(input: {
+  storeId: number
+  classification: WhatsAppRedesignClassification
+  decision: WhatsAppSystemDecisionDraft
+  messageText?: string | null
+}) {
+  return input.storeId === 1
+    && isExplicitOrderStatusOrReadinessQuestion(input.messageText)
+    && !extractExplicitOrderNumber(input.messageText)
+    && !input.classification.requestsHuman
+    && !input.classification.mentionsAttachment
+    && !isExplicitHumanHandoffRequest(input.messageText)
+    && input.decision.action !== 'no_reply'
+}
+
 export function extractExplicitOrderNumber(messageText: string | null | undefined) {
   const normalized = (messageText ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .toLocaleLowerCase('pt-BR')

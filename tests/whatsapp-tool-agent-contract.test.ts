@@ -4,6 +4,29 @@ import {
   WhatsAppToolAgentPlanSchema,
   WhatsAppToolAgentReplySchema,
 } from '../src/lib/whatsapp/ai'
+import { runWhatsAppToolAgent } from '../src/lib/whatsapp/tool-agent'
+
+test('consulta forçada executa a ferramenta determinística sem deixar o planejador trocar o assunto', async () => {
+  const executed: string[] = []
+  const outcome = await runWhatsAppToolAgent({
+    assistant: { messageText: 'Qual é o status do meu óculos?' },
+    forcedToolCalls: [{ name: 'lookup_open_orders' }],
+    executeTool: async (call) => {
+      executed.push(call.name)
+      return { tool: call.name, ok: true, data: { orders: [{ orderNumber: 'OS teste' }] } }
+    },
+    deferReplyWhen: (_calls, results) => {
+      const result = results.find((item) => item.tool === 'lookup_open_orders')
+      return Array.isArray(result?.data.orders) && result.data.orders.length === 1
+    },
+  })
+
+  assert.deepEqual(executed, ['lookup_open_orders'])
+  assert.deepEqual(outcome.toolCalls.map((call) => call.name), ['lookup_open_orders'])
+  assert.equal(outcome.success, true)
+  assert.equal(outcome.replyText, null)
+  assert.deepEqual(outcome.aiResultTasks, [])
+})
 
 test('aceita apenas ferramentas internas previstas no agente de WhatsApp', () => {
   const result = WhatsAppToolAgentPlanSchema.parse({

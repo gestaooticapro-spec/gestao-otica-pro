@@ -23,41 +23,55 @@ export type WhatsAppToolAgentOutcome = {
   toolCalls: WhatsAppToolCall[]
   toolResults: WhatsAppToolResult[]
   aiResults: Array<WhatsAppAiResult<unknown>>
+  aiResultTasks: Array<'tool_agent_plan' | 'tool_agent_reply'>
   error?: string
 }
 
 export async function runWhatsAppToolAgent(input: {
   assistant: WhatsAppToolAgentInput
   executeTool: (call: WhatsAppToolCall) => Promise<WhatsAppToolResult>
-  deferReplyWhen?: (calls: WhatsAppToolCall[]) => boolean
+  forcedToolCalls?: WhatsAppToolCall[]
+  deferReplyWhen?: (calls: WhatsAppToolCall[], results: WhatsAppToolResult[]) => boolean
+  writeReply?: typeof writeWhatsAppToolAgentReply
 }): Promise<WhatsAppToolAgentOutcome> {
-  const plan = await planWhatsAppToolAgent(input.assistant)
-  const aiResults: Array<WhatsAppAiResult<unknown>> = [plan]
+  const aiResults: Array<WhatsAppAiResult<unknown>> = []
+  const aiResultTasks: Array<'tool_agent_plan' | 'tool_agent_reply'> = []
+  let toolCalls: WhatsAppToolCall[]
 
-  if (!plan.success) {
-    return {
-      success: false,
-      replyText: null,
-      toolCalls: [],
-      toolResults: [],
-      aiResults,
-      error: plan.error,
+  if (input.forcedToolCalls) {
+    toolCalls = input.forcedToolCalls.map((call) => ({ name: call.name, rating: call.rating ?? null }))
+  } else {
+    const plan = await planWhatsAppToolAgent(input.assistant)
+    aiResults.push(plan)
+    aiResultTasks.push('tool_agent_plan')
+
+    if (!plan.success) {
+      return {
+        success: false,
+        replyText: null,
+        toolCalls: [],
+        toolResults: [],
+        aiResults,
+        aiResultTasks,
+        error: plan.error,
+      }
     }
-  }
 
-  const toolCalls = plan.data.tool_calls.map((call) => ({
-    name: call.name,
-    rating: call.rating ?? null,
-  }))
+    toolCalls = plan.data.tool_calls.map((call) => ({
+      name: call.name,
+      rating: call.rating ?? null,
+    }))
 
-  if (toolCalls.length === 0) {
-    return {
-      success: Boolean(plan.data.reply_text),
-      replyText: plan.data.reply_text,
-      toolCalls,
-      toolResults: [],
-      aiResults,
-      ...(plan.data.reply_text ? {} : { error: 'A IA nao retornou resposta nem consulta.' }),
+    if (toolCalls.length === 0) {
+      return {
+        success: Boolean(plan.data.reply_text),
+        replyText: plan.data.reply_text,
+        toolCalls,
+        toolResults: [],
+        aiResults,
+        aiResultTasks,
+        ...(plan.data.reply_text ? {} : { error: 'A IA nao retornou resposta nem consulta.' }),
+      }
     }
   }
 
@@ -77,12 +91,13 @@ export async function runWhatsAppToolAgent(input: {
     }
   }
 
-  if (input.deferReplyWhen?.(toolCalls)) {
-    return { success: true, replyText: null, toolCalls, toolResults, aiResults }
+  if (input.deferReplyWhen?.(toolCalls, toolResults)) {
+    return { success: true, replyText: null, toolCalls, toolResults, aiResults, aiResultTasks }
   }
 
-  const reply = await writeWhatsAppToolAgentReply(input.assistant, toolResults)
+  const reply = await (input.writeReply ?? writeWhatsAppToolAgentReply)(input.assistant, toolResults)
   aiResults.push(reply)
+  aiResultTasks.push('tool_agent_reply')
   if (!reply.success) {
     return {
       success: false,
@@ -90,6 +105,7 @@ export async function runWhatsAppToolAgent(input: {
       toolCalls,
       toolResults,
       aiResults,
+      aiResultTasks,
       error: reply.error,
     }
   }
@@ -100,5 +116,6 @@ export async function runWhatsAppToolAgent(input: {
     toolCalls,
     toolResults,
     aiResults,
+    aiResultTasks,
   }
 }

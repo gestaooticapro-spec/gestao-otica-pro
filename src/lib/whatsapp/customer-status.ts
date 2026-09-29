@@ -65,7 +65,11 @@ import {
 } from './redesign/shadow-ingestion'
 import { WhatsAppRedesignConversationStore } from './redesign/store'
 import { processWhatsAppRedesignShadowTurns } from './redesign/shadow-processor'
-import { enforceWhatsAppIntentEvidence } from './redesign/intent-guards'
+import {
+  enforceWhatsAppIntentEvidence,
+  isExplicitHumanHandoffRequest,
+  isExplicitOrderStatusOrReadinessQuestion,
+} from './redesign/intent-guards'
 import {
   WhatsAppRedesignClassificationSchema,
   WhatsAppSystemDecisionSchema,
@@ -75,16 +79,16 @@ import {
   isStoreOneSafeRepliesPilotEnabled,
   resolveStoreOnePilotReplyText,
   selectStoreOnePilotSafeReply,
-  shouldLookupOrderStatusInStoreOnePilot,
-  shouldUseOrderStatusToolAgent,
 } from './redesign/safe-replies-pilot'
 import {
-  canUseIdentifierLookupAgentReply,
   prepareOpenOrdersForAgent,
   resolveToolAgentReplySemantics,
-  validateOrderAgentReply,
-  type OpenOrderAgentFact,
 } from './order-status-agent'
+import {
+  planStoreOneOrderLookup,
+  runStoreOneOrderStatusTurn,
+  type StoreOneOrderLookupPlan,
+} from './redesign/order-status-live'
 
 const SAME_STATUS_SILENCE_WINDOW_MS = 2 * 60 * 60 * 1000
 const HUMAN_PAUSE_MS = 60 * 60 * 1000
@@ -2843,8 +2847,7 @@ export async function resolveCustomerStatus(
     state = null
   }
 
-  let useOrderStatusToolAgentForCurrentInbound = false
-  let redesignAwaitingOrderIdentifier = false
+  let orderLookupPlan: StoreOneOrderLookupPlan | null = null
   let redesignConversationHistory: string[] = []
   const isRepeatedMessageDuringSilentWindow = state?.state === 'silent'
     && isRepeatedSilentInbound(effectiveMessageText, state.metadata)
@@ -2888,72 +2891,20 @@ export async function resolveCustomerStatus(
           .map((message) => `${message.role === 'customer' ? 'Cliente' : message.role === 'human' ? 'Atendente' : 'IA'}: ${message.text || `[${message.kind}]`}`)
           .slice(-8)
 
-        const useOrderStatusToolAgent = shouldUseOrderStatusToolAgent({
+        const awaitingIdentifier = turnContext.memory.summary.pendingAction === 'awaiting_identifier'
+          && turnContext.memory.summary.activeTopic === 'order_status'
+        orderLookupPlan = planStoreOneOrderLookup({
+          storeId: channel.store_id,
           enabled: isWhatsAppAiResponderEnabled(automationSettings),
           classification,
           decision,
           messageText: effectiveMessageText,
-          awaitingIdentifier: turnContext.memory.summary.pendingAction === 'awaiting_identifier'
-            && turnContext.memory.summary.activeTopic === 'order_status',
+          awaitingIdentifier,
         })
-        useOrderStatusToolAgentForCurrentInbound = useOrderStatusToolAgent
-        redesignAwaitingOrderIdentifier = turnContext.memory.summary.pendingAction === 'awaiting_identifier'
-          && turnContext.memory.summary.activeTopic === 'order_status'
-        const explicitOrderNumber = extractExplicitOrderNumber(effectiveMessageText)
-        if (!useOrderStatusToolAgent && explicitOrderNumber) {
-          const orderMatch = await findOpenOsByOrderNumberOnly(channel.store_id, `OS ${explicitOrderNumber}`)
-          if (orderMatch) {
-            const statusMetadata = appendAiSessionMessage(
-              mergeMetadata(state?.metadata, inboundContextMetadata),
-              'customer',
-              effectiveMessageText
-            )
-            return createStatusReply(
-              channel,
-              inbound.id,
-              normalizedPhone,
-              orderMatch.customer,
-              orderMatch.serviceOrder,
-              statusMetadata,
-              classification.confidence,
-              {
-                enabled: WHATSAPP_AI_FINAL_WRITER_ENABLED && isWhatsAppAiResponderEnabled(automationSettings),
-                storeName: storeProfile.name,
-                userMessageText: effectiveMessageText,
-                conversationHistory: redesignConversationHistory,
-                onResult: async (result) => { await logAiResult(channel, inbound.id, 'reply_humanization', result) },
-              }
-            )
-          }
-        }
-
-        if (!useOrderStatusToolAgent && shouldLookupOrderStatusInStoreOnePilot({
-          classification,
-          decision,
-          messageText: turnContext.turnMessages
-            .filter((message) => message.role === 'customer' && message.kind === 'text')
-            .map((message) => message.text ?? '')
-            .join(' '),
-        })) {
-          return await handleStatusByPhone(
-            channel,
-            inbound.id,
-            normalizedPhone,
-            appendAiSessionMessage(mergeMetadata(state?.metadata, inboundContextMetadata), 'customer', effectiveMessageText),
-            classification.confidence,
-            {
-              enabled: WHATSAPP_AI_FINAL_WRITER_ENABLED && isWhatsAppAiResponderEnabled(automationSettings),
-              storeName: storeProfile.name,
-              userMessageText: effectiveMessageText,
-              conversationHistory: redesignConversationHistory,
-              onResult: async (result) => { await logAiResult(channel, inbound.id, 'reply_humanization', result) },
-            }
-          )
-        }
 
         // O caminho ao vivo usa a mesma decisão já persistida para auditoria; não
         // faz uma segunda chamada de classificação nem espera o cron de sombra.
-        if (decision.action === 'no_reply') {
+        if (decision.action === 'no_reply' && !orderLookupPlan) {
           return ignoreInbound(inbound.id, {
             stage: 'redesign_decision',
             reason: 'redesign_decided_no_reply',
@@ -2962,7 +2913,13 @@ export async function resolveCustomerStatus(
             action: decision.action,
           })
         }
-        if (!useOrderStatusToolAgent) {
+        if (decision.action === 'lookup_order_status' && !orderLookupPlan) {
+          return ignoreInbound(inbound.id, {
+            stage: 'redesign_decision', reason: 'order_lookup_unavailable',
+            route: 'store_one_order_status', intent: 'order_status', action: 'suppress_reply',
+          })
+        }
+        if (!orderLookupPlan) {
           pilotReply = selectStoreOnePilotSafeReply({
             classification,
             decision,
@@ -3231,9 +3188,10 @@ export async function resolveCustomerStatus(
   // o piloto nao foi elegivel por a conversa estar aguardando um atendente.
   // Pausa humana manual continua prevalecendo; force_human ja foi tratado acima.
   const explicitOrderNumber = extractExplicitOrderNumber(effectiveMessageText)
-  if (explicitOrderNumber && state?.state !== 'human_pause'
+  if (explicitOrderNumber && !isStoreOneSafeRepliesPilotEnabled(channel.store_id, automationSettings)
+    && state?.state !== 'human_pause'
     && !isWhatsAppToolAgentEnabled(automationSettings)
-    && !useOrderStatusToolAgentForCurrentInbound) {
+    && !orderLookupPlan) {
     const orderMatch = await findOpenOsByOrderNumberOnly(channel.store_id, `OS ${explicitOrderNumber}`)
     if (orderMatch) {
       return createStatusReply(
@@ -3545,10 +3503,149 @@ export async function resolveCustomerStatus(
     })
   }
 
-  // O agente com ferramentas fica depois das protecoes obrigatorias (anexo,
-  // handoff humano e Status sem contexto), mas antes dos fluxos legados. Assim
-  // uma campanha ativa deixa de prender a conversa em um unico assunto.
-  if (toolAgentEnabled || useOrderStatusToolAgentForCurrentInbound) {
+  async function executeOrderLookup(call: WhatsAppToolCall): Promise<WhatsAppToolResult> {
+    if (call.name === 'lookup_open_orders') {
+      const customer = await findCustomerByPhone(channel!.store_id, normalizedPhone)
+      if (!customer) return { tool: call.name, ok: false, data: { code: 'customer_not_found' } }
+
+      const orders = await findOpenOsForCustomer(channel!.store_id, customer.id, 3)
+      const settings = await loadStoreWhatsAppSettings(channel!.store_id)
+      const orderFacts = orders.map((order) => {
+        const status = describeOpenOs(customer.full_name, order, settings?.os_on_demand?.templates)
+        return {
+          orderNumber: order.protocolo_fisico || String(order.id),
+          patientName: order.dependente_name,
+          status: status.statusCode,
+          statusText: status.replyText,
+        }
+      })
+      return {
+        tool: call.name,
+        ok: true,
+        data: { customerName: customer.full_name, ...prepareOpenOrdersForAgent(orderFacts) },
+      }
+    }
+
+    const explicitNumber = extractExplicitOrderNumber(effectiveMessageText)
+    const cpfDigits = digitsOnly(effectiveMessageText)
+    if (!explicitNumber && channel!.store_id === 1 && cpfDigits.length === 11) {
+      const customer = await findCustomerByCpf(channel!.store_id, cpfDigits)
+      if (!customer) return { tool: call.name, ok: false, data: { code: 'order_not_found_for_identifier' } }
+      const orders = await findOpenOsForCustomer(channel!.store_id, customer.id, 3)
+      if (orders.length === 0) {
+        return { tool: call.name, ok: false, data: { code: 'order_not_found_for_identifier' } }
+      }
+      const settings = await loadStoreWhatsAppSettings(channel!.store_id)
+      const orderFacts = orders.map((order) => {
+        const status = describeOpenOs(customer.full_name, order, settings?.os_on_demand?.templates)
+        return {
+          orderNumber: order.protocolo_fisico || String(order.id),
+          patientName: order.dependente_name,
+          status: status.statusCode,
+          statusText: status.replyText,
+        }
+      })
+      return { tool: call.name, ok: true,
+        data: { customerName: customer.full_name, ...prepareOpenOrdersForAgent(orderFacts) } }
+    }
+    const result = explicitNumber
+      ? await findOpenOsByOrderNumberOnly(channel!.store_id, `OS ${explicitNumber}`)
+      : await findOpenOsByIdentifier(channel!.store_id, effectiveMessageText || undefined)
+    if (!result) return { tool: call.name, ok: false, data: { code: 'order_not_found_for_identifier' } }
+
+    const settings = await loadStoreWhatsAppSettings(channel!.store_id)
+    const status = describeOpenOs(result.customer.full_name, result.serviceOrder, settings?.os_on_demand?.templates)
+    return {
+      tool: call.name,
+      ok: true,
+      data: {
+        customerName: result.customer.full_name,
+        orders: [{
+          orderNumber: result.serviceOrder.protocolo_fisico || String(result.serviceOrder.id),
+          patientName: result.serviceOrder.dependente_name,
+          status: status.statusCode,
+          statusText: status.replyText,
+        }],
+      },
+    }
+  }
+
+  // A decisao do redesign ja escolheu o assunto. O sistema escolhe a consulta
+  // aprovada e passa apenas os fatos encontrados para a redacao final da IA.
+  if (orderLookupPlan) {
+    if (!WHATSAPP_AI_FINAL_WRITER_ENABLED) {
+      return ignoreInbound(inbound.id, {
+        stage: 'order_status', reason: 'ai_final_writer_disabled',
+        route: 'store_one_order_status', intent: 'order_status', action: 'suppress_reply',
+      })
+    }
+    const { agent, disposition } = await runStoreOneOrderStatusTurn({
+      plan: orderLookupPlan,
+      assistant: {
+        messageText: effectiveMessageText || '',
+        conversationHistory: redesignConversationHistory,
+        recentContext,
+        storeName: storeProfile.name,
+        basePrompt: automationSettings?.ai_responder?.prompt || null,
+        pendingHumanHandoff: state?.state === 'awaiting_human',
+      },
+      executeLookup: executeOrderLookup,
+    })
+    for (let index = 0; index < agent.aiResults.length; index += 1) {
+      await recordAiResult(agent.aiResultTasks[index], agent.aiResults[index])
+    }
+    if (disposition.kind === 'suppress') {
+      return withAiDiagnostics(await ignoreInbound(inbound.id, {
+        stage: 'order_status', reason: disposition.reason,
+        route: orderLookupPlan.tool, intent: 'order_status', action: 'suppress_reply',
+      }))
+    }
+
+    const payload = {
+      ...buildWhatsAppCanonicalPayload({
+        intent: 'order_status',
+        action: disposition.action,
+        outboundType: disposition.outboundType,
+        canonicalReply: disposition.text,
+        facts: { usedTool: orderLookupPlan.tool, orderCount: disposition.orderCount },
+      }),
+      aiToolCalls: agent.toolCalls as unknown as Json,
+      aiToolResults: agent.toolResults as unknown as Json,
+    } satisfies ConversationMetadataRecord
+    const metadata = appendAiSessionMessage(mergeMetadata(baseMetadata, {
+      reason: disposition.reason,
+      aiToolCalls: agent.toolCalls as unknown as Json,
+      aiToolResults: agent.toolResults as unknown as Json,
+      ...buildDecisionMetadata({
+        intent: 'order_status', action: disposition.action, outboundType: disposition.outboundType,
+      }),
+    }), 'assistant', disposition.text)
+    const response = await createOutbound(
+      channel, inbound.id, normalizedPhone, disposition.text, disposition.outboundType, payload, inbound.id
+    )
+    if (response.shouldReply) {
+      await setCurrentConversationState(
+        disposition.state,
+        disposition.state === 'waiting_identifier' ? IDENTIFIER_WAIT_MS
+          : disposition.state === 'awaiting_human' ? AWAITING_HUMAN_CONTEXT_MS : AI_SESSION_MS,
+        metadata
+      )
+    }
+    return withAiDiagnostics(response)
+  }
+
+  if (isStoreOneSafeRepliesPilotEnabled(channel.store_id, automationSettings)
+    && (isExplicitOrderStatusOrReadinessQuestion(effectiveMessageText)
+      || Boolean(extractExplicitOrderNumber(effectiveMessageText)))
+    && !isExplicitHumanHandoffRequest(effectiveMessageText)) {
+    return ignoreInbound(inbound.id, {
+      stage: 'order_status', reason: 'redesign_order_decision_unavailable',
+      route: 'store_one_order_status', intent: 'order_status', action: 'suppress_reply',
+    })
+  }
+
+  // Assuntos fora do piloto de OS preservam o agente atual.
+  if (toolAgentEnabled) {
     const toolPostSaleContext = livePostSaleContext ?? recoveredPostSaleContext
     const toolAgent = await runWhatsAppToolAgent({
       assistant: {
@@ -3565,50 +3662,8 @@ export async function resolveCustomerStatus(
         pendingHumanHandoff: state?.state === 'awaiting_human',
       },
       executeTool: async (call: WhatsAppToolCall): Promise<WhatsAppToolResult> => {
-        if (call.name === 'lookup_open_orders') {
-          const customer = await findCustomerByPhone(channel.store_id, normalizedPhone)
-          if (!customer) return { tool: call.name, ok: false, data: { code: 'customer_not_found' } }
-
-          const orders = await findOpenOsForCustomer(channel.store_id, customer.id, 3)
-          const settings = await loadStoreWhatsAppSettings(channel.store_id)
-          const orderFacts = orders.map((order) => {
-            const status = describeOpenOs(customer.full_name, order, settings?.os_on_demand?.templates)
-            return {
-              orderNumber: order.protocolo_fisico || String(order.id),
-              patientName: order.dependente_name,
-              status: status.statusCode,
-              statusText: status.replyText,
-            }
-          })
-          return {
-            tool: call.name,
-            ok: true,
-            data: {
-              customerName: customer.full_name,
-              ...prepareOpenOrdersForAgent(orderFacts),
-            },
-          }
-        }
-
-        if (call.name === 'lookup_open_orders_by_identifier') {
-          const result = await findOpenOsByIdentifier(channel.store_id, effectiveMessageText || undefined)
-          if (!result) return { tool: call.name, ok: false, data: { code: 'order_not_found_for_identifier' } }
-
-          const settings = await loadStoreWhatsAppSettings(channel.store_id)
-          const status = describeOpenOs(result.customer.full_name, result.serviceOrder, settings?.os_on_demand?.templates)
-          return {
-            tool: call.name,
-            ok: true,
-            data: {
-              customerName: result.customer.full_name,
-              orders: [{
-                orderNumber: result.serviceOrder.protocolo_fisico || String(result.serviceOrder.id),
-                patientName: result.serviceOrder.dependente_name,
-                status: status.statusCode,
-                statusText: status.replyText,
-              }],
-            },
-          }
+        if (call.name === 'lookup_open_orders' || call.name === 'lookup_open_orders_by_identifier') {
+          return executeOrderLookup(call)
         }
 
         if (call.name === 'lookup_open_installments') {
@@ -3704,85 +3759,16 @@ export async function resolveCustomerStatus(
     })
 
     for (let index = 0; index < toolAgent.aiResults.length; index += 1) {
-      await recordAiResult(index === 0 ? 'tool_agent_plan' : 'tool_agent_reply', toolAgent.aiResults[index])
+      await recordAiResult(toolAgent.aiResultTasks[index], toolAgent.aiResults[index])
     }
 
-    if (useOrderStatusToolAgentForCurrentInbound) {
-      const explicitNumber = extractExplicitOrderNumber(effectiveMessageText)
-      const awaitingIdentifier = redesignAwaitingOrderIdentifier
-        || preAiRoute === 'waiting_identifier_lookup'
-        || preAiRoute === 'retry_identifier_lookup'
-      const chosenIdentifierLookup = toolAgent.toolCalls.some((call) => call.name === 'lookup_open_orders_by_identifier')
-      const useIdentifier = Boolean(explicitNumber || awaitingIdentifier || chosenIdentifierLookup)
-      const chosenLookup = toolAgent.toolResults.find((result) => result.tool === (
-        useIdentifier ? 'lookup_open_orders_by_identifier' : 'lookup_open_orders'
-      ))
-      const identifierLookupCalled = toolAgent.toolCalls.some((call) => call.name === 'lookup_open_orders_by_identifier')
-      const identifierLookupHandoffRequested = toolAgent.toolCalls.some((call) => call.name === 'handoff_human')
-        && toolAgent.toolResults.some((result) => result.tool === 'handoff_human' && result.ok)
-      const identifierLookupReplyTrusted = canUseIdentifierLookupAgentReply({
-        expectedLookupExecuted: identifierLookupCalled && Boolean(chosenLookup),
-        lookupSucceeded: chosenLookup?.ok === true,
-        handoffRequested: identifierLookupHandoffRequested,
-      })
-      const lookupFailed = useIdentifier
-        ? !identifierLookupReplyTrusted
-        : chosenLookup?.data.code === 'tool_execution_failed'
-      if (useIdentifier && !lookupFailed) {
-        // Uma resposta ao pedido anterior de identificador nunca volta ao menu
-        // nem recebe outra solicitacao identica sem tentar a busca primeiro.
-        const orderMatch = explicitNumber
-          ? await findOpenOsByOrderNumberOnly(channel.store_id, `OS ${explicitNumber}`)
-          : await findOpenOsByIdentifier(channel.store_id, effectiveMessageText || undefined)
-        if (orderMatch) {
-          await consumeForceAiOverrideIfNeeded()
-          return createStatusReply(
-            channel, inbound.id, normalizedPhone, orderMatch.customer, orderMatch.serviceOrder,
-            mergeMetadata(baseMetadata, { reason: toolAgent.success ? 'order_agent_lookup' : 'order_agent_contingency' }),
-            null,
-            { ...finalWriterContext, conversationHistory: redesignConversationHistory.length > 0
-              ? redesignConversationHistory : finalWriterContext.conversationHistory }
-          )
-        }
-      }
-
-      if (!useIdentifier && !lookupFailed) {
-        const orders = Array.isArray(chosenLookup?.data.orders) ? chosenLookup.data.orders : []
-        if (orders.length === 1) {
-          await consumeForceAiOverrideIfNeeded()
-          return handleStatusByPhone(
-            channel, inbound.id, normalizedPhone, baseMetadata, null,
-            { ...finalWriterContext, conversationHistory: redesignConversationHistory.length > 0
-              ? redesignConversationHistory : finalWriterContext.conversationHistory }
-          )
-        }
-      }
-
-      if (lookupFailed || !toolAgent.success || !toolAgent.replyText) {
-        await consumeForceAiOverrideIfNeeded()
-        if (channel.store_id !== 1) {
-          const text = notFoundHandoffText()
-          await setCurrentAutomatedHandoff(mergeMetadata(baseMetadata, {
-            reason: lookupFailed ? 'order_lookup_unavailable' : 'order_identifier_not_found',
-            ...buildDecisionMetadata({ intent: 'order_status', action: 'human_handoff', outboundType: 'human_handoff' }),
-          }))
-          return createCurrentOutbound(text, 'human_handoff', {
-            ...buildWhatsAppCanonicalPayload({
-              intent: 'order_status',
-              action: 'human_handoff',
-              outboundType: 'human_handoff',
-              canonicalReply: text,
-            }),
-          })
-        }
-        await setCurrentAutomatedHandoff(mergeMetadata(baseMetadata, {
-          reason: lookupFailed
-            ? useIdentifier ? 'order_identifier_lookup_not_confirmed' : 'order_lookup_unavailable'
-            : 'order_lookup_reply_unavailable',
-          ...buildDecisionMetadata({ intent: 'order_status', action: 'silent_handoff', outboundType: null }),
-        }))
-        return ignoreInbound(inbound.id)
-      }
+    if (channel.store_id === 1 && toolAgent.toolCalls.some((call) =>
+      call.name === 'lookup_open_orders' || call.name === 'lookup_open_orders_by_identifier'
+    )) {
+      return withAiDiagnostics(await ignoreInbound(inbound.id, {
+        stage: 'order_status', reason: 'order_lookup_without_redesign_decision',
+        route: 'tool_agent', intent: 'order_status', action: 'suppress_reply',
+      }))
     }
 
     if (toolAgent.success && toolAgent.replyText) {
@@ -3800,29 +3786,6 @@ export async function resolveCustomerStatus(
         && toolAgent.toolResults.some((result) => result.tool === 'record_post_sale_rating' && result.ok)
       const ratingRequested = toolAgent.toolCalls.some((call) => call.name === 'request_post_sale_rating')
         && toolAgent.toolResults.some((result) => result.tool === 'request_post_sale_rating' && result.ok)
-      const orderStatusPhoneLookup = useOrderStatusToolAgentForCurrentInbound
-        && toolAgent.toolCalls.some((call) => call.name === 'lookup_open_orders')
-        ? toolAgent.toolResults.find((result) => result.tool === 'lookup_open_orders') ?? null
-        : null
-      const phoneLookupOrders = Array.isArray(orderStatusPhoneLookup?.data.orders)
-        ? orderStatusPhoneLookup.data.orders as OpenOrderAgentFact[]
-        : []
-      const orderStatusAction = orderStatusPhoneLookup
-        ? orderStatusPhoneLookup.data.code === 'customer_not_found'
-          || orderStatusPhoneLookup.data.tooManyOpenOrders === true
-          || (Array.isArray(orderStatusPhoneLookup.data.orders) && orderStatusPhoneLookup.data.orders.length === 0)
-          ? 'request_identifier' as const
-          : orderStatusPhoneLookup.ok ? 'auto_reply' as const : null
-        : null
-      if (channel.store_id === 1 && !handedOff && orderStatusAction === 'auto_reply'
-        && !validateOrderAgentReply(toolAgent.replyText, phoneLookupOrders).valid) {
-        console.warn('[WhatsApp IA] Resposta de OS suprimida: faltam fatos obrigatorios ou associacao segura.')
-        await setCurrentAutomatedHandoff(mergeMetadata(baseMetadata, {
-          reason: 'order_status_reply_missing_facts',
-          ...buildDecisionMetadata({ intent: 'order_status', action: 'silent_handoff', outboundType: null }),
-        }))
-        return withAiDiagnostics(await ignoreInbound(inbound.id))
-      }
       const nextPostSaleContext = ratingRecorded && toolPostSaleContext
         ? { ...toolPostSaleContext, stage: 'completed' }
         : ratingRequested && toolPostSaleContext
@@ -3830,7 +3793,7 @@ export async function resolveCustomerStatus(
           : toolPostSaleContext
       const semantics = resolveToolAgentReplySemantics({
         handedOff,
-        orderStatusAction,
+        orderStatusAction: null,
         ratingRecorded,
         ratingRequested,
       })
@@ -3850,19 +3813,15 @@ export async function resolveCustomerStatus(
           outboundType: semantics.outboundType,
         }),
       })
-      const outboundIntent = useOrderStatusToolAgentForCurrentInbound && handedOff
-        ? 'order_status'
-        : semantics.intent
       let outboundPayload: ConversationMetadataRecord = {
         ...buildWhatsAppCanonicalPayload({
-          intent: outboundIntent,
+          intent: semantics.intent,
           action: semantics.action,
           outboundType: semantics.outboundType,
           canonicalReply: replyText,
           facts: {
             usedTools: toolAgent.toolCalls.map((call) => call.name).join(','),
             ratingRecorded,
-            orderStatusPhoneLookup: Boolean(orderStatusPhoneLookup),
           },
         }),
         aiToolCalls: toolAgent.toolCalls as unknown as Json,
@@ -3908,7 +3867,7 @@ export async function resolveCustomerStatus(
     }
   }
 
-  if (preAiRoute === 'retry_identifier_lookup' && !toolAgentEnabled && !useOrderStatusToolAgentForCurrentInbound) {
+  if (preAiRoute === 'retry_identifier_lookup' && !toolAgentEnabled) {
     const paymentLookup = await findOpenInstallmentsByIdentifier(channel.store_id, effectiveMessageText || undefined)
     if (paymentLookup) {
       await consumeForceAiOverrideIfNeeded()
@@ -3945,7 +3904,7 @@ export async function resolveCustomerStatus(
     }
   }
 
-  if (preAiRoute === 'waiting_identifier_lookup' && !toolAgentEnabled && !useOrderStatusToolAgentForCurrentInbound) {
+  if (preAiRoute === 'waiting_identifier_lookup' && !toolAgentEnabled) {
     const isDisambiguatingOpenOrders = toMetadataRecord(state?.metadata).reason === 'multiple_open_orders_identifier_requested'
     const paymentLookup = isDisambiguatingOpenOrders
       ? null
