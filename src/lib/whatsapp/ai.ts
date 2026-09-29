@@ -682,14 +682,14 @@ export function buildToolAgentReplyPrompt(input: WhatsAppToolAgentInput, toolRes
   ].filter((line): line is string => line !== null).join('\n')
 }
 
-async function callOpenAI(task: WhatsAppAiTask, prompt: string): Promise<ProviderAttemptSuccess | ProviderAttemptFailure> {
+async function callOpenAI(task: WhatsAppAiTask, prompt: string, modelOverride?: string): Promise<ProviderAttemptSuccess | ProviderAttemptFailure> {
   if (OPENAI_KEYS.length === 0) {
     return { provider: 'openai', keyIndex: -1, error: 'Nenhuma chave OpenAI configurada.' }
   }
 
   const order = nextRoundRobinOrder(OPENAI_KEYS.length, openAiRoundRobinCursor)
   openAiRoundRobinCursor = (openAiRoundRobinCursor + 1) % OPENAI_KEYS.length
-  const model = task === 'order_handoff_humanization' ? OPENAI_ORDER_HANDOFF_MODEL : OPENAI_MODEL
+  const model = modelOverride || (task === 'order_handoff_humanization' ? OPENAI_ORDER_HANDOFF_MODEL : OPENAI_MODEL)
 
   for (const keyIndex of order) {
     const key = OPENAI_KEYS[keyIndex]
@@ -755,8 +755,8 @@ async function callOpenAI(task: WhatsAppAiTask, prompt: string): Promise<Provide
   return { provider: 'openai', keyIndex: -1, error: `OpenAI falhou em ${task}.` }
 }
 
-async function runWithOpenAIOnly(task: WhatsAppAiTask, prompt: string) {
-  const result = await callOpenAI(task, prompt)
+async function runWithOpenAIOnly(task: WhatsAppAiTask, prompt: string, modelOverride?: string) {
+  const result = await callOpenAI(task, prompt, modelOverride)
   return 'rawText' in result
     ? { success: true as const, result, providerErrors: [] as string[] }
     : { success: false as const, providerErrors: [`openai:${result.error}`] }
@@ -927,10 +927,11 @@ function buildInstallmentReminderPreferenceResolutionPrompt(
 async function executeStructuredTask<T>(
   task: WhatsAppAiTask,
   prompt: string,
-  schema: z.ZodSchema<T>
+  schema: z.ZodSchema<T>,
+  modelOverride?: string
 ): Promise<WhatsAppAiResult<T>> {
   const t0 = Date.now()
-  const outcome = await runWithOpenAIOnly(task, prompt)
+  const outcome = await runWithOpenAIOnly(task, prompt, modelOverride)
   const latencyMs = Date.now() - t0
 
   if (!outcome.success) {
@@ -1079,12 +1080,14 @@ export async function planWhatsAppToolAgent(
 
 export async function writeWhatsAppToolAgentReply(
   input: WhatsAppToolAgentInput,
-  toolResults: unknown[]
+  toolResults: unknown[],
+  options?: { model?: string }
 ): Promise<WhatsAppAiResult<WhatsAppToolAgentReply>> {
   return executeStructuredTask(
     'tool_agent_reply',
     buildToolAgentReplyPrompt(input, toolResults),
-    WhatsAppToolAgentReplySchema
+    WhatsAppToolAgentReplySchema,
+    options?.model
   )
 }
 

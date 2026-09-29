@@ -93,7 +93,7 @@ function containsOrderReplyPhrase(text: string, phrase: string) {
 
 function orderStatusIsNamed(text: string, status: string) {
   const normalized = normalizeOrderReplyText(text)
-  if (/\b(?:nao|not)\b(?:\s+\w+){0,3}\s+(?:pront\w*|retir\w*|produc\w*|laborator\w*|mont\w*)\b/u.test(normalized)) return false
+  if (negatesOrderStage(normalized)) return false
   const saysReady = /\b(pront\w*|retir\w*|buscar\w*|ready|pick up|listo\w*|recoger\w*)\b/u.test(normalized)
   const saysProduction = /\b(produc\w*|laborator\w*|fabric\w*|production|laboratory|fabricacion)\b/u.test(normalized)
   const saysAssembly = /\b(mont\w*|ensambl\w*|assembl\w*)\b/u.test(normalized)
@@ -111,6 +111,10 @@ function orderStatusIsNamed(text: string, status: string) {
     default:
       return false
   }
+}
+
+function negatesOrderStage(normalizedText: string) {
+  return /\b(?:nao|not)\b(?:\s+\w+){0,3}\s+(?:pront\w*|retir\w*|produc\w*|laborator\w*|mont\w*)\b/u.test(normalizedText)
 }
 
 export type OrderAgentReplyValidation =
@@ -132,6 +136,7 @@ export function validateOrderAgentReply(
   for (const sentence of sentences) {
     const namesAnOrder = orders.some((order) => containsOrderReplyPhrase(sentence, order.orderNumber))
     const assertsStage = /\b(?:pront\w*|retir\w*|buscar\w*|produc\w*|laborator\w*|mont\w*|ensambl\w*|assembl\w*|ready|recoger)\b/u.test(sentence)
+      && !negatesOrderStage(sentence)
     if (assertsStage && !namesAnOrder) return { valid: false, reason: 'missing_order' }
     const unknownNumber = [...sentence.matchAll(/\b(?:os|pedido)\s*(?:n(?:o|umero)\s*)?(\d+)\b/gu)]
       .some((match) => !orders.some((order) => normalizeOrderReplyText(order.orderNumber) === match[1]))
@@ -154,7 +159,7 @@ export function validateOrderAgentReply(
       }
     } else if (!/\b(titular|owner|account holder)\b/u.test(sentence)
       && !(options.allowPossessiveOwnerReference
-        && /\b(?:seu|sua|teu|tua)\s+(?:pedido|os)\b/u.test(sentence))) {
+        && /\b(?:(?:seu|sua|teu|tua|o)\s+(?:pedido|os)|do\s+titular)\b/u.test(sentence))) {
       return { valid: false, reason: 'missing_patient' }
     }
 

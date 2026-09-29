@@ -109,13 +109,14 @@ test('resposta sem numero da OS e refeita com os mesmos fatos antes do envio', a
         data: { orders: [{ orderNumber: '1041', patientName: null,
           status: 'lens_in_production', statusText: 'Em producao no laboratorio' }] } }
     },
-    writeReply: async (input) => {
+    writeReply: async (input, _toolResults, options) => {
       writes += 1
       if (writes === 1) {
         assert.equal(input.rejectedOrderReply, undefined)
         return fakeWriter('Seu pedido esta em producao no laboratorio.')()
       }
       assert.equal(input.rejectedOrderReply?.reason, 'missing_order')
+      assert.equal(options?.model, 'gpt-4.1-mini')
       return fakeWriter('A OS 1041, do titular, esta em producao no laboratorio.')()
     },
   })
@@ -141,6 +142,28 @@ test('pedido do titular pelo telefone aceita seu pedido, mas busca por identific
   assert.equal(phone.disposition.kind, 'send')
   const identifier = await runStoreOneOrderStatusTurn({ plan: identifierPlan,
     assistant: { messageText: 'OS 1041' },
+    executeLookup: async (call) => ({ tool: call.name, ok: true, data: { orders: [fact] } }),
+    writeReply: fakeWriter(reply),
+  })
+  assert.equal(identifier.disposition.kind, 'suppress')
+})
+
+test('negação de pronto em frase sem OS não bloqueia a OS numerada da frase seguinte', async () => {
+  const phonePlan = plan('meu oculos ta pronto?')
+  const identifierPlan = plan('OS 1043')
+  assert.ok(phonePlan)
+  assert.ok(identifierPlan)
+  const reply = 'Seu oculos ainda nao esta pronto. O pedido com numero 1043 esta na fila de montagem, pois a lente ja chegou.'
+  const fact = { orderNumber: '1043', patientName: null,
+    status: 'lens_arrived_assembling', statusText: 'A lente chegou e esta na fila de montagem' }
+  const phone = await runStoreOneOrderStatusTurn({ plan: phonePlan,
+    assistant: { messageText: 'meu oculos ta pronto?' },
+    executeLookup: async (call) => ({ tool: call.name, ok: true, data: { orders: [fact] } }),
+    writeReply: fakeWriter(reply),
+  })
+  assert.equal(phone.disposition.kind, 'send')
+  const identifier = await runStoreOneOrderStatusTurn({ plan: identifierPlan,
+    assistant: { messageText: 'OS 1043' },
     executeLookup: async (call) => ({ tool: call.name, ok: true, data: { orders: [fact] } }),
     writeReply: fakeWriter(reply),
   })

@@ -176,7 +176,7 @@ export async function runStoreOneOrderStatusTurn(input: {
           statusText: order.statusText,
         })),
       },
-    }, agent.toolResults)
+    }, agent.toolResults, { model: 'gpt-4.1-mini' })
     agent.aiResults.push(revision)
     agent.aiResultTasks.push('tool_agent_reply')
     disposition = revision.success
