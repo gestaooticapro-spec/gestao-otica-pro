@@ -1,14 +1,36 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  canBypassPostSaleBusinessHoursForTest,
   decidePostSaleTurnDisposition,
   extractPostSaleRatingForStage,
   getPostSaleForcedToolCall,
+  isStoreOnePostSaleTestProtocol,
   transitionPostSaleContextAfterTurn,
   type PostSaleContext,
 } from '../src/lib/whatsapp/post-sale-followup'
 
 const MIN_CONFIDENCE = 0.72
+
+test('gatilho manual aceita somente o protocolo ficticio autorizado da Loja 1', () => {
+  assert.equal(isStoreOnePostSaleTestProtocol('1043'), true)
+  assert.equal(isStoreOnePostSaleTestProtocol('OS 1043'), true)
+  assert.equal(isStoreOnePostSaleTestProtocol('1044'), false)
+  assert.equal(isStoreOnePostSaleTestProtocol(''), false)
+})
+
+test('bypass de expediente exige a OS de teste, Loja 1 e o ID exato da fila', () => {
+  const base = {
+    followupId: 7,
+    targetFollowupId: 7,
+    storeId: 1,
+    manualTestMarker: 'store_1_protocol_1043',
+  }
+  assert.equal(canBypassPostSaleBusinessHoursForTest(base), true)
+  assert.equal(canBypassPostSaleBusinessHoursForTest({ ...base, targetFollowupId: 8 }), false)
+  assert.equal(canBypassPostSaleBusinessHoursForTest({ ...base, storeId: 2 }), false)
+  assert.equal(canBypassPostSaleBusinessHoursForTest({ ...base, manualTestMarker: null }), false)
+})
 
 function classify(intent: string, automationCandidate = true, confidence = 0.95) {
   return decidePostSaleTurnDisposition({

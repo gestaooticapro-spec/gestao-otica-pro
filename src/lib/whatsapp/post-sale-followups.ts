@@ -3,15 +3,18 @@
 import { Json } from '@/lib/database.types'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getStoreModules, StoreSettings } from '@/lib/store-modules'
-import { phonesMatch, toEvolutionNumber } from '@/lib/whatsapp/phone'
+import { digitsOnly, phonesMatch, toEvolutionNumber } from '@/lib/whatsapp/phone'
 import { buildWhatsAppCanonicalPayload } from '@/lib/whatsapp/canonical'
 import { evaluateStoreHours } from '@/lib/whatsapp/store-hours-logic'
 import {
   buildPostSaleFollowupMessage,
   buildPostSaleFollowupSettings,
+  canBypassPostSaleBusinessHoursForTest,
   decidePostSaleDeadlineOutcome,
   decideStalePostSaleFollowupRecovery,
   DEFAULT_POST_SALE_FOLLOWUP_DAYS,
+  isStoreOnePostSaleTestProtocol,
+  STORE_ONE_POST_SALE_TEST_MARKER,
 } from '@/lib/whatsapp/post-sale-followup'
 import { concludePostSaleAutomatically, ensurePostSaleTracking } from '@/lib/whatsapp/post-sales'
 
@@ -44,6 +47,7 @@ type EligibleServiceOrderRow = {
   customer_id: number
   dependente_id: number | null
   dt_entregue_em: string
+  protocolo_fisico?: string | null
   customers?: {
     id: number
     full_name: string
@@ -903,14 +907,21 @@ async function recoverFailedSentFollowups(now: Date) {
   }
 }
 
-async function dispatchScheduledFollowups(now: Date, limit = DEFAULT_DISPATCH_LIMIT) {
+async function dispatchScheduledFollowups(
+  now: Date,
+  limit = DEFAULT_DISPATCH_LIMIT,
+  onlyFollowupId?: number
+) {
   const supabase = createAdminClient()
-  const { data, error } = await (supabase.from('whatsapp_post_sale_followups') as any)
+  let query = (supabase.from('whatsapp_post_sale_followups') as any)
     .select('id, tenant_id, store_id, channel_id, service_order_id, covered_service_order_ids, customer_id, post_sales_id, remote_phone, delivered_at, scheduled_for, status, message_text, outbound_message_id, payload, whatsapp_store_channels(instance_key), stores(settings)')
     .eq('status', 'scheduled')
     .lte('scheduled_for', now.toISOString())
     .order('scheduled_for', { ascending: true })
     .limit(limit)
+  if (onlyFollowupId !== undefined) query = query.eq('id', onlyFollowupId)
+
+  const { data, error } = await query
 
   if (error) throw error
 
@@ -940,7 +951,17 @@ async function dispatchScheduledFollowups(now: Date, limit = DEFAULT_DISPATCH_LI
   }
 
   for (const followup of (data ?? []) as FollowupRow[]) {
-    if (!isPostSaleBusinessTime(now, followup.stores?.settings)) {
+    const payload = followup.payload && typeof followup.payload === 'object' && !Array.isArray(followup.payload)
+      ? followup.payload as Record<string, Json>
+      : null
+    const isScopedStoreOneTest = canBypassPostSaleBusinessHoursForTest({
+      followupId: followup.id,
+      targetFollowupId: onlyFollowupId,
+      storeId: followup.store_id,
+      manualTestMarker: typeof payload?.manualTest === 'string' ? payload.manualTest : null,
+    })
+
+    if (!isPostSaleBusinessTime(now, followup.stores?.settings) && !isScopedStoreOneTest) {
       const { error: rescheduleError } = await (supabase.from('whatsapp_post_sale_followups') as any)
         .update({
           scheduled_for: nextPostSaleBusinessSlotForSettings(now, followup.stores?.settings).toISOString(),
@@ -1172,6 +1193,159 @@ async function dispatchScheduledFollowups(now: Date, limit = DEFAULT_DISPATCH_LI
     sent,
     failed,
   }
+}
+
+export type StoreOnePostSaleTestResult =
+  | { outcome: 'sent' }
+  | { outcome: 'not_sent'; reason: string }
+
+/**
+ * One-off, tightly scoped test trigger. It deliberately does not call the
+ * global scheduler/job and dispatches only the follow-up row created here.
+ */
+export async function triggerStoreOnePostSaleFollowupTest(input: {
+  protocol: string
+  expectedRecipient: string
+}): Promise<StoreOnePostSaleTestResult> {
+  if (!isStoreOnePostSaleTestProtocol(input.protocol)) {
+    return { outcome: 'not_sent', reason: 'protocol_not_allowed' }
+  }
+
+  const expectedRecipient = toEvolutionNumber(input.expectedRecipient)
+  if (!expectedRecipient) return { outcome: 'not_sent', reason: 'invalid_recipient' }
+
+  const supabase = createAdminClient()
+  const { data: orders, error: ordersError } = await (supabase.from('service_orders') as any)
+    .select(`
+      id, tenant_id, store_id, customer_id, dependente_id, dt_entregue_em, protocolo_fisico,
+      customers ( id, full_name, phone, fone_movel ),
+      dependentes ( id, full_name ),
+      post_sales ( id, status ),
+      vendas ( id, status )
+    `)
+    .eq('store_id', 1)
+    .not('protocolo_fisico', 'is', null)
+    .ilike('protocolo_fisico', '%1043%')
+    .limit(10)
+  if (ordersError) throw ordersError
+
+  const matchingOrders = ((orders ?? []) as EligibleServiceOrderRow[])
+    .filter((order) => digitsOnly(order.protocolo_fisico) === '1043')
+  if (matchingOrders.length === 0) return { outcome: 'not_sent', reason: 'order_not_found' }
+  if (matchingOrders.length !== 1) return { outcome: 'not_sent', reason: 'order_ambiguous' }
+
+  const order = matchingOrders[0]
+  const { data: channels, error: channelsError } = await (supabase.from('whatsapp_store_channels') as any)
+    .select('id, tenant_id, store_id, instance_key, phone_number, is_active, connection_status, stores(settings)')
+    .eq('store_id', 1)
+    .eq('provider', 'evolution')
+    .eq('is_active', true)
+    .eq('connection_status', 'connected')
+  if (channelsError) throw channelsError
+  if ((channels ?? []).length !== 1) return { outcome: 'not_sent', reason: 'channel_unavailable_or_ambiguous' }
+
+  const channel = channels[0] as ChannelRow
+  const settings = followupSettingsFromChannel(channel)
+  if (!settings) return { outcome: 'not_sent', reason: 'followup_disabled' }
+  if (channel.tenant_id !== order.tenant_id || order.store_id !== 1) {
+    return { outcome: 'not_sent', reason: 'tenant_mismatch' }
+  }
+
+  const phone = toEvolutionNumber(order.customers?.fone_movel || order.customers?.phone)
+  if (!phone || !phonesMatch(phone, expectedRecipient)) {
+    return { outcome: 'not_sent', reason: 'recipient_mismatch' }
+  }
+
+  const deliveredAt = String(order.dt_entregue_em || '')
+  const deliveredMs = new Date(deliveredAt).getTime()
+  const ageDays = Number.isFinite(deliveredMs)
+    ? Math.floor((Date.now() - deliveredMs) / 86_400_000)
+    : -1
+  const eligibleDeliveryDate = daysAgoDateString(new Date(), settings.days_after_delivery)
+  if (!deliveredAt || !Number.isFinite(deliveredMs) || deliveredAt.slice(0, 10) > eligibleDeliveryDate) {
+    return { outcome: 'not_sent', reason: 'delivery_not_old_enough' }
+  }
+
+  const saleStatus = order.vendas?.status || null
+  if (saleStatus === 'Devolvida' || saleStatus === 'Cancelada') {
+    return { outcome: 'not_sent', reason: 'sale_ineligible' }
+  }
+
+  const postSales = order.post_sales ?? []
+  if (postSales.length > 1) return { outcome: 'not_sent', reason: 'post_sale_ambiguous' }
+  const postSale = postSales[0]
+  if (postSale?.status === 'Concluido' || postSale?.status === 'Em Acompanhamento') {
+    return { outcome: 'not_sent', reason: 'post_sale_already_active_or_complete' }
+  }
+
+  const now = new Date()
+  if (await hasActiveHumanBlock(channel.id, phone)) {
+    return { outcome: 'not_sent', reason: 'human_control_active' }
+  }
+  if (await isPostSaleFollowupOptedOut(1, phone)) {
+    return { outcome: 'not_sent', reason: 'recipient_opted_out' }
+  }
+
+  const { data: existingCoverage, error: coverageError } = await (supabase.from('whatsapp_post_sale_followups') as any)
+    .select('id')
+    .eq('store_id', 1)
+    .overlaps('covered_service_order_ids', [order.id])
+    .limit(1)
+  if (coverageError) throw coverageError
+  if ((existingCoverage ?? []).length > 0) {
+    return { outcome: 'not_sent', reason: 'followup_already_exists' }
+  }
+
+  const customerName = order.customers?.full_name || 'Cliente'
+  const messageText = buildPostSaleFollowupMessage({
+    template: settings.template,
+    customerName,
+    dependentName: order.dependentes?.full_name ?? null,
+    daysSinceDelivery: Math.max(1, ageDays),
+  })
+  const deliveredDate = deliveredAt.slice(0, 10)
+  const { data: insertedFollowup, error: insertError } = await (supabase.from('whatsapp_post_sale_followups') as any)
+    .insert({
+      tenant_id: order.tenant_id,
+      store_id: 1,
+      channel_id: channel.id,
+      service_order_id: order.id,
+      covered_service_order_ids: [order.id],
+      customer_id: order.customer_id,
+      post_sales_id: postSale?.id ?? null,
+      remote_phone: phone,
+      delivered_at: deliveredDate,
+      scheduled_for: new Date(now.getTime() - 1_000).toISOString(),
+      status: 'scheduled',
+      message_text: messageText,
+      payload: {
+        deliveryDate: deliveredDate,
+        daysSinceDelivery: Math.max(1, ageDays),
+        groupedServiceOrderIds: [order.id],
+        groupedServiceOrderCount: 1,
+        groupedBeneficiary: order.dependente_id
+          ? { type: 'dependent', id: order.dependente_id, name: order.dependentes?.full_name ?? null }
+          : { type: 'customer', id: order.customer_id, name: customerName },
+        manualTest: STORE_ONE_POST_SALE_TEST_MARKER,
+      },
+    })
+    .select('id')
+    .single()
+
+  if (insertError?.code === '23505') return { outcome: 'not_sent', reason: 'followup_already_exists' }
+  if (insertError) throw insertError
+
+  await dispatchScheduledFollowups(now, 1, Number(insertedFollowup.id))
+
+  const { data: finalFollowup, error: finalFollowupError } = await (supabase.from('whatsapp_post_sale_followups') as any)
+    .select('status')
+    .eq('id', insertedFollowup.id)
+    .maybeSingle()
+  if (finalFollowupError) throw finalFollowupError
+
+  return finalFollowup?.status === 'sent'
+    ? { outcome: 'sent' }
+    : { outcome: 'not_sent', reason: finalFollowup?.status || 'delivery_pending_review' }
 }
 
 export type ManualPostSaleRequeueResult = {

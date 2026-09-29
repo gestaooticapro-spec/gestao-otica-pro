@@ -34,6 +34,24 @@ export type PostSaleContext = {
 
 export type PostSaleTurnDisposition = 'handle_post_sale' | 'route_other_topic' | 'suppress_preserving_context'
 
+export const STORE_ONE_POST_SALE_TEST_PROTOCOL = '1043'
+export const STORE_ONE_POST_SALE_TEST_MARKER = 'store_1_protocol_1043'
+
+export function isStoreOnePostSaleTestProtocol(protocol: string | null | undefined) {
+  return String(protocol ?? '').replace(/\D/g, '') === STORE_ONE_POST_SALE_TEST_PROTOCOL
+}
+
+export function canBypassPostSaleBusinessHoursForTest(input: {
+  followupId: number
+  targetFollowupId?: number
+  storeId: number
+  manualTestMarker: string | null | undefined
+}) {
+  return input.storeId === 1
+    && input.targetFollowupId === input.followupId
+    && input.manualTestMarker === STORE_ONE_POST_SALE_TEST_MARKER
+}
+
 export type PostSaleForcedToolCall =
   | { name: 'request_post_sale_rating' }
   | { name: 'record_post_sale_rating'; rating: number }
