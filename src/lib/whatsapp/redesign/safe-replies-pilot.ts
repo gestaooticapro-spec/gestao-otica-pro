@@ -6,7 +6,11 @@ import {
   type WhatsAppSystemDecisionDraft,
 } from './contracts'
 import { isExplicitOfficialPixRequest } from './system-decision'
-import { isExplicitOrderReadinessQuestion, isExplicitStoreHoursQuestion } from './intent-guards'
+import {
+  isExplicitHumanHandoffRequest,
+  isExplicitOrderStatusOrReadinessQuestion,
+  isExplicitStoreHoursQuestion,
+} from './intent-guards'
 
 export type PilotSafeReply = {
   action: 'answer_store_hours' | 'answer_store_location' | 'answer_official_pix'
@@ -36,24 +40,16 @@ export function shouldLookupOrderStatusInStoreOnePilot(input: {
   decision: WhatsAppSystemDecisionDraft
   messageText?: string | null
 }) {
-  const normalizedText = (input.messageText ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .toLocaleLowerCase('pt-BR').replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim()
-  const explicitOrderStatus = [
-    /\b(?:meu|minha) (?:oculos|pedido|os) (?:ja )?(?:ficou|esta|ta) pronto\b/u,
-    /\b(?:qual|como) (?:esta|ta) (?:o )?(?:status|andamento) (?:do|da|de) (?:meu|minha) (?:pedido|os|oculos)\b/u,
-    /\b(?:status|andamento) (?:do|da) (?:meu|minha) (?:pedido|os|oculos)\b/u,
-    /\b(?:meu|minha) (?:pedido|os) (?:esta|ta) pronto\b/u,
-  ].some((pattern) => pattern.test(normalizedText))
-  const explicitHumanRequest = /\b(?:quero|preciso|gostaria de) (?:falar|conversar) com (?:um )?(?:atendente|humano|pessoa)\b/u.test(normalizedText)
+  const explicitHumanRequest = isExplicitHumanHandoffRequest(input.messageText)
   const classifierRecognizedOrderStatus = input.classification.intent === 'order_status'
     && input.decision.action === 'lookup_order_status'
-  const explicitOrderReadiness = isExplicitOrderReadinessQuestion(input.messageText)
+  const explicitOrderStatus = isExplicitOrderStatusOrReadinessQuestion(input.messageText)
 
   return !input.classification.requestsHuman
     && !explicitHumanRequest
     && !input.classification.mentionsAttachment
     && (
-      ((explicitOrderStatus || explicitOrderReadiness) && input.decision.action !== 'no_reply')
+      (explicitOrderStatus && input.decision.action !== 'no_reply')
       || (
         input.classification.confidence >= WHATSAPP_REDESIGN_MIN_CONFIDENCE
         && input.decision.action === 'lookup_order_status'
@@ -72,14 +68,16 @@ export function shouldUseOrderStatusToolAgent(input: {
   const hasExplicitOrderNumber = Boolean(extractExplicitOrderNumber(input.messageText))
   const classificationSupportsOrderLookup = input.classification.intent === 'order_status'
     && input.classification.confidence >= WHATSAPP_REDESIGN_MIN_CONFIDENCE
-  const explicitOrderReadiness = isExplicitOrderReadinessQuestion(input.messageText)
+  const explicitOrderStatus = isExplicitOrderStatusOrReadinessQuestion(input.messageText)
+  const explicitHumanRequest = isExplicitHumanHandoffRequest(input.messageText)
 
   return input.enabled
-    && (classificationSupportsOrderLookup || hasExplicitOrderNumber || explicitOrderReadiness
+    && (classificationSupportsOrderLookup || hasExplicitOrderNumber || explicitOrderStatus
       || (input.awaitingIdentifier === true
         && (input.classification.intent === 'order_status'
           || input.classification.intent === 'unknown')))
     && !input.classification.requestsHuman
+    && !explicitHumanRequest
     && !input.classification.mentionsAttachment
     && input.decision.action !== 'no_reply'
 }

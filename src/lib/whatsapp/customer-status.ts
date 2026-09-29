@@ -167,6 +167,13 @@ type StoreProfileRow = Pick<
 }
 
 type ConversationMetadataRecord = Record<string, Json | undefined>
+type InboundSuppressionDiagnostic = {
+  stage: string
+  reason: string
+  route?: string | null
+  intent?: string | null
+  action?: string | null
+}
 type CustomerControlMode = 'auto' | 'force_ai' | 'force_human'
 type CustomerLinkSource = 'phone_match' | 'status_lookup' | 'identifier_lookup' | 'manual'
 type PersistedConversationRole = 'customer' | 'assistant' | 'human' | 'system'
@@ -2207,7 +2214,12 @@ async function createOutbound(
 ): Promise<CustomerStatusResponse> {
   const supabase = createAdminClient()
   if (sourceInboundMessageId && !(await isInboundStillLatest(channel.id, phone, sourceInboundMessageId))) {
-    return ignoreInbound(inboundMessageId)
+    return ignoreInbound(inboundMessageId, {
+      stage: 'outbound_guard',
+      reason: 'superseded_by_newer_inbound',
+      route: 'create_outbound',
+      action: 'discard_stale_reply',
+    })
   }
 
   // Webhooks repetidos podem voltar a processar um inbound antigo ainda marcado
@@ -2273,11 +2285,35 @@ async function createOutbound(
   }
 }
 
-async function ignoreInbound(inboundMessageId: number): Promise<CustomerStatusResponse> {
+async function ignoreInbound(
+  inboundMessageId: number,
+  diagnostic?: InboundSuppressionDiagnostic
+): Promise<CustomerStatusResponse> {
   const supabase = createAdminClient()
-  await (supabase.from('whatsapp_inbound_messages') as any)
-    .update({ status: 'ignored' })
+  const updates: Record<string, unknown> = { status: 'ignored' }
+  if (diagnostic) {
+    const { data, error: readError } = await (supabase.from('whatsapp_inbound_messages') as any)
+      .select('payload')
+      .eq('id', inboundMessageId)
+      .maybeSingle()
+    if (readError) throw readError
+    const payload = toMetadataRecord(data?.payload as Json | null)
+    updates.payload = {
+      ...payload,
+      _whatsappAutomationDiagnostic: {
+        stage: diagnostic.stage,
+        reason: diagnostic.reason,
+        route: diagnostic.route ?? null,
+        intent: diagnostic.intent ?? null,
+        action: diagnostic.action ?? null,
+        recordedAt: new Date().toISOString(),
+      },
+    } satisfies Json
+  }
+  const { error } = await (supabase.from('whatsapp_inbound_messages') as any)
+    .update(updates)
     .eq('id', inboundMessageId)
+  if (error) throw error
 
   return { shouldReply: false }
 }
@@ -2311,7 +2347,12 @@ async function createStatusReply(
   intentConfidence: number | null = null,
   finalWriter?: WhatsAppFinalWriterContext
 ): Promise<CustomerStatusResponse> {
-  if (channel.store_id === 1 && finalWriter?.enabled !== true) return ignoreInbound(inboundMessageId)
+  if (channel.store_id === 1 && finalWriter?.enabled !== true) {
+    return ignoreInbound(inboundMessageId, {
+      stage: 'final_reply_generation', reason: 'ai_final_writer_disabled',
+      route: 'order_status', intent: 'order_status', action: 'suppress_reply',
+    })
+  }
 
   // Loja 1: buscar uma OS por número/CPF/nome não vincula a identidade do
   // remetente ao titular da OS. Nas demais lojas, preserva-se o fluxo legado.
@@ -2330,7 +2371,10 @@ async function createStatusReply(
         outboundType: null,
       }),
     }), inboundMessageId)
-    return ignoreInbound(inboundMessageId)
+    return ignoreInbound(inboundMessageId, {
+      stage: 'order_status', reason: 'os_responder_disabled',
+      route: 'order_status', intent: 'order_status', action: 'no_reply',
+    })
   }
 
   const status = describeOpenOs(customer.full_name, serviceOrder, automationSettings?.os_on_demand?.templates)
@@ -2349,7 +2393,10 @@ async function createStatusReply(
         outboundType: null,
       }),
     }), inboundMessageId)
-    return ignoreInbound(inboundMessageId)
+    return ignoreInbound(inboundMessageId, {
+      stage: 'order_status', reason: 'repeated_status_suppressed',
+      route: 'order_status', intent: 'order_status', action: 'no_reply',
+    })
   }
 
   const outboundPayload = {
@@ -2391,7 +2438,16 @@ async function createStatusReply(
     channel.store_id === 1
   )
   if (rendered.aiResult && finalWriter?.onResult) await finalWriter.onResult(rendered.aiResult)
-  if (!rendered.shouldSend) return ignoreInbound(inboundMessageId)
+  if (!rendered.shouldSend) {
+    const humanization = toMetadataRecord(toMetadataRecord(rendered.payload).humanization as Json | undefined)
+    const reason = typeof humanization.rejectionReason === 'string'
+      ? humanization.rejectionReason
+      : humanization.error ? 'provider_failure' : 'unsafe_generation'
+    return ignoreInbound(inboundMessageId, {
+      stage: 'final_reply_validation', reason,
+      route: 'order_status', intent: 'order_status', action: 'auto_reply',
+    })
+  }
 
   if (channel.store_id === 1) {
     await setConversationState(channel, phone, 'silent', AFTER_STATUS_SILENCE_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
@@ -2432,7 +2488,12 @@ async function handleStatusByPhone(
     payload: ConversationMetadataRecord,
     pendingState?: { state: ConversationState; timeoutMs: number; metadata: Json }
   ) {
-    if (channel.store_id === 1 && finalWriter?.enabled !== true) return ignoreInbound(inboundMessageId)
+    if (channel.store_id === 1 && finalWriter?.enabled !== true) {
+      return ignoreInbound(inboundMessageId, {
+        stage: 'final_reply_generation', reason: 'ai_final_writer_disabled',
+        route: 'order_status', intent: 'order_status', action: 'suppress_reply',
+      })
+    }
     if (pendingState && channel.store_id !== 1) {
       await setConversationState(channel, phone, pendingState.state, pendingState.timeoutMs, pendingState.metadata, inboundMessageId)
     }
@@ -2446,7 +2507,16 @@ async function handleStatusByPhone(
       channel.store_id === 1
     )
     if (rendered.aiResult && finalWriter?.onResult) await finalWriter.onResult(rendered.aiResult)
-    if (!rendered.shouldSend) return ignoreInbound(inboundMessageId)
+    if (!rendered.shouldSend) {
+      const humanization = toMetadataRecord(toMetadataRecord(rendered.payload).humanization as Json | undefined)
+      const reason = typeof humanization.rejectionReason === 'string'
+        ? humanization.rejectionReason
+        : humanization.error ? 'provider_failure' : 'unsafe_generation'
+      return ignoreInbound(inboundMessageId, {
+        stage: 'final_reply_validation', reason,
+        route: 'order_status', intent: 'order_status', action: messageType,
+      })
+    }
     if (pendingState && channel.store_id === 1) {
       await setConversationState(channel, phone, pendingState.state, pendingState.timeoutMs, pendingState.metadata, inboundMessageId)
     }
@@ -2883,7 +2953,15 @@ export async function resolveCustomerStatus(
 
         // O caminho ao vivo usa a mesma decisão já persistida para auditoria; não
         // faz uma segunda chamada de classificação nem espera o cron de sombra.
-        if (decision.action === 'no_reply') return ignoreInbound(inbound.id)
+        if (decision.action === 'no_reply') {
+          return ignoreInbound(inbound.id, {
+            stage: 'redesign_decision',
+            reason: 'redesign_decided_no_reply',
+            route: 'store_one_safe_reply_pilot',
+            intent: classification.intent,
+            action: decision.action,
+          })
+        }
         if (!useOrderStatusToolAgent) {
           pilotReply = selectStoreOnePilotSafeReply({
             classification,
@@ -2898,7 +2976,12 @@ export async function resolveCustomerStatus(
       // Sem uma decisão utilizável, não cai no roteador legado nem envia um
       // texto de contingência potencialmente incompatível com a intenção.
       console.warn('[WhatsApp redesign pilot] Decisao indisponivel; resposta suprimida.')
-      return ignoreInbound(inbound.id)
+      return ignoreInbound(inbound.id, {
+        stage: 'redesign_decision',
+        reason: 'redesign_decision_unavailable',
+        route: 'store_one_safe_reply_pilot',
+        action: 'suppress_reply',
+      })
     }
 
     if (pilotReply) {
@@ -2920,7 +3003,13 @@ export async function resolveCustomerStatus(
       )
       if (!renderedReply.shouldSend) {
         console.warn(`[WhatsApp redesign pilot] Resposta suprimida: ${renderedReply.reason}`)
-        return ignoreInbound(inbound.id)
+        return ignoreInbound(inbound.id, {
+          stage: 'safe_reply_validation',
+          reason: renderedReply.reason || 'safe_reply_validation_failed',
+          route: 'store_one_safe_reply_pilot',
+          intent: pilotReply.replyInput.intent,
+          action: pilotReply.action,
+        })
       }
       const payload = buildWhatsAppCanonicalPayload({
         intent: pilotReply.replyInput.intent,
@@ -3034,7 +3123,14 @@ export async function resolveCustomerStatus(
     payload: Json = {},
     afterSuccessfulSend?: (sentText: string) => Promise<void>
   ) {
-    if (typeof text !== 'string' || !text.trim()) return ignoreInbound(inbound.id)
+    if (typeof text !== 'string' || !text.trim()) {
+      return channel!.store_id === 1
+        ? ignoreInbound(inbound.id, {
+            stage: 'final_reply_validation', reason: 'empty_canonical_reply',
+            route: messageType, action: 'suppress_reply',
+          })
+        : ignoreInbound(inbound.id)
+    }
 
     async function send(textToSend: string, payloadToSend: ConversationMetadataRecord) {
       if (channel!.store_id !== 1 && afterSuccessfulSend) await afterSuccessfulSend(textToSend)
@@ -3048,7 +3144,15 @@ export async function resolveCustomerStatus(
     const payloadRecord = toMetadataRecord(payload)
     const previousHumanization = payloadRecord.humanization as unknown as { enabled?: boolean; success?: boolean } | undefined
     if (previousHumanization?.enabled === true) {
-      if (previousHumanization.success !== true && channel!.store_id === 1) return ignoreInbound(inbound.id)
+      if (previousHumanization.success !== true && channel!.store_id === 1) {
+        return ignoreInbound(inbound.id, {
+          stage: 'final_reply_validation',
+          reason: 'canonical_humanization_failed',
+          route: messageType,
+          intent: typeof payloadRecord.lastIntent === 'string' ? payloadRecord.lastIntent : null,
+          action: typeof payloadRecord.lastAction === 'string' ? payloadRecord.lastAction : null,
+        })
+      }
       return send(text, payloadRecord)
     }
     const canonicalPayload = extractWhatsAppCanonicalReply(payloadRecord)
@@ -3066,7 +3170,12 @@ export async function resolveCustomerStatus(
       && isWhatsAppAiResponderEnabled(automationSettings)
     if (!finalWriterEnabled && channel!.store_id === 1) {
       console.warn('[WhatsApp IA] Resposta suprimida: redação por IA desativada.')
-      return ignoreInbound(inbound.id)
+      return ignoreInbound(inbound.id, {
+        stage: 'final_reply_generation', reason: 'ai_final_writer_disabled',
+        route: messageType,
+        intent: typeof payloadRecord.lastIntent === 'string' ? payloadRecord.lastIntent : null,
+        action: typeof payloadRecord.lastAction === 'string' ? payloadRecord.lastAction : null,
+      })
     }
     const rendered = await maybeHumanizeOutboundFromCanonical(
       canonicalPayload,
@@ -3082,7 +3191,16 @@ export async function resolveCustomerStatus(
     }
 
     if (!rendered.shouldSend) {
-      return ignoreInbound(inbound.id)
+      const humanization = toMetadataRecord(toMetadataRecord(rendered.payload as unknown as Json).humanization as Json | undefined)
+      const reason = typeof humanization.rejectionReason === 'string'
+        ? humanization.rejectionReason
+        : humanization.error ? 'provider_failure' : 'unsafe_generation'
+      return ignoreInbound(inbound.id, {
+        stage: 'final_reply_validation', reason,
+        route: messageType,
+        intent: typeof payloadRecord.lastIntent === 'string' ? payloadRecord.lastIntent : null,
+        action: typeof payloadRecord.lastAction === 'string' ? payloadRecord.lastAction : null,
+      })
     }
 
     return send(rendered.text, rendered.payload)
@@ -3298,7 +3416,12 @@ export async function resolveCustomerStatus(
   }
 
   if (preAiRoute === 'ignore_human_pause') {
-    return ignoreInbound(inbound.id)
+    return ignoreInbound(inbound.id, {
+      stage: 'pre_ai_routing',
+      reason: 'human_pause_active',
+      route: preAiRoute,
+      action: 'ignore_human_pause',
+    })
   }
 
   if (preAiRoute === 'attachment_handoff') {

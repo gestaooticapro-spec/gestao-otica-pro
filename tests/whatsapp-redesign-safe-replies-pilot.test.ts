@@ -13,7 +13,12 @@ import {
   shouldUseOrderStatusToolAgent,
 } from '../src/lib/whatsapp/redesign/safe-replies-pilot'
 import { buildWhatsAppRedesignReplyPrompt } from '../src/lib/whatsapp/ai'
-import { enforceWhatsAppIntentEvidence, isExplicitOrderReadinessQuestion } from '../src/lib/whatsapp/redesign/intent-guards'
+import {
+  enforceWhatsAppIntentEvidence,
+  isExplicitOrderReadinessQuestion,
+  isExplicitOrderStatusQuestion,
+  isExplicitHumanHandoffRequest,
+} from '../src/lib/whatsapp/redesign/intent-guards'
 
 const classification = WhatsAppRedesignClassificationSchema.parse({
   intent: 'store_hours', confidence: 0.98, topicRelation: 'change_topic',
@@ -137,6 +142,38 @@ test('consulta de OS confiavel segue para o agente de ferramentas quando habilit
     classification: { ...orderClassification, requestsHuman: true },
     decision: handoffDecision,
     messageText: 'Quero falar com atendente sobre a OS 9999',
+  }), false)
+})
+
+test('pergunta explícita sobre status do óculos supera classificação equivocada como exame de vista', () => {
+  const misclassified = WhatsAppRedesignClassificationSchema.parse({
+    ...classification,
+    intent: 'vision_exam',
+    confidence: 0.96,
+  })
+  const handoffDecision = WhatsAppSystemDecisionSchema.parse({
+    ...decision,
+    action: 'human_handoff',
+    facts: { decisionReason: 'topic_requires_human:vision_exam' },
+    humanHandoffTiming: { mode: 'during_open_hours', nextOpenSchedule: null },
+    humanization: { ...decision.humanization, mustIdentifyIara: true, mustMentionHumanHandoff: true },
+  })
+  const text = 'Qual é o status do meu óculos?'
+
+  assert.equal(isExplicitOrderStatusQuestion(text), true)
+  assert.equal(isExplicitHumanHandoffRequest('Quero falar com um atendente sobre isso.'), true)
+  assert.equal(enforceWhatsAppIntentEvidence({ route: 'human_handoff', intent: 'vision_exam', messageText: text }), 'order_status')
+  assert.equal(shouldUseOrderStatusToolAgent({
+    enabled: true, classification: misclassified, decision: handoffDecision, messageText: text,
+  }), true)
+  assert.equal(shouldLookupOrderStatusInStoreOnePilot({
+    classification: misclassified, decision: handoffDecision, messageText: text,
+  }), true)
+  assert.equal(shouldUseOrderStatusToolAgent({
+    enabled: true,
+    classification: { ...misclassified, requestsHuman: true },
+    decision: handoffDecision,
+    messageText: 'Qual é o status do meu óculos? Quero falar com um atendente.',
   }), false)
 })
 

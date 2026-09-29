@@ -73,6 +73,25 @@ function readableDecisionValue(value: string | null) {
   return value.replace(/_/g, ' ')
 }
 
+function suppressionReasonLabel(reason: string) {
+  const labels: Record<string, string> = {
+    ai_final_writer_disabled: 'a redação final por IA está desativada',
+    assistant_identity_omitted: 'a IA não se identificou como IAra',
+    canonical_humanization_failed: 'a resposta não passou pela validação de segurança',
+    empty_canonical_reply: 'a IA não gerou um texto de resposta',
+    handoff_omitted: 'a resposta não informou que um atendente continuará o atendimento',
+    human_pause_active: 'a conversa estava em pausa humana quando a mensagem chegou',
+    order_status_not_preserved: 'a resposta não preservou o status confirmado da OS',
+    provider_failure: 'a IA não conseguiu gerar uma resposta válida',
+    redesign_decided_no_reply: 'a decisão do fluxo foi não responder',
+    redesign_decision_unavailable: 'não foi possível obter uma decisão segura da IA',
+    repeated_status_suppressed: 'o sistema suprimiu uma repetição de status já respondida',
+    superseded_by_newer_inbound: 'uma mensagem mais recente chegou durante o processamento',
+    unsafe_generation: 'a resposta gerada não passou pela validação de segurança',
+  }
+  return labels[reason] || readableDecisionValue(reason)
+}
+
 function formatRelativeMinutes(value: string | null) {
   if (!value) return null
   const minutes = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 60000))
@@ -158,6 +177,18 @@ function MessageBubble({ message }: { message: WhatsAppOperatorThreadMessage }) 
         </div>
 
         <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.text || '[sem texto]'}</p>
+
+        {message.processingDiagnostic ? (
+          <div className="mt-3 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-[11px] text-amber-100">
+            <p className="font-black uppercase tracking-wider text-amber-300">Resposta automática não enviada</p>
+            <p className="mt-1">{suppressionReasonLabel(message.processingDiagnostic.reason)}.</p>
+            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-amber-100/70">
+              {message.processingDiagnostic.intent ? <span>intenção: {readableDecisionValue(message.processingDiagnostic.intent)}</span> : null}
+              {message.processingDiagnostic.action ? <span>ação: {readableDecisionValue(message.processingDiagnostic.action)}</span> : null}
+              {message.processingDiagnostic.route ? <span>etapa: {readableDecisionValue(message.processingDiagnostic.route)}</span> : null}
+            </div>
+          </div>
+        ) : null}
 
         {message.technicalLog ? (
           <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3 text-[11px] text-slate-300">

@@ -10,6 +10,23 @@ export function isExplicitOrderReadinessQuestion(text: string | null | undefined
   return mentionsOpticalItem && asksWhetherReady
 }
 
+export function isExplicitOrderStatusQuestion(text: string | null | undefined) {
+  const normalized = normalize(text)
+  const asksForStatus = /\b(?:status|andamento|situacao)\b/u.test(normalized)
+  const referencesOrder = /\b(?:pedido|os|ordem(?: de servico)?)\b/u.test(normalized)
+    || /\b(?:meu|minha) oculos\b/u.test(normalized)
+  return asksForStatus && referencesOrder
+}
+
+export function isExplicitOrderStatusOrReadinessQuestion(text: string | null | undefined) {
+  return isExplicitOrderStatusQuestion(text) || isExplicitOrderReadinessQuestion(text)
+}
+
+export function isExplicitHumanHandoffRequest(text: string | null | undefined) {
+  const normalized = normalize(text)
+  return /\b(?:quero|preciso|gostaria de) (?:falar|conversar) com (?:um )?(?:atendente|humano|pessoa|alguem)\b/u.test(normalized)
+}
+
 export function isExplicitStoreHoursQuestion(text: string | null | undefined) {
   const normalized = normalize(text)
   return /\b(?:horario|que horas|a que horas|abr\w*|abiert\w*|fech\w*|funcion\w*)\b/u.test(normalized)
@@ -20,7 +37,7 @@ export function enforceWhatsAppIntentEvidence(input: {
   intent: string | null | undefined
   messageText: string | null | undefined
 }) {
-  if (isExplicitOrderReadinessQuestion(input.messageText)) return 'order_status'
+  if (isExplicitOrderStatusOrReadinessQuestion(input.messageText)) return 'order_status'
   if (input.intent === 'store_hours' && !isExplicitStoreHoursQuestion(input.messageText)) return 'fallback'
   return input.route
 }

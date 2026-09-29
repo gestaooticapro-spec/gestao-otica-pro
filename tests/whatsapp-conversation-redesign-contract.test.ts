@@ -801,7 +801,7 @@ test('pergunta se os oculos estao prontos prioriza consulta de OS sobre horario'
     hasCurrentTurnAttachment: false,
   })
 
-  assert.equal(result.reason, 'explicit_order_readiness_precedes_store_hours')
+  assert.equal(result.reason, 'explicit_order_status_precedes_other_intents')
   assert.equal(result.draft.action, 'lookup_order_status')
 })
 
@@ -1044,12 +1044,12 @@ test('endereco oficial produz link de mapa sem depender da IA', () => {
   assert.match(reply || '', /query=Rua\+Principal/)
 })
 
-test('processador atende turno capturado imediatamente e registra decisao sem enviar mensagem', async () => {
+test('processador corrige status explícito de óculos classificado como exame de vista sem enviar no shadow', async () => {
   const turnId = '00000000-0000-4000-8000-000000000101'
   const customerMessage = {
     ...message(1),
     id: '00000000-0000-4000-8000-000000000102',
-    text: 'Vocês fazem exame de vista?',
+    text: 'Qual é o status do meu óculos?',
   }
   const finished: Array<{ status: string; metadata: Record<string, unknown> }> = []
   const fakeStore = {
@@ -1145,8 +1145,9 @@ test('processador atende turno capturado imediatamente e registra decisao sem en
   assert.equal(finished[0].status, 'processed')
   const processing = finished[0].metadata.shadowProcessing as Record<string, unknown>
   assert.equal(processing.sendsMessage, false)
-  assert.equal((processing.decision as { action: string }).action, 'human_handoff')
-  assert.equal((processing.summaryProposal as { activeTopic: string }).activeTopic, 'vision_exam')
+  assert.equal((processing.classification as { intent: string }).intent, 'order_status')
+  assert.equal((processing.decision as { action: string }).action, 'lookup_order_status')
+  assert.equal((processing.summaryProposal as { activeTopic: string }).activeTopic, 'order_status')
   assert.equal((processing.summaryProposal as { humanControl: string }).humanControl, 'ai_active')
 })
 

@@ -20,6 +20,10 @@ import {
   buildWhatsAppShadowDecision,
   isExplicitOfficialPixRequest,
 } from './system-decision'
+import {
+  isExplicitHumanHandoffRequest,
+  isExplicitOrderStatusOrReadinessQuestion,
+} from './intent-guards'
 
 const SHADOW_PROCESSOR_VERSION = 1
 
@@ -102,11 +106,23 @@ async function processClaimedTurn(input: {
     throw new Error(`classificacao_indisponivel:${classificationResult.error}`)
   }
 
-  const classification = WhatsAppRedesignClassificationSchema.parse(classificationResult.data)
   const currentTurnTexts = context.turnMessages
     .filter((message) => message.role === 'customer' && message.kind === 'text')
     .map((message) => message.text ?? '')
     .filter(Boolean)
+  const rawClassification = WhatsAppRedesignClassificationSchema.parse(classificationResult.data)
+  const hasCurrentTurnAttachment = context.turnMessages.some((message) => message.kind !== 'text')
+  // Protege a Loja 1 de uma confusao semantica conhecida: mencionar "oculos"
+  // em uma pergunta explicita de status/prontidao nao significa exame de vista.
+  // Mantem pedido humano e anexos sob as regras normais de handoff.
+  const classification = context.conversation.store_id === 1
+    && !rawClassification.requestsHuman
+    && !rawClassification.mentionsAttachment
+    && !hasCurrentTurnAttachment
+    && !isExplicitHumanHandoffRequest(currentTurnTexts.join(' '))
+    && isExplicitOrderStatusOrReadinessQuestion(currentTurnTexts.join(' '))
+    ? WhatsAppRedesignClassificationSchema.parse({ ...rawClassification, intent: 'order_status' })
+    : rawClassification
   const replyLanguage = detectWhatsAppRedesignReplyLanguage(
     currentTurnTexts,
     context.memory.messages
@@ -122,7 +138,7 @@ async function processClaimedTurn(input: {
     tomorrowHoursFacts,
     currentTurnTexts,
     storeLocationReply: buildOfficialStoreLocationReply(storeProfile),
-    hasCurrentTurnAttachment: context.turnMessages.some((message) => message.kind !== 'text'),
+    hasCurrentTurnAttachment,
     explicitOfficialPixRequest: context.turnMessages.length === 1
       && context.turnMessages[0].kind === 'text'
       && isExplicitOfficialPixRequest(context.turnMessages[0].text),

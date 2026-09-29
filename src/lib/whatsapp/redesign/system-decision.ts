@@ -1,5 +1,9 @@
 import type { StoreHoursFacts } from '../store-hours-logic'
-import { isExplicitOrderReadinessQuestion, isExplicitStoreHoursQuestion } from './intent-guards'
+import {
+  isExplicitHumanHandoffRequest,
+  isExplicitOrderStatusOrReadinessQuestion,
+  isExplicitStoreHoursQuestion,
+} from './intent-guards'
 import {
   WHATSAPP_REDESIGN_MIN_CONFIDENCE,
   WhatsAppSystemDecisionDraftSchema,
@@ -126,7 +130,8 @@ export function buildWhatsAppShadowDecision(
   }
 
   const { classification } = input
-  if (classification.requestsHuman) {
+  const currentTurnText = (input.currentTurnTexts ?? []).join(' ')
+  if (classification.requestsHuman || isExplicitHumanHandoffRequest(currentTurnText)) {
     return {
       reason: 'customer_requests_human',
       draft: handoffDraft(
@@ -167,16 +172,15 @@ export function buildWhatsAppShadowDecision(
     }
   }
 
-  const currentTurnText = (input.currentTurnTexts ?? []).join(' ')
-  if (input.storeId === 1 && isExplicitOrderReadinessQuestion(currentTurnText)) {
+  if (input.storeId === 1 && isExplicitOrderStatusOrReadinessQuestion(currentTurnText)) {
     return {
-      reason: 'explicit_order_readiness_precedes_store_hours',
+      reason: 'explicit_order_status_precedes_other_intents',
       draft: WhatsAppSystemDecisionDraftSchema.parse({
         action: 'lookup_order_status',
         fallbackReply: 'Consultar a OS com os dados autorizados antes de responder.',
         facts: {
           classificationIntent: classification.intent,
-          decisionReason: 'explicit_order_readiness_precedes_store_hours',
+          decisionReason: 'explicit_order_status_precedes_other_intents',
         },
         humanHandoffTiming: null,
         humanization: humanization(false),

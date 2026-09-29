@@ -135,6 +135,14 @@ export type WhatsAppOperatorThreadMessage = {
   inboundMessageId: number | null
   payload: Json | null
   errorMessage: string | null
+  processingDiagnostic: {
+    stage: string
+    reason: string
+    route: string | null
+    intent: string | null
+    action: string | null
+    recordedAt: string | null
+  } | null
   technicalLog: {
     intent: string | null
     confidence: number | null
@@ -306,6 +314,20 @@ function asString(value: unknown) {
 
 function asNumber(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function readInboundProcessingDiagnostic(payload: Json | null) {
+  const raw = asRecord(asRecord(payload)._whatsappAutomationDiagnostic as Json | undefined)
+  const reason = asString(raw.reason)
+  if (!reason) return null
+  return {
+    stage: asString(raw.stage) || 'processing',
+    reason,
+    route: asString(raw.route),
+    intent: asString(raw.intent),
+    action: asString(raw.action),
+    recordedAt: asString(raw.recordedAt),
+  }
 }
 
 function daysAgoIso(days: number) {
@@ -1226,6 +1248,7 @@ export async function getWhatsAppOperatorThreadDetail(input: {
           inboundMessageId: row.id,
           payload: row.payload,
           errorMessage: null,
+          processingDiagnostic: readInboundProcessingDiagnostic(row.payload),
           technicalLog: technicalLog ? {
             intent: technicalLog.intent,
             confidence: technicalLog.confidence,
@@ -1254,6 +1277,7 @@ export async function getWhatsAppOperatorThreadDetail(input: {
         inboundMessageId: row.inbound_message_id,
         payload: row.payload,
         errorMessage: row.error_message,
+        processingDiagnostic: null,
         technicalLog: null,
       })),
     ].sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime())
