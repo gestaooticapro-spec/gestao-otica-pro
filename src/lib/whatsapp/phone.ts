@@ -149,6 +149,19 @@ export function phonesMatchLast8(left: string | null | undefined, right: string 
   return Boolean(leftLast8) && leftLast8 === rightLast8
 }
 
+/** Resolve only one unique customer by complete normalized phone identity. */
+export function findUniqueCustomerPhoneMatch<T extends {
+  fone_movel?: string | null
+  phone?: string | null
+}>(remotePhone: string, customers: T[]): T | null {
+  const matches = customers.filter((customer) =>
+    phonesMatch(remotePhone, customer.fone_movel) ||
+    phonesMatch(remotePhone, customer.phone)
+  )
+
+  return matches.length === 1 ? matches[0] : null
+}
+
 /**
  * Converte telefone para formato da Evolution API
  * Agora detecta automaticamente o país e usa o código correto

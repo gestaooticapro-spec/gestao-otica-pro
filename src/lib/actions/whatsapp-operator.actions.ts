@@ -5,7 +5,7 @@
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import type { Json } from '@/lib/database.types'
-import { digitsOnly, phonesMatch, phonesMatchLast8, toEvolutionNumber } from '@/lib/whatsapp/phone'
+import { digitsOnly, findUniqueCustomerPhoneMatch, phonesMatch, phonesMatchLast8, toEvolutionNumber } from '@/lib/whatsapp/phone'
 import {
   findPendingHandoffResolution,
   resolvePersistedPendingHandoffs,
@@ -606,7 +606,9 @@ function buildCustomerRef(customer: StoreCustomerRow | null): WhatsAppOperatorCu
   }
 }
 
-function findCustomerByPhone(phone: string, customers: StoreCustomerRow[]) {
+function findCustomerByPhone(phone: string, customers: StoreCustomerRow[], strictIdentity = false) {
+  if (strictIdentity) return findUniqueCustomerPhoneMatch(phone, customers)
+
   const strictMatch = customers.find((customer) =>
     phonesMatch(phone, customer.fone_movel) ||
     phonesMatch(phone, customer.phone)
@@ -617,7 +619,6 @@ function findCustomerByPhone(phone: string, customers: StoreCustomerRow[]) {
     phonesMatchLast8(phone, customer.fone_movel) ||
     phonesMatchLast8(phone, customer.phone)
   )
-
   return looseMatches.length === 1 ? looseMatches[0] : null
 }
 
@@ -1077,8 +1078,8 @@ export async function getWhatsAppOperatorThreads(input: {
       const remotePhone = accumulator.remotePhone
       const linkedCustomerId = findMapValueByPhoneMatch(customerLinkMap, remotePhone)
       const customer = findCustomerById(linkedCustomerId ?? null, resolvedCustomers)
-        || matchedCustomers.find((item) => findCustomerByPhone(remotePhone, [item]))
-        || findCustomerByPhone(remotePhone, resolvedCustomers)
+        || matchedCustomers.find((item) => findCustomerByPhone(remotePhone, [item], storeId === 1))
+        || findCustomerByPhone(remotePhone, resolvedCustomers, storeId === 1)
         || findCustomerById(accumulator.lastKnownCustomerId, resolvedCustomers)
       return buildThreadListItem(remotePhone, accumulator, customer, findMapValueByPhoneMatch(controlMap, remotePhone) || 'auto')
     })
@@ -1270,7 +1271,7 @@ export async function getWhatsAppOperatorThreadDetail(input: {
       await loadCustomersByPhoneHints(storeId, [remotePhone])
     )
     const customer = findCustomerById(linkedCustomerId ?? null, resolvedCustomers)
-      || findCustomerByPhone(remotePhone, resolvedCustomers)
+      || findCustomerByPhone(remotePhone, resolvedCustomers, storeId === 1)
       || findCustomerById(asNumber(stateMetadata.lastKnownCustomerId), resolvedCustomers)
     const lastMessage = messages[messages.length - 1] || null
 

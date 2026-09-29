@@ -3,7 +3,8 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { Database, Json } from '@/lib/database.types'
 import { describeOpenOs, WhatsAppOsStatusCode } from './os-status'
-import { digitsOnly, getPhoneVariants, phonesMatch, phonesMatchLast8, toEvolutionNumber } from './phone'
+import { digitsOnly, findUniqueCustomerPhoneMatch, getPhoneVariants, phonesMatch, phonesMatchLast8, toEvolutionNumber } from './phone'
+import { shouldPersistCustomerLink } from './customer-link-policy'
 import { resolveConversationStateCandidates } from './conversation-state-matching'
 import type { StoreSettings } from '@/lib/store-modules'
 import { evaluateStoreHours } from './store-hours-logic'
@@ -1520,6 +1521,8 @@ async function findCustomerByPhone(storeId: number, phone: string): Promise<Cust
 
   if (error) throw error
 
+  if (storeId === 1) return findUniqueCustomerPhoneMatch(phone, (data ?? []) as CustomerRow[])
+
   const strictMatch = (data ?? []).find((customer: CustomerRow) =>
     phonesMatch(phone, customer.fone_movel) || phonesMatch(phone, customer.phone)
   ) ?? null
@@ -1528,7 +1531,6 @@ async function findCustomerByPhone(storeId: number, phone: string): Promise<Cust
   const looseMatches = (data ?? []).filter((customer: CustomerRow) =>
     phonesMatchLast8(phone, customer.fone_movel) || phonesMatchLast8(phone, customer.phone)
   )
-
   return looseMatches.length === 1 ? looseMatches[0] : null
 }
 
@@ -2068,8 +2070,12 @@ async function upsertCustomerLink(
   channel: ChannelRow,
   phone: string,
   customerId: number,
-  source: CustomerLinkSource
+  source: CustomerLinkSource,
+  customerPhones: Array<string | null | undefined> = []
 ) {
+  const hasCanonicalPhoneMatch = customerPhones.some((customerPhone) => phonesMatch(phone, customerPhone))
+  if (!shouldPersistCustomerLink(channel.store_id, source, hasCanonicalPhoneMatch)) return
+
   const supabase = createAdminClient()
   const values = {
     tenant_id: channel.tenant_id,
@@ -2307,7 +2313,11 @@ async function createStatusReply(
 ): Promise<CustomerStatusResponse> {
   if (channel.store_id === 1 && finalWriter?.enabled !== true) return ignoreInbound(inboundMessageId)
 
-  await upsertCustomerLink(channel, phone, customer.id, 'status_lookup')
+  // Loja 1: buscar uma OS por número/CPF/nome não vincula a identidade do
+  // remetente ao titular da OS. Nas demais lojas, preserva-se o fluxo legado.
+  if (channel.store_id !== 1) {
+    await upsertCustomerLink(channel, phone, customer.id, 'status_lookup')
+  }
 
   const automationSettings = await loadStoreWhatsAppSettings(channel.store_id)
   if (automationSettings?.os_on_demand?.enabled === false) {
@@ -2464,7 +2474,7 @@ async function handleStatusByPhone(
     }, { state: 'waiting_identifier', timeoutMs: IDENTIFIER_WAIT_MS, metadata: pendingState })
   }
 
-  await upsertCustomerLink(channel, phone, customer.id, 'phone_match')
+  await upsertCustomerLink(channel, phone, customer.id, 'phone_match', [customer.fone_movel, customer.phone])
 
   const openOrders = await findOpenOsForCustomer(channel.store_id, customer.id, 2)
   if (openOrders.length !== 1) {
@@ -4575,7 +4585,7 @@ export async function resolveCustomerStatus(
         await consumeForceAiOverrideIfNeeded()
         const customer = await findCustomerByPhone(channel.store_id, normalizedPhone)
         if (customer) {
-          await upsertCustomerLink(channel, normalizedPhone, customer.id, 'phone_match')
+          await upsertCustomerLink(channel, normalizedPhone, customer.id, 'phone_match', [customer.fone_movel, customer.phone])
           const serviceOrder = await findLatestOpenOs(channel.store_id, customer.id)
           if (serviceOrder) {
             const automationSettings = await loadStoreWhatsAppSettings(channel.store_id)
