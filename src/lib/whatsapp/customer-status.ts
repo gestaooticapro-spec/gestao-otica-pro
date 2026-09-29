@@ -3634,6 +3634,7 @@ export async function resolveCustomerStatus(
       assistant: {
         messageText: effectiveMessageText || '',
         referencedPersonName: referencedOrderPersonName,
+        strictOrderFacts: true,
         conversationHistory: redesignConversationHistory,
         recentContext,
         storeName: storeProfile.name,

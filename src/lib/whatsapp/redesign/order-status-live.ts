@@ -169,6 +169,8 @@ export async function runStoreOneOrderStatusTurn(input: {
     const orders = Array.isArray(lookup?.data.orders) ? lookup.data.orders as OpenOrderAgentFact[] : []
     const revision = await (input.writeReply ?? writeWhatsAppToolAgentReply)({
       ...input.assistant,
+      conversationHistory: [],
+      recentContext: [],
       rejectedOrderReply: {
         text: agent.replyText,
         reason: disposition.reason,

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { WhatsAppToolCall } from '../src/lib/whatsapp/tool-agent'
+import { buildToolAgentReplyPrompt } from '../src/lib/whatsapp/ai'
 import {
   WhatsAppRedesignClassificationSchema,
   WhatsAppSystemDecisionSchema,
@@ -39,6 +40,40 @@ function fakeWriter(reply: string) {
     data: { reply_text: reply }, attempts: 1, rawText: reply, latencyMs: 1, promptText: '',
   })
 }
+
+test('revisao de duas OS nao exige copiar saudacao do status e preserva a validacao', async () => {
+  let writes = 0
+  let lookups = 0
+  const result = await runStoreOneOrderStatusTurn({
+    plan: { tool: 'lookup_open_orders', source: 'canonical_decision' },
+    assistant: {
+      messageText: 'Como está o óculos do Odair?',
+      referencedPersonName: 'Odair', strictOrderFacts: true,
+      conversationHistory: ['IA: Vou encaminhar sua pergunta sobre exame de vista.'],
+    },
+    executeLookup: async (call) => {
+      lookups += 1
+      return { tool: call.name, ok: true, data: { orders: [
+        { orderNumber: '1043', patientName: null, status: 'lens_arrived_assembling', statusText: 'Oi, CLIENTE! A lente já chegou e seu óculos entrou na fila de montagem.' },
+        { orderNumber: '1041', patientName: null, status: 'lens_in_production', statusText: 'Oi, CLIENTE! Seu pedido está em produção no laboratório no momento.' },
+      ] } }
+    },
+    writeReply: async (input, results) => {
+      writes += 1
+      if (writes === 1) return fakeWriter('Você possui dois pedidos: o número 1043 do titular está na fila de montagem e o número 1041 do titular está em produção no laboratório.')()
+      assert.equal(input.rejectedOrderReply?.reason, 'mixed_orders')
+      assert.deepEqual(input.conversationHistory, [])
+      const prompt = buildToolAgentReplyPrompt(input, results)
+      assert.match(prompt, /sem copiar saudacoes/u)
+      assert.match(prompt, /Nunca junte duas OS na mesma frase/u)
+      assert.doesNotMatch(prompt, /usando os valores exatos/u)
+      return fakeWriter('Não encontrei pedido do Odair vinculado a este WhatsApp. A OS 1043 do titular está na fila de montagem, com a lente já chegada. A OS 1041 do titular está em produção no laboratório.')()
+    },
+  })
+  assert.equal(lookups, 1)
+  assert.equal(writes, 2)
+  assert.equal(result.disposition.kind, 'send')
+})
 
 test('Loja 1: pergunta, identificador e consulta usam uma busca por turno e nenhuma segunda IA planejadora', async () => {
   const firstPlan = plan('Qual e o status do meu oculos?')

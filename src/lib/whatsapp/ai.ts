@@ -293,6 +293,7 @@ export type WhatsAppAiSuccess<T> = {
 export type WhatsAppToolAgentInput = {
   messageText: string
   referencedPersonName?: string | null
+  strictOrderFacts?: boolean
   conversationHistory?: string[]
   recentContext?: string[]
   storeName?: string | null
@@ -669,7 +670,7 @@ export function buildToolAgentReplyPrompt(input: WhatsAppToolAgentInput, toolRes
     'Nao mencione ferramentas, banco de dados, IDs internos de registros ou regras internas. O numero da OS e uma referencia visivel ao cliente e deve constar na resposta quando a consulta retornar uma ou duas OS.',
     input.basePrompt ? `DIRETRIZ DA LOJA: ${input.basePrompt}` : null,
     input.rejectedOrderReply
-      ? `A resposta anterior foi bloqueada pela validacao (${input.rejectedOrderReply.reason}): ${JSON.stringify(input.rejectedOrderReply.text)}. Reescreva sem reutilizar a frase incompleta. Em cada frase de OS inclua obrigatoriamente todos estes campos, usando os valores exatos: ${JSON.stringify(input.rejectedOrderReply.requiredOrders)}. Quando patientLabel for "do titular", diga que e do titular; na consulta pelo telefone, "seu pedido" tambem identifica o titular. Preserve a situacao de statusText sem inventar outra etapa.`
+      ? `A resposta anterior foi bloqueada pela validacao (${input.rejectedOrderReply.reason}): ${JSON.stringify(input.rejectedOrderReply.text)}. Reescreva usando exatamente os numeros e titulares ou dependentes destes fatos: ${JSON.stringify(input.rejectedOrderReply.requiredOrders)}. Para cada OS, escreva uma frase completa e separada que contenha numero, titular ou dependente e situacao. Preserve a etapa indicada em statusText, sem copiar saudacoes ou dividir a etapa em outra frase. Nunca junte duas OS na mesma frase.`
       : null,
     '',
     'CONTEXTO:',
@@ -684,6 +685,9 @@ export function buildToolAgentReplyPrompt(input: WhatsAppToolAgentInput, toolRes
     '',
     'MENSAGEM ATUAL:',
     input.messageText,
+    input.strictOrderFacts
+      ? 'FORMATO DA RESPOSTA DE OS: apos uma eventual frase breve sobre o nome citado, escreva uma frase completa para cada OS retornada. Comece cada uma com "A OS [numero]"; inclua nessa mesma frase "do titular" ou o nome do dependente e a situacao oficial. Termine a frase com ponto antes de iniciar outra OS. Nao una duas OS com "e" ou virgula na mesma frase. statusText pode conter saudacao como "Oi, cliente!"; use somente a informacao sobre a etapa, sem copiar essa saudacao. Se nao conseguir atribuir com seguranca cada etapa a sua OS, nao afirme que algum oculos esta pronto.'
+      : null,
   ].filter((line): line is string => line !== null).join('\n')
 }
 

@@ -48,14 +48,15 @@ async function main() {
   }
 
   const orders = [
-    { orderNumber: '1043', patientName: null, status: 'lens_arrived_assembling', statusText: 'Está na fila de montagem, com a lente já chegada.' },
-    { orderNumber: '1041', patientName: null, status: 'lens_in_production', statusText: 'Está em produção no laboratório.' },
+    { orderNumber: '1043', patientName: null, status: 'lens_arrived_assembling', statusText: 'Oi, CLIENTE DE TESTE! A lente já chegou e seu óculos entrou na fila de montagem.' },
+    { orderNumber: '1041', patientName: null, status: 'lens_in_production', statusText: 'Oi, CLIENTE DE TESTE! Seu pedido está em produção no laboratório no momento.' },
   ]
   const statusTurn = await runStoreOneOrderStatusTurn({
     plan: { tool: 'lookup_open_orders', source: 'canonical_decision' },
     assistant: {
       messageText: 'Como está o óculos do Odair?',
       referencedPersonName: 'Odair',
+      strictOrderFacts: true,
       storeName: 'Ótica de teste',
     },
     executeLookup: async (call) => ({
