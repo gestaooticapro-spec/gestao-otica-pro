@@ -9,7 +9,7 @@ export type Release = {
 // altera o Dashboard ou o modal de histórico.
 export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
-  'Quando o sistema confirma o pedido de nota do pos-venda, envia a pergunta de avaliacao configurada mesmo que o redator da IA gere uma saudacao generica.',
+  'Na Loja 1, a IA redige o pedido de nota e a confirmacao da avaliacao de pos-venda com base na acao aprovada pelo sistema; respostas genericas ou inconsistentes nao sao enviadas.',
   'A classificacao de mensagens do WhatsApp aceita campos de entidade opcionais omitidos pela IA com valores neutros, evitando silenciar respostas de pos-venda por JSON incompleto.',
   'Na Loja 1, o acompanhamento de pos-venda continua apos perguntas intercaladas sobre OS: respostas de adaptacao e notas seguem o fluxo de pos-venda, enquanto consultas de OS permanecem no piloto seguro.',
   'A busca de recebimentos encontra clientes por nome com ou sem acentos e por documento, mostra todas as parcelas em aberto e permite carregar mais resultados.',

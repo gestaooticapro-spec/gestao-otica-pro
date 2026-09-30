@@ -38,6 +38,42 @@ export function postSaleRatingPromptText() {
   return 'Que bom saber disso. Se puder, me responda com uma nota de 1 a 5 para avaliarmos o atendimento da nossa equipe.'
 }
 
+export function postSaleRatingThanksText(rating: number) {
+  return `Perfeito! Obrigado pela nota ${rating}. Vou registrar seu retorno aqui e qualquer coisa nossa equipe segue a disposicao.`
+}
+
+export function validatePostSaleActionReply(input: {
+  text: string
+  action: 'request_rating' | 'confirm_rating'
+  rating?: number | null
+}): { valid: true } | { valid: false; reason: string } {
+  const normalized = input.text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+  if (!normalized || normalized.length > 600) return { valid: false, reason: 'empty_or_long_reply' }
+  if (/\b(?:os|pedido)\s*#?\d+\b|\bcpf\b|\bpix\b/.test(normalized)) {
+    return { valid: false, reason: 'unrelated_customer_facts' }
+  }
+
+  if (input.action === 'request_rating') {
+    const acknowledgesFeedback = /\b(?:bom|otimo|legal|feliz|contente|agradec\w*|great|glad|happy|pleased|good|nice|gracias|alegr\w*|bien|genial)\b/.test(normalized)
+    const requestsRating = /\b(?:nota|avaliacao|pontuacao|rating|rate|score|calificacion|valoracion)\b/.test(normalized)
+    const includesScale = /\b1\s*(?:a|ate|ao|to|-)\s*5\b/.test(normalized)
+    return acknowledgesFeedback && requestsRating && includesScale
+      ? { valid: true }
+      : { valid: false, reason: 'rating_question_missing' }
+  }
+
+  const rating = input.rating
+  if (!Number.isInteger(rating) || !rating || rating < 1 || rating > 5) {
+    return { valid: false, reason: 'invalid_confirmed_rating' }
+  }
+  const thanks = /\b(?:obrigad\w*|agradec\w*|thank\w*|graci\w*)\b/.test(normalized)
+  const statesRecorded = /\b(?:registrad[oa]s?|registrei|anotad[oa]s?|anotei|salv[oa]s?|salvei|gravad[oa]s?|gravei|recorded|noted|saved)\b/.test(normalized)
+  const includesRating = new RegExp(`\\b${rating}\\b`).test(normalized)
+  return thanks && statesRecorded && includesRating
+    ? { valid: true }
+    : { valid: false, reason: 'rating_confirmation_missing' }
+}
+
 export function shouldUseStoreOnePilotDuringPostSale(input: {
   context: PostSaleContext | null
   explicitRating: number | null

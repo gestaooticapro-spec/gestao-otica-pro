@@ -260,6 +260,13 @@ export type WhatsAppPostSaleRatingResolutionInput = {
   storeName?: string | null
 }
 
+export type WhatsAppPostSaleActionReplyInput = {
+  messageText: string
+  storeName?: string | null
+  action: 'request_rating' | 'confirm_rating'
+  rating?: number | null
+}
+
 export type WhatsAppReplyHumanizationInput = {
   intent: WhatsAppIntent
   action?: string
@@ -772,6 +779,21 @@ async function runWithOpenAIOnly(task: WhatsAppAiTask, prompt: string, modelOver
     : { success: false as const, providerErrors: [`openai:${result.error}`] }
 }
 
+export function buildWhatsAppPostSaleActionReplyPrompt(input: WhatsAppPostSaleActionReplyInput) {
+  return [
+    'Voce redige a proxima mensagem de uma conversa de pos-venda de uma otica.',
+    'Responda somente com um objeto JSON contendo reply_text como string.',
+    'Use o idioma da mensagem atual. Escreva de forma natural, breve e relacionada ao que o cliente acabou de dizer.',
+    'A acao foi decidida pelo sistema. Nao altere a acao nem invente fatos, pedidos, prazos ou informacoes de outras pessoas.',
+    input.action === 'request_rating'
+      ? 'O cliente respondeu positivamente sobre a adaptacao. Reconheca esse retorno e pergunte qual nota de 1 a 5 ele daria ao atendimento. A pergunta sobre a nota precisa aparecer no texto.'
+      : `O sistema validou a nota ${input.rating} informada pelo cliente. Agradeca e confirme de forma explicita que a nota ${input.rating} foi registrada. Nao solicite outra nota.`,
+    'Nao use saudacoes vagas, respostas genericas ou frases copiadas de exemplos de formato.',
+    `NOME DA LOJA: ${input.storeName || 'otica'}`,
+    `MENSAGEM ATUAL DO CLIENTE: ${input.messageText}`,
+  ].join('\n')
+}
+
 function parseStructuredJson<T>(rawText: string, schema: z.ZodSchema<T>) {
   const jsonCandidate = extractJsonObject(rawText)
   const parsed = JSON.parse(jsonCandidate)
@@ -1102,6 +1124,16 @@ export async function writeWhatsAppToolAgentReply(
     buildToolAgentReplyPrompt(input, toolResults),
     WhatsAppToolAgentReplySchema,
     options?.model
+  )
+}
+
+export async function writeWhatsAppPostSaleActionReply(
+  input: WhatsAppPostSaleActionReplyInput
+): Promise<WhatsAppAiResult<WhatsAppToolAgentReply>> {
+  return executeStructuredTask(
+    'tool_agent_reply',
+    buildWhatsAppPostSaleActionReplyPrompt(input),
+    WhatsAppToolAgentReplySchema
   )
 }
 

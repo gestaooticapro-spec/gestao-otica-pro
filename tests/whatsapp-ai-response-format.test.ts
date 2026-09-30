@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { openAiTextFormatForTask, WhatsAppIntentClassificationSchema } from '../src/lib/whatsapp/ai'
+import {
+  buildWhatsAppPostSaleActionReplyPrompt,
+  openAiTextFormatForTask,
+  WhatsAppIntentClassificationSchema,
+} from '../src/lib/whatsapp/ai'
 
 test('redator de respostas exige reply_text por JSON Schema estrito na API OpenAI', () => {
   assert.deepEqual(openAiTextFormatForTask('tool_agent_reply'), {
@@ -39,4 +43,18 @@ test('classificacao aceita entidades opcionais omitidas e aplica valores neutros
     complaint_type: null,
   })
   assert.deepEqual(parsed.reasoning_tags, [])
+})
+
+test('redacao de pos-venda recebe acao e fatos confirmados sem exemplo generico', () => {
+  const question = buildWhatsAppPostSaleActionReplyPrompt({
+    action: 'request_rating', messageText: 'Estou me adaptando bem', storeName: 'Otica',
+  })
+  assert.match(question, /nota de 1 a 5/)
+  assert.match(question, /Estou me adaptando bem/)
+  assert.doesNotMatch(question, /Oi! Posso te ajudar com isso/)
+
+  const confirmation = buildWhatsAppPostSaleActionReplyPrompt({
+    action: 'confirm_rating', rating: 5, messageText: 'Nota 5', storeName: 'Otica',
+  })
+  assert.match(confirmation, /nota 5 foi registrada/)
 })

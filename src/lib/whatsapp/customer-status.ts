@@ -16,6 +16,7 @@ import {
   generateWhatsAppFallbackReply,
   humanizeWhatsAppReply,
   writeWhatsAppToolAgentReply,
+  writeWhatsAppPostSaleActionReply,
   extractReceiptWithVision,
   detectWhatsAppConversationLanguage,
   type WhatsAppReceiptExtraction,
@@ -50,9 +51,11 @@ import {
   extractPostSaleRatingForStage,
   getPostSaleForcedToolCall,
   postSaleRatingPromptText,
+  postSaleRatingThanksText,
   readPostSaleContext,
   shouldUseStoreOnePilotDuringPostSale,
   transitionPostSaleContextAfterTurn,
+  validatePostSaleActionReply,
   type PostSaleContext,
   type PostSaleTurnDisposition,
 } from './post-sale-followup'
@@ -982,10 +985,6 @@ function paymentMatchedHandoffText(input?: {
   }
 
   return 'Encontrei o financeiro relacionado a esse numero e vou chamar nossa equipe para continuar o atendimento por aqui.'
-}
-
-function postSaleThanksText(rating: number) {
-  return `Perfeito! Obrigado pela nota ${rating}. Vou registrar seu retorno aqui e qualquer coisa nossa equipe segue a disposicao.`
 }
 
 function postSaleComplaintHandoffText() {
@@ -3810,19 +3809,108 @@ export async function resolveCustomerStatus(
     }
   }
 
+  const storeOnePostSaleAction = channel.store_id === 1
+    ? getPostSaleForcedToolCall({
+      context: pendingPostSaleContext,
+      disposition: postSaleTurnDisposition,
+      intent: postSaleTurnClassification?.success ? postSaleTurnClassification.data.intent : null,
+      explicitRating: explicitPostSaleRating,
+    })
+    : null
+  if (storeOnePostSaleAction && pendingPostSaleContext?.postSalesId) {
+    const isRatingRequest = storeOnePostSaleAction.name === 'request_post_sale_rating'
+    const rating = isRatingRequest ? null : storeOnePostSaleAction.rating
+    const reply = await writeWhatsAppPostSaleActionReply({
+      action: isRatingRequest ? 'request_rating' : 'confirm_rating',
+      rating,
+      messageText: effectiveMessageText || '',
+      storeName: storeProfile.name,
+    })
+    await recordAiResult('tool_agent_reply', reply)
+    if (!reply.success) {
+      return withAiDiagnostics(await ignoreInbound(inbound.id, {
+        stage: 'post_sale_reply_validation', reason: 'ai_generation_failed',
+        route: 'post_sale_context', intent: 'post_sale_positive', action: 'suppress_reply',
+      }))
+    }
+    const validation = validatePostSaleActionReply({
+      text: reply.data.reply_text,
+      action: isRatingRequest ? 'request_rating' : 'confirm_rating',
+      rating,
+    })
+    if (!validation.valid) {
+      return withAiDiagnostics(await ignoreInbound(inbound.id, {
+        stage: 'post_sale_reply_validation',
+        reason: validation.reason,
+        route: 'post_sale_context',
+        intent: 'post_sale_positive',
+        action: 'suppress_reply',
+      }))
+    }
+
+    await consumeForceAiOverrideIfNeeded()
+    if (!isRatingRequest && rating) {
+      await concludePostSaleFromWhatsApp({
+        tenantId: channel.tenant_id,
+        storeId: channel.store_id,
+        postSalesId: pendingPostSaleContext.postSalesId,
+        rating,
+      })
+    }
+
+    const replyText = reply.data.reply_text
+    const outboundType = isRatingRequest ? 'post_sale_rating_prompt' : 'post_sale_rating_received'
+    const action = isRatingRequest ? 'post_sale_request_rating' : 'post_sale_rating_received'
+    const nextContext = transitionPostSaleContextAfterTurn(
+      pendingPostSaleContext, isRatingRequest ? 'rating_requested' : 'rating_recorded'
+    )
+    const payload = buildWhatsAppCanonicalPayload({
+      intent: 'post_sale_positive',
+      action,
+      outboundType,
+      canonicalReply: replyText,
+      facts: {
+        postSalesId: pendingPostSaleContext.postSalesId,
+        serviceOrderId: pendingPostSaleContext.serviceOrderId ?? null,
+        customerId: pendingPostSaleContext.customerId ?? null,
+        rating,
+      },
+    })
+    const response = await createOutbound(
+      channel, inbound.id, normalizedPhone, replyText, outboundType, payload, inbound.id
+    )
+    if (response.shouldReply) {
+      await setCurrentConversationState(
+        isRatingRequest ? 'ai_session' : 'silent',
+        isRatingRequest ? AI_SESSION_MS : AFTER_STATUS_SILENCE_MS,
+        appendAiSessionMessage(mergeMetadata(baseMetadata, {
+          reason: isRatingRequest ? 'post_sale_rating_requested' : 'post_sale_rating_received',
+          postSaleContext: nextContext as unknown as Json,
+          ...buildDecisionMetadata({
+            intent: 'post_sale_positive',
+            confidence: postSaleTurnClassification?.success ? postSaleTurnClassification.data.confidence : null,
+            action,
+            outboundType,
+          }),
+        }), 'assistant', replyText)
+      )
+      if (isRatingRequest) {
+        await recordPostSaleInteractionIfPossible({
+          channel,
+          postSaleContext: pendingPostSaleContext,
+          summary: 'Cliente respondeu positivamente ao acompanhamento automatico e recebeu pedido de nota.',
+          dedupe: true,
+        })
+      }
+    }
+    return withAiDiagnostics(response)
+  }
+
   // Assuntos fora do piloto de OS preservam o agente atual.
   if (toolAgentEnabled) {
     const toolPostSaleContext = channel.store_id === 1
       ? postSaleTurnDisposition === 'handle_post_sale' ? pendingPostSaleContext : null
       : activePostSaleContext
-    const forcedPostSaleToolCall = channel.store_id === 1
-      ? getPostSaleForcedToolCall({
-        context: toolPostSaleContext,
-        disposition: postSaleTurnDisposition,
-        intent: postSaleTurnClassification?.success ? postSaleTurnClassification.data.intent : null,
-        explicitRating: explicitPostSaleRating,
-      })
-      : null
     const toolAgent = await runWhatsAppToolAgent({
       assistant: {
         messageText: effectiveMessageText || '',
@@ -3837,7 +3925,6 @@ export async function resolveCustomerStatus(
           : null,
         pendingHumanHandoff: state?.state === 'awaiting_human',
       },
-      forcedToolCalls: forcedPostSaleToolCall ? [forcedPostSaleToolCall] : undefined,
       executeTool: async (call: WhatsAppToolCall): Promise<WhatsAppToolResult> => {
         if (call.name === 'lookup_open_orders' || call.name === 'lookup_open_orders_by_identifier') {
           return executeOrderLookup(call)
@@ -3897,15 +3984,11 @@ export async function resolveCustomerStatus(
         }
 
         if (call.name === 'request_post_sale_rating') {
+          if (channel.store_id === 1) {
+            return { tool: call.name, ok: false, data: { code: 'post_sale_action_requires_confirmed_turn' } }
+          }
           if (!toolPostSaleContext?.postSalesId || toolPostSaleContext.stage !== 'awaiting_feedback') {
             return { tool: call.name, ok: false, data: { code: 'no_feedback_pending' } }
-          }
-          if (channel.store_id === 1 && (
-            postSaleTurnDisposition !== 'handle_post_sale'
-            || !postSaleTurnClassification?.success
-            || postSaleTurnClassification.data.intent !== 'post_sale_positive'
-          )) {
-            return { tool: call.name, ok: false, data: { code: 'current_message_is_not_confirmed_post_sale_feedback' } }
           }
           await recordPostSaleInteractionIfPossible({
             channel,
@@ -3921,14 +4004,12 @@ export async function resolveCustomerStatus(
         }
 
         if (call.name === 'record_post_sale_rating') {
+          if (channel.store_id === 1) {
+            return { tool: call.name, ok: false, data: { code: 'post_sale_action_requires_confirmed_turn' } }
+          }
           if (!toolPostSaleContext?.postSalesId || toolPostSaleContext.stage !== 'awaiting_rating' || !call.rating) {
             return { tool: call.name, ok: false, data: { code: 'no_rating_pending' } }
           }
-          if (channel.store_id === 1
-            && extractPostSaleRatingForStage(effectiveMessageText, toolPostSaleContext.stage) !== call.rating) {
-            return { tool: call.name, ok: false, data: { code: 'rating_not_explicitly_present_in_current_message' } }
-          }
-
           await concludePostSaleFromWhatsApp({
             tenantId: channel.tenant_id,
             storeId: channel.store_id,
@@ -3959,6 +4040,15 @@ export async function resolveCustomerStatus(
       }))
     }
 
+    if (channel.store_id === 1 && toolAgent.toolCalls.some((call) =>
+      call.name === 'request_post_sale_rating' || call.name === 'record_post_sale_rating'
+    )) {
+      return withAiDiagnostics(await ignoreInbound(inbound.id, {
+        stage: 'post_sale_action', reason: 'post_sale_action_without_confirmed_turn',
+        route: 'tool_agent', intent: 'post_sale_positive', action: 'suppress_reply',
+      }))
+    }
+
     if (toolAgent.success && toolAgent.replyText) {
       await consumeForceAiOverrideIfNeeded()
       const handedOff = toolAgent.toolCalls.some((call) => call.name === 'handoff_human')
@@ -3967,9 +4057,15 @@ export async function resolveCustomerStatus(
         && toolAgent.toolResults.some((result) => result.tool === 'record_post_sale_rating' && result.ok)
       const ratingRequested = toolAgent.toolCalls.some((call) => call.name === 'request_post_sale_rating')
         && toolAgent.toolResults.some((result) => result.tool === 'request_post_sale_rating' && result.ok)
+      const ratingRecordCall = toolAgent.toolCalls.find((call) => call.name === 'record_post_sale_rating')
+      const confirmedRating = ratingRecorded
+        ? Number(ratingRecordCall?.rating ?? explicitPostSaleRating)
+        : null
       let replyText = ratingRequested
         ? postSaleRatingPromptText()
-        : handedOff && channel.store_id !== 1
+        : confirmedRating && confirmedRating >= 1 && confirmedRating <= 5
+          ? postSaleRatingThanksText(confirmedRating)
+          : handedOff && channel.store_id !== 1
           ? iaraHandoffText(
             storeProfile.name,
             state?.state !== 'awaiting_human',
@@ -4288,7 +4384,7 @@ export async function resolveCustomerStatus(
         rating: postSaleRatingOutcome.rating,
       })
 
-      const text = postSaleThanksText(postSaleRatingOutcome.rating)
+      const text = postSaleRatingThanksText(postSaleRatingOutcome.rating)
       return createCurrentOutbound(text, 'post_sale_rating_received', {
         ...buildWhatsAppCanonicalPayload({
           intent: 'post_sale_positive',

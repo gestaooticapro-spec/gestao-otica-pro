@@ -6,9 +6,9 @@ import {
   extractPostSaleRatingForStage,
   getPostSaleForcedToolCall,
   isStoreOnePostSaleTestProtocol,
-  postSaleRatingPromptText,
   shouldUseStoreOnePilotDuringPostSale,
   transitionPostSaleContextAfterTurn,
+  validatePostSaleActionReply,
   type PostSaleContext,
 } from '../src/lib/whatsapp/post-sale-followup'
 
@@ -125,9 +125,23 @@ test('mensagem incerta suprime resposta sem converter o acompanhamento em handof
   }), 'suppress_preserving_context')
 })
 
-test('pedido de nota usa a pergunta de avaliacao definida pelo sistema', () => {
-  assert.equal(
-    postSaleRatingPromptText(),
-    'Que bom saber disso. Se puder, me responda com uma nota de 1 a 5 para avaliarmos o atendimento da nossa equipe.'
-  )
+test('aceita redacoes naturais que cumprem a acao e rejeita resposta generica ou nota errada', () => {
+  assert.deepEqual(validatePostSaleActionReply({
+    action: 'request_rating', text: 'Fico feliz que esteja se adaptando bem! Que nota de 1 a 5 daria ao atendimento?',
+  }), { valid: true })
+  assert.deepEqual(validatePostSaleActionReply({
+    action: 'confirm_rating', rating: 5, text: 'Obrigado pelo retorno! Sua nota 5 foi registrada.',
+  }), { valid: true })
+  assert.deepEqual(validatePostSaleActionReply({
+    action: 'request_rating', text: 'Oi! Posso te ajudar com isso?',
+  }), { valid: false, reason: 'rating_question_missing' })
+  assert.deepEqual(validatePostSaleActionReply({
+    action: 'confirm_rating', rating: 5, text: 'Obrigado! A nota 4 foi registrada.',
+  }), { valid: false, reason: 'rating_confirmation_missing' })
+  assert.deepEqual(validatePostSaleActionReply({
+    action: 'confirm_rating', rating: 5, text: 'Obrigado pela nota 5. Vou registrar seu retorno.',
+  }), { valid: false, reason: 'rating_confirmation_missing' })
+  assert.deepEqual(validatePostSaleActionReply({
+    action: 'request_rating', text: 'Que bom! A OS 1041 está pronta. Pode dar uma nota de 1 a 5?',
+  }), { valid: false, reason: 'unrelated_customer_facts' })
 })
