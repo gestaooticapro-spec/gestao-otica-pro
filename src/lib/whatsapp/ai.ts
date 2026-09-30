@@ -92,15 +92,15 @@ export const WhatsAppIntentClassificationSchema = z.object({
   confidence: z.number().min(0).max(1),
   automation_candidate: z.boolean(),
   entities: z.object({
-    order_number: z.string().trim().min(1).max(80).nullable(),
-    cpf: z.string().trim().min(1).max(20).nullable(),
-    customer_name: z.string().trim().min(1).max(160).nullable(),
-    patient_name: z.string().trim().min(1).max(160).nullable(),
-    wants_pix: z.boolean(),
-    mentions_attachment: z.boolean(),
-    complaint_type: z.string().trim().min(1).max(120).nullable(),
+    order_number: z.string().trim().min(1).max(80).nullish().transform(value => value ?? null),
+    cpf: z.string().trim().min(1).max(20).nullish().transform(value => value ?? null),
+    customer_name: z.string().trim().min(1).max(160).nullish().transform(value => value ?? null),
+    patient_name: z.string().trim().min(1).max(160).nullish().transform(value => value ?? null),
+    wants_pix: z.boolean().default(false),
+    mentions_attachment: z.boolean().default(false),
+    complaint_type: z.string().trim().min(1).max(120).nullish().transform(value => value ?? null),
   }),
-  reasoning_tags: z.array(z.enum(WHATSAPP_REASONING_TAGS)).max(6),
+  reasoning_tags: z.array(z.enum(WHATSAPP_REASONING_TAGS)).max(6).default([]),
 })
 
 export type WhatsAppIntentClassification = z.infer<typeof WhatsAppIntentClassificationSchema>
@@ -450,6 +450,7 @@ function buildIntentPrompt(input: WhatsAppIntentClassificationInput) {
     'Responda SOMENTE em JSON valido, sem markdown, sem explicacoes extras.',
     'Escolha apenas uma intent da lista permitida.',
     'Nao invente dados ausentes.',
+    'Inclua todas as chaves do schema. Para entidade ausente use null; para booleanos ausentes use false e para reasoning_tags use [].',
     'Se houver duvida comercial, clinica, reclamacao, anexo ou baixa confianca, seja conservador.',
     'Se a resposta indicar claramente satisfacao, elogio ou adaptacao boa em um contexto de acompanhamento apos a entrega, use post_sale_positive.',
     'Se o contexto citar pos-venda recente, avalie a mensagem atual: use post_sale_positive ou complaint_or_adaptation somente quando ela claramente continuar esse acompanhamento; se for outro assunto, classifique pelo assunto novo.',
