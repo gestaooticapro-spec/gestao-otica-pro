@@ -34,6 +34,10 @@ export type PostSaleContext = {
 
 export type PostSaleTurnDisposition = 'handle_post_sale' | 'route_other_topic' | 'suppress_preserving_context'
 
+export function postSaleRatingPromptText() {
+  return 'Que bom saber disso. Se puder, me responda com uma nota de 1 a 5 para avaliarmos o atendimento da nossa equipe.'
+}
+
 export function shouldUseStoreOnePilotDuringPostSale(input: {
   context: PostSaleContext | null
   explicitRating: number | null

@@ -6,6 +6,7 @@ import {
   extractPostSaleRatingForStage,
   getPostSaleForcedToolCall,
   isStoreOnePostSaleTestProtocol,
+  postSaleRatingPromptText,
   shouldUseStoreOnePilotDuringPostSale,
   transitionPostSaleContextAfterTurn,
   type PostSaleContext,
@@ -122,4 +123,11 @@ test('mensagem incerta suprime resposta sem converter o acompanhamento em handof
     intent: null,
     minimumConfidence: MIN_CONFIDENCE,
   }), 'suppress_preserving_context')
+})
+
+test('pedido de nota usa a pergunta de avaliacao definida pelo sistema', () => {
+  assert.equal(
+    postSaleRatingPromptText(),
+    'Que bom saber disso. Se puder, me responda com uma nota de 1 a 5 para avaliarmos o atendimento da nossa equipe.'
+  )
 })

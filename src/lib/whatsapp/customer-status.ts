@@ -49,6 +49,7 @@ import {
   decidePostSaleTurnDisposition,
   extractPostSaleRatingForStage,
   getPostSaleForcedToolCall,
+  postSaleRatingPromptText,
   readPostSaleContext,
   shouldUseStoreOnePilotDuringPostSale,
   transitionPostSaleContextAfterTurn,
@@ -981,10 +982,6 @@ function paymentMatchedHandoffText(input?: {
   }
 
   return 'Encontrei o financeiro relacionado a esse numero e vou chamar nossa equipe para continuar o atendimento por aqui.'
-}
-
-function postSaleRatingPromptText() {
-  return 'Que bom saber disso. Se puder, me responda com uma nota de 1 a 5 para avaliarmos o atendimento da nossa equipe.'
 }
 
 function postSaleThanksText(rating: number) {
@@ -3966,17 +3963,19 @@ export async function resolveCustomerStatus(
       await consumeForceAiOverrideIfNeeded()
       const handedOff = toolAgent.toolCalls.some((call) => call.name === 'handoff_human')
         && toolAgent.toolResults.some((result) => result.tool === 'handoff_human' && result.ok)
-      let replyText = handedOff && channel.store_id !== 1
-        ? iaraHandoffText(
-          storeProfile.name,
-          state?.state !== 'awaiting_human',
-          detectWhatsAppConversationLanguage(effectiveMessageText, aiReplyContext.conversationHistory)
-        )
-        : toolAgent.replyText
       const ratingRecorded = toolAgent.toolCalls.some((call) => call.name === 'record_post_sale_rating')
         && toolAgent.toolResults.some((result) => result.tool === 'record_post_sale_rating' && result.ok)
       const ratingRequested = toolAgent.toolCalls.some((call) => call.name === 'request_post_sale_rating')
         && toolAgent.toolResults.some((result) => result.tool === 'request_post_sale_rating' && result.ok)
+      let replyText = ratingRequested
+        ? postSaleRatingPromptText()
+        : handedOff && channel.store_id !== 1
+          ? iaraHandoffText(
+            storeProfile.name,
+            state?.state !== 'awaiting_human',
+            detectWhatsAppConversationLanguage(effectiveMessageText, aiReplyContext.conversationHistory)
+          )
+          : toolAgent.replyText
       const nextPostSaleContext = channel.store_id === 1
         ? transitionPostSaleContextAfterTurn(
           activePostSaleContext,
