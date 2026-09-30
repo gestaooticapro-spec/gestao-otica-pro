@@ -10,9 +10,11 @@ turno específico é processado imediatamente pelo mesmo decisor usado na
 auditoria; a resposta ao vivo reutiliza a decisão persistida e não aguarda o
 cron nem faz uma segunda classificação. Horário, endereço/mapa, Pix literal,
 saudação conservadora e encaminhamentos definidos pelo redesign seguem essa
-decisão. Encaminhamentos ativam a pausa/pendência operacional e só são
-registrados como handoff confirmado quando a entrega é confirmada. Pausas
-humanas existentes continuam bloqueando respostas automáticas. O cron segue
+decisão. Encaminhamentos criam uma pendência para a equipe, mas não significam
+que alguém assumiu a conversa. Handoffs automáticos não bloqueiam a IA;
+somente uma mensagem manual confirmada do lojista inicia `human_pause`,
+renovável por duas horas desde a
+última mensagem dele. O cron segue
 ativo para recuperação e turnos que não foram finalizados no caminho imediato;
 ele não envia mensagens.
 

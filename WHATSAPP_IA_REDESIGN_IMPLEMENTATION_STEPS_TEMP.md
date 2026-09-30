@@ -115,8 +115,9 @@ resultado agregado, sem telefones, nomes ou conteudo pessoal no roteiro.
 
 - 26/09/2026: corrigido o roteamento do estado `silent`: agora ele suprime
   somente a repetição da mesma mensagem; uma pergunta diferente pode continuar
-  pelo atendimento/redesign. `human_pause` permanece como bloqueio humano
-  independente e prioritário.
+  pelo atendimento/redesign. A auditoria posterior confirmou que `human_pause`
+  deve bloquear somente após atividade manual comprovada do lojista; handoff
+  automático permanece em `human_pending`.
 
 - 18/09/2026: etapa 1 iniciada com processamento exclusivamente em sombra.
 - 18/09/2026: processador publicado e executado na Loja 1; três turnos reais
@@ -335,3 +336,12 @@ resultado agregado, sem telefones, nomes ou conteudo pessoal no roteiro.
   intercalada passou; typecheck e 130 testes do redesenho passaram. Ainda faltam
   deploy e validacao ao vivo com dados ficticios. Lembretes de parcelas ainda
   nao foram alterados.
+- 30/09/2026: auditoria da etapa 5 encontrou caminhos legados que ainda
+  convertiam handoffs da IA em `human_pause` e silenciavam novas mensagens do
+  cliente. O fluxo local agora reclassifica esses casos como `awaiting_human`,
+  mantém a pendência para a equipe, continua a conversa com o cliente e reserva
+  `human_pause` para mensagem manual confirmada do lojista. Essa pausa vence
+  duas horas após a última mensagem manual; estados antigos usam essa mesma
+  âncora. Fila operacional, proteção de retenção e elegibilidade do pós-venda
+  foram alinhadas. Typecheck e testes ainda precisam ser concluídos; deploy e
+  validação ao vivo continuam pendentes.

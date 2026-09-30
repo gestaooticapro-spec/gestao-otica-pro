@@ -11,6 +11,11 @@ import {
   decidePreAiRoute,
 } from '../src/lib/whatsapp/routing-heuristics'
 import { resolveConversationStateCandidates } from '../src/lib/whatsapp/conversation-state-matching'
+import {
+  applyOperatorActivityPauseExpiry,
+  isOperatorPauseActive,
+  normalizeConversationStateForHumanControl,
+} from '../src/lib/whatsapp/human-control-policy'
 import { buildWhatsAppCanonicalPayload } from '../src/lib/whatsapp/canonical'
 import { applyWhatsAppHumanizationOutcome } from '../src/lib/whatsapp/humanization'
 
@@ -295,6 +300,53 @@ test('pausa confirmada continua bloqueando; estado expirado permite retomada', (
   assert.equal(decidePreAiRoute({ ...baseInput, state: null }), 'continue_to_ai_or_menu')
 })
 
+test('handoff automatico e pausa de lojista sao controles diferentes', () => {
+  const automatedMetadata = {
+    reason: 'post_sale_complaint_handoff',
+    lastAction: 'human_handoff',
+  }
+  const operatorMetadata = {
+    reason: 'store_initiated',
+    lastAction: 'human_pause_store_initiated',
+    handoffResolvedByOperator: true,
+  }
+
+  assert.equal(normalizeConversationStateForHumanControl('human_pause', automatedMetadata, 'auto'), 'awaiting_human')
+  assert.equal(normalizeConversationStateForHumanControl('waiting_human_after_attachment', {}, 'auto'), 'awaiting_human')
+  assert.equal(normalizeConversationStateForHumanControl('human_pause', { reason: 'normal_closed_trap' }, 'auto'), 'ai_session')
+  assert.equal(normalizeConversationStateForHumanControl('human_pause', operatorMetadata, 'auto'), 'human_pause')
+  assert.equal(normalizeConversationStateForHumanControl('human_pause', {}, 'force_human'), 'human_pause')
+})
+
+test('pausa manual antiga usa exatamente duas horas desde a ultima mensagem do lojista', () => {
+  const row = {
+    state: 'human_pause',
+    metadata: { reason: 'app_manual_send', handoffResolvedByOperator: true },
+    updated_at: '2026-09-30T10:00:00.000Z',
+    expires_at: '2026-09-30T22:00:00.000Z',
+  }
+  const adjusted = applyOperatorActivityPauseExpiry(row, 2 * 60 * 60 * 1000)
+  assert.equal(adjusted.expires_at, '2026-09-30T12:00:00.000Z')
+  assert.equal(isOperatorPauseActive({
+    state: row.state,
+    metadata: row.metadata,
+    updatedAt: row.updated_at,
+    nowMs: Date.parse('2026-09-30T11:59:59.999Z'),
+    pauseMs: 2 * 60 * 60 * 1000,
+  }), true)
+  assert.equal(isOperatorPauseActive({
+    state: row.state,
+    metadata: row.metadata,
+    updatedAt: row.updated_at,
+    nowMs: Date.parse('2026-09-30T12:00:00.000Z'),
+    pauseMs: 2 * 60 * 60 * 1000,
+  }), false)
+  assert.equal(applyOperatorActivityPauseExpiry({
+    ...row,
+    metadata: { reason: 'post_sale_complaint_handoff' },
+  }, 2 * 60 * 60 * 1000).expires_at, row.expires_at)
+})
+
 test('recupera contexto da equipe e de comprovante sem confirmar a baixa', () => {
   const history = formatWhatsAppPersistedConversationHistory([
     { role: 'customer', text: 'Enviei o comprovante.', at: '2026-09-01T12:00:00.000Z' },
@@ -329,7 +381,7 @@ test('silencio temporario suprime repeticao identica, mas deixa mensagem nova co
     messageText: 'E meu oculos em producao?',
     metadata,
     toolAgentEnabled: false,
-  }), 'preserve_human_handoff')
+  }), 'continue_to_ai_or_menu')
   assert.equal(continueExperimentalConversationAfterAutomatedHandoff({
     route: 'preserve_human_handoff',
     messageText: 'E meu oculos em producao?',

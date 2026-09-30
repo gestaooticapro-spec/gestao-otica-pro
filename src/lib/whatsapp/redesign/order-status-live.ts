@@ -108,9 +108,10 @@ export function resolveStoreOneOrderDisposition(input: {
   if (!replyText) return { kind: 'suppress', reason: 'order_reply_unavailable' }
 
   const orders = Array.isArray(lookup.data.orders) ? lookup.data.orders as OpenOrderAgentFact[] : []
+  const customerName = typeof lookup.data.customerName === 'string' ? lookup.data.customerName : null
   if (plan.tool === 'lookup_open_orders_by_identifier') {
     if (lookup.ok && orders.length >= 1 && orders.length <= 2) {
-      const validation = validateOrderAgentReply(replyText, orders)
+      const validation = validateOrderAgentReply(replyText, orders, { customerName })
       if (!validation.valid) return { kind: 'suppress', reason: validation.reason }
       return { kind: 'send', action: 'auto_reply', outboundType: 'os_status',
         state: 'ai_session', reason: 'order_status_auto_reply', text: replyText, orderCount: orders.length }
@@ -134,7 +135,7 @@ export function resolveStoreOneOrderDisposition(input: {
       state: 'waiting_identifier', reason: 'order_identifier_requested', text: replyText, orderCount: 0 }
   }
   if (lookup.ok && orders.length >= 1 && orders.length <= 2) {
-    const validation = validateOrderAgentReply(replyText, orders, { allowPossessiveOwnerReference: true })
+    const validation = validateOrderAgentReply(replyText, orders, { customerName })
     if (!validation.valid) return { kind: 'suppress', reason: validation.reason }
     return { kind: 'send', action: 'auto_reply', outboundType: 'os_status',
       state: 'ai_session', reason: 'order_status_auto_reply', text: replyText, orderCount: orders.length }
@@ -163,10 +164,12 @@ export async function runStoreOneOrderStatusTurn(input: {
     lookup,
     replyText: agent.success ? agent.replyText : null,
   })
-  const correctableReasons = new Set(['missing_order', 'mixed_orders', 'missing_patient', 'missing_status', 'unsupported_time_or_contact'])
+  const correctableReasons = new Set(['missing_order', 'mixed_orders', 'missing_patient',
+    'unsupported_patient_reference', 'missing_status', 'unsupported_time_or_contact'])
   if (agent.success && agent.replyText && disposition.kind === 'suppress'
     && correctableReasons.has(disposition.reason)) {
     const orders = Array.isArray(lookup?.data.orders) ? lookup.data.orders as OpenOrderAgentFact[] : []
+    const customerName = typeof lookup?.data.customerName === 'string' ? lookup.data.customerName : null
     const revision = await (input.writeReply ?? writeWhatsAppToolAgentReply)({
       ...input.assistant,
       conversationHistory: [],
@@ -176,7 +179,7 @@ export async function runStoreOneOrderStatusTurn(input: {
         reason: disposition.reason,
         requiredOrders: orders.map((order) => ({
           orderNumber: order.orderNumber,
-          patientLabel: order.patientName || 'do titular',
+          patientLabel: order.patientName || customerName || '',
           statusText: order.statusText,
         })),
       },

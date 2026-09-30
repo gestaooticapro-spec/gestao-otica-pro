@@ -6,6 +6,8 @@ import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import type { Json } from '@/lib/database.types'
 import { digitsOnly, findUniqueCustomerPhoneMatch, phonesMatch, phonesMatchLast8, toEvolutionNumber } from '@/lib/whatsapp/phone'
+import { isOperatorPauseActive } from '@/lib/whatsapp/human-control-policy'
+import { WHATSAPP_REDESIGN_HUMAN_ACTIVE_MS } from '@/lib/whatsapp/redesign/contracts'
 import {
   findPendingHandoffResolution,
   resolvePersistedPendingHandoffs,
@@ -366,23 +368,35 @@ async function buildWhatsAppRetentionScope(supabaseAdmin: ReturnType<typeof crea
   const messagesBefore = daysAgoIso(WHATSAPP_RETENTION_MESSAGE_DAYS)
   const expiredStatesBefore = daysAgoIso(WHATSAPP_RETENTION_EXPIRED_STATE_DAYS)
 
-  const [{ data: forceHumanRows, error: forceHumanError }, { data: activeHandoffRows, error: activeHandoffError }] = await Promise.all([
+  const [{ data: forceHumanRows, error: forceHumanError }, { data: candidateStateRows, error: activeHandoffError }] = await Promise.all([
     (supabaseAdmin.from('whatsapp_customer_control') as any)
       .select('remote_phone')
       .eq('store_id', storeId)
       .eq('mode', 'force_human'),
     (supabaseAdmin.from('whatsapp_conversation_states') as any)
-      .select('remote_phone')
+      .select('remote_phone, state, metadata, updated_at, expires_at, handoff_pending')
       .eq('store_id', storeId)
-      .in('state', ['human_pause', 'waiting_human_after_attachment'])
-      .gt('expires_at', nowIso),
+      .in('state', ['awaiting_human', 'human_pause', 'waiting_human_after_attachment']),
   ])
 
   if (forceHumanError) throw forceHumanError
   if (activeHandoffError) throw activeHandoffError
 
   const forceHumanPhones = new Set<string>((forceHumanRows || []).map((row: any) => normalizeRemotePhone(String(row.remote_phone || ''))).filter(Boolean))
-  const activeHandoffPhones = new Set<string>((activeHandoffRows || []).map((row: any) => normalizeRemotePhone(String(row.remote_phone || ''))).filter(Boolean))
+  const activeHandoffRows = ((candidateStateRows || []) as Array<Record<string, any>>).filter((row) => {
+    const pendingHandoff = row.handoff_pending === true
+      && typeof row.expires_at === 'string'
+      && Date.parse(row.expires_at) > Date.parse(nowIso)
+    const operatorPause = isOperatorPauseActive({
+      state: String(row.state || ''),
+      metadata: row.metadata,
+      updatedAt: String(row.updated_at || ''),
+      nowMs: Date.parse(nowIso),
+      pauseMs: WHATSAPP_REDESIGN_HUMAN_ACTIVE_MS,
+    })
+    return pendingHandoff || operatorPause
+  })
+  const activeHandoffPhones = new Set<string>(activeHandoffRows.map((row) => normalizeRemotePhone(String(row.remote_phone || ''))).filter(Boolean))
   const protectedPhones = [...new Set([...forceHumanPhones, ...activeHandoffPhones])]
 
   return {
@@ -420,7 +434,7 @@ function buildWhatsAppRetentionQueries(
     .eq('store_id', storeId)
     .lt('expires_at', scope.nowIso)
     .lt('updated_at', scope.expiredStatesBefore)
-    .not('state', 'in', '("human_pause","waiting_human_after_attachment")')
+    .not('state', 'in', '("awaiting_human","human_pause","waiting_human_after_attachment")')
 
   let inboundMessages = createRetentionQuery(supabaseAdmin, 'whatsapp_inbound_messages', mode)
     .eq('store_id', storeId)
@@ -523,6 +537,7 @@ function buildOperationalDecisionSummary(
 
   const isHandoff = action === 'human_handoff'
     || action === 'force_human_override'
+    || state === 'awaiting_human'
     || state === 'human_pause'
     || state === 'waiting_human_after_attachment'
 

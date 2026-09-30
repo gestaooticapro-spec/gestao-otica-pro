@@ -182,10 +182,10 @@ export function continueExperimentalConversationAfterAutomatedHandoff(input: {
   metadata: Json | null | undefined
   toolAgentEnabled: boolean
 }): WhatsAppPreAiRouteDecision {
-  if (!input.toolAgentEnabled && input.route !== 'ignore_silent') return input.route
   if (input.route === 'preserve_human_handoff' || input.route === 'attachment_followup_handoff') {
     return 'continue_to_ai_or_menu'
   }
+  if (!input.toolAgentEnabled && input.route !== 'ignore_silent') return input.route
   if (input.route !== 'ignore_silent') return input.route
 
   return isRepeatedSilentInbound(input.messageText, input.metadata)

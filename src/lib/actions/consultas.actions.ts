@@ -465,7 +465,7 @@ export async function getWhatsAppPendencias(storeId: number): Promise<WhatsAppPe
         const { data, error } = await (supabaseAdmin.from('whatsapp_conversation_states') as any)
             .select('id, remote_phone, state, expires_at, updated_at, metadata, handoff_pending, handoff_origin, handoff_at, operator_answered_at')
             .eq('store_id', storeId)
-            .in('state', ['human_pause', 'waiting_human_after_attachment'])
+            .in('state', ['awaiting_human', 'human_pause', 'waiting_human_after_attachment'])
             .eq('handoff_pending', true)
             .gt('expires_at', now)
             .order('updated_at', { ascending: false })

@@ -119,12 +119,12 @@ function negatesOrderStage(normalizedText: string) {
 
 export type OrderAgentReplyValidation =
   | { valid: true }
-  | { valid: false; reason: 'no_order_facts' | 'too_many_orders' | 'missing_order' | 'mixed_orders' | 'missing_patient' | 'missing_status' | 'unsupported_time_or_contact' }
+  | { valid: false; reason: 'no_order_facts' | 'too_many_orders' | 'missing_order' | 'mixed_orders' | 'missing_patient' | 'unsupported_patient_reference' | 'missing_status' | 'unsupported_time_or_contact' }
 
 export function validateOrderAgentReply(
   replyText: string,
   orders: OpenOrderAgentFact[],
-  options: { allowPossessiveOwnerReference?: boolean } = {}
+  options: { customerName?: string | null } = {}
 ): OrderAgentReplyValidation {
   if (orders.length === 0) return { valid: false, reason: 'no_order_facts' }
   if (orders.length > 2) return { valid: false, reason: 'too_many_orders' }
@@ -133,6 +133,10 @@ export function validateOrderAgentReply(
   const refersCustomerBackToStore = /\b(?:entre|entrar|fale|ligue)\s+(?:em\s+contato\s+)?(?:conosco|com\s+(?:a\s+)?(?:loja|otica|equipe))\b/u.test(normalizedReply)
   const sentences = replyText.split(/[\n.!?;]+/u).map(normalizeOrderReplyText).filter(Boolean)
   const timingPattern = /\b(?:hoje|amanha|prazo|previsao|provavel\w*|possivel\w*|estimad\w*|\d+\s*(?:dias?|semanas?|horas?))\b/gu
+  const hasUnnamedOrder = orders.some((order) => !(order.patientName || options.customerName?.trim()))
+  if (hasUnnamedOrder && sentences.some((sentence) =>
+    /\b(?:seu|sua|teu|tua)\s+(?:pedido|os|oculos)\b/u.test(sentence)
+  )) return { valid: false, reason: 'unsupported_patient_reference' }
   if (refersCustomerBackToStore || sentences.some((sentence) => {
     const timingClaims = sentence.match(timingPattern) || []
     if (timingClaims.length === 0) return false
@@ -163,14 +167,14 @@ export function validateOrderAgentReply(
     if (otherOrdersInSentence.length > 1) return { valid: false, reason: 'mixed_orders' }
     mentionedOrders.add(order.orderNumber)
 
-    if (order.patientName) {
-      if (!containsOrderReplyPhrase(sentence, order.patientName)) {
+    const personName = order.patientName || options.customerName?.trim() || null
+    if (personName) {
+      if (!containsOrderReplyPhrase(sentence, personName)) {
         return { valid: false, reason: 'missing_patient' }
       }
-    } else if (!/\b(titular|owner|account holder)\b/u.test(sentence)
-      && !(options.allowPossessiveOwnerReference
-        && /\b(?:(?:seu|sua|teu|tua|o)\s+(?:pedido|os)|do\s+titular)\b/u.test(sentence))) {
-      return { valid: false, reason: 'missing_patient' }
+    } else if (/\b(?:titular|owner|account holder)\b/u.test(sentence)
+      || /\b(?:seu|sua|teu|tua)\s+(?:pedido|os|oculos)\b/u.test(sentence)) {
+      return { valid: false, reason: 'unsupported_patient_reference' }
     }
 
     if (!orderStatusIsNamed(sentence, order.status)) {

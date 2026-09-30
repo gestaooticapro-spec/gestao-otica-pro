@@ -5,6 +5,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getStoreModules, StoreSettings } from '@/lib/store-modules'
 import { digitsOnly, phonesMatch, toEvolutionNumber } from '@/lib/whatsapp/phone'
 import { buildWhatsAppCanonicalPayload } from '@/lib/whatsapp/canonical'
+import { isOperatorPauseActive } from '@/lib/whatsapp/human-control-policy'
+import { WHATSAPP_REDESIGN_HUMAN_ACTIVE_MS } from '@/lib/whatsapp/redesign/contracts'
 import { evaluateStoreHours } from '@/lib/whatsapp/store-hours-logic'
 import {
   buildPostSaleFollowupMessage,
@@ -358,14 +360,14 @@ function groupEligibleServiceOrders(orders: EligibleServiceOrderRow[]) {
 async function hasActiveHumanBlock(channelId: number, phone: string) {
   const supabase = createAdminClient()
   const nowIso = new Date().toISOString()
+  const nowMs = Date.parse(nowIso)
 
   const [stateResult, controlResult] = await Promise.all([
     (supabase.from('whatsapp_conversation_states') as any)
-      .select('id')
+      .select('id, state, metadata, updated_at')
       .eq('channel_id', channelId)
       .eq('remote_phone', phone)
-      .in('state', ['human_pause', 'waiting_human_after_attachment'])
-      .gt('expires_at', nowIso)
+      .eq('state', 'human_pause')
       .maybeSingle(),
     (supabase.from('whatsapp_customer_control') as any)
       .select('id')
@@ -378,7 +380,16 @@ async function hasActiveHumanBlock(channelId: number, phone: string) {
   if (stateResult.error) throw stateResult.error
   if (controlResult.error) throw controlResult.error
 
-  return Boolean(stateResult.data?.id || controlResult.data?.id)
+  const hasRecentOperatorPause = stateResult.data
+    && isOperatorPauseActive({
+      state: stateResult.data.state,
+      metadata: stateResult.data.metadata,
+      updatedAt: stateResult.data.updated_at,
+      nowMs,
+      pauseMs: WHATSAPP_REDESIGN_HUMAN_ACTIVE_MS,
+    })
+
+  return Boolean(hasRecentOperatorPause || controlResult.data?.id)
 }
 
 async function isPostSaleFollowupOptedOut(storeId: number, phone: string) {

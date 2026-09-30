@@ -6,6 +6,11 @@ import { describeOpenOs, WhatsAppOsStatusCode } from './os-status'
 import { digitsOnly, findUniqueCustomerPhoneMatch, getPhoneVariants, phonesMatch, phonesMatchLast8, toEvolutionNumber } from './phone'
 import { shouldPersistCustomerLink } from './customer-link-policy'
 import { resolveConversationStateCandidates } from './conversation-state-matching'
+import {
+  applyOperatorActivityPauseExpiry,
+  isAutomatedHandoffMetadata,
+  normalizeConversationStateForHumanControl,
+} from './human-control-policy'
 import type { StoreSettings } from '@/lib/store-modules'
 import { evaluateStoreHours } from './store-hours-logic'
 import {
@@ -83,6 +88,7 @@ import {
 import {
   WhatsAppRedesignClassificationSchema,
   WhatsAppSystemDecisionSchema,
+  WHATSAPP_REDESIGN_HUMAN_ACTIVE_MS,
 } from './redesign/contracts'
 import {
   extractExplicitOrderNumber,
@@ -103,7 +109,7 @@ import {
 const SAME_STATUS_SILENCE_WINDOW_MS = 2 * 60 * 60 * 1000
 const HUMAN_PAUSE_MS = 60 * 60 * 1000
 const HUMAN_HANDOFF_PAUSE_MS = 12 * 60 * 60 * 1000
-const HUMAN_ACTIVITY_PAUSE_MS = 60 * 60 * 1000
+const HUMAN_ACTIVITY_PAUSE_MS = WHATSAPP_REDESIGN_HUMAN_ACTIVE_MS
 const AWAITING_HUMAN_CONTEXT_MS = 48 * 60 * 60 * 1000
 const AI_SESSION_MS = 2 * 60 * 60 * 1000
 const MENU_WAIT_MS = 30 * 60 * 1000
@@ -1974,7 +1980,9 @@ async function findConversationState(channelId: number, phone: string): Promise<
     .in('remote_phone', phoneVariants)
 
   if (error) throw error
-  const candidates = (data ?? []) as ConversationStateRow[]
+  const candidates = ((data ?? []) as ConversationStateRow[]).map((row) =>
+    applyOperatorActivityPauseExpiry(row, HUMAN_ACTIVITY_PAUSE_MS)
+  )
   const resolution = resolveConversationStateCandidates({
     candidates,
     phone,
@@ -1989,6 +1997,76 @@ async function findConversationState(channelId: number, phone: string): Promise<
 
   if (!resolution.selected) return null
   return { ...resolution.selected, matchingIds: resolution.matchingIds }
+}
+
+async function normalizeLoadedHumanControlState(input: {
+  channel: ChannelRow
+  phone: string
+  state: ConversationStateRow | null
+  controlMode: CustomerControlMode
+  inboundMessageId: number
+}) {
+  const current = input.state
+  if (!current) return null
+
+  const normalizedState = normalizeConversationStateForHumanControl(
+    current.state,
+    current.metadata,
+    input.controlMode
+  ) as ConversationState
+  if (normalizedState === current.state) return current
+
+  // Não deixa uma execução atrasada sobrescrever um estado humano mais recente.
+  if (!(await isInboundStillLatest(input.channel.id, input.phone, input.inboundMessageId))) {
+    return current
+  }
+
+  const now = new Date().toISOString()
+  const ttl = normalizedState === 'awaiting_human'
+    ? AWAITING_HUMAN_CONTEXT_MS
+    : AI_SESSION_MS
+  const metadataRecord = toMetadataRecord(current.metadata)
+  const restorePendingHandoff = normalizedState === 'awaiting_human'
+    && isAutomatedHandoffMetadata(current.metadata)
+  const handoffAt = typeof metadataRecord.lastDecisionAt === 'string'
+    ? metadataRecord.lastDecisionAt
+    : now
+  const stateUpdate = {
+    state: normalizedState,
+    expires_at: expiresIn(ttl),
+    updated_at: now,
+    ...(restorePendingHandoff ? {
+      handoff_pending: true,
+      handoff_origin: metadataRecord.reason === 'attachment_received'
+        || metadataRecord.attachmentKind != null ? 'attachment' : 'general',
+      handoff_at: handoffAt,
+      operator_answered_at: null,
+    } : {}),
+  }
+  const { data, error } = await (createAdminClient().from('whatsapp_conversation_states') as any)
+    .update(stateUpdate)
+    .in('id', current.matchingIds?.length ? current.matchingIds : [current.id])
+    .eq('state', current.state)
+    .eq('updated_at', current.updated_at)
+    .select('id')
+
+  if (error) throw error
+  if (!data?.length) {
+    // Um envio manual pode ter renovado a pausa entre a leitura e a atualização.
+    return findConversationState(input.channel.id, input.phone)
+  }
+
+  console.info('[WhatsApp human control] Estado legado reclassificado sem mensagem manual confirmada.', {
+    from: current.state,
+    to: normalizedState,
+    reason: toMetadataRecord(current.metadata).reason ?? null,
+  })
+  return {
+    ...current,
+    state: normalizedState,
+    expires_at: expiresIn(ttl),
+    updated_at: now,
+  }
 }
 
 async function loadPersistedConversationHistory(
@@ -2182,14 +2260,16 @@ async function setConversationState(
     : metadata
   const metadataRecord = toMetadataRecord(preparedMetadata)
   const now = new Date().toISOString()
-  const isNewHandoff = metadataRecord.lastAction === 'human_handoff'
-    || metadataRecord.action === 'human_handoff'
+  const isNewHandoff = isAutomatedHandoffMetadata(preparedMetadata)
     || state === 'waiting_human_after_attachment'
   const resolvesHandoff = metadataRecord.handoffResolvedByOperator === true
   const handoffValues = isNewHandoff
     ? {
         handoff_pending: true,
-        handoff_origin: state === 'waiting_human_after_attachment' ? 'attachment' : 'general',
+        handoff_origin: state === 'waiting_human_after_attachment'
+          || metadataRecord.reason === 'attachment_received'
+          || metadataRecord.attachmentKind != null
+          ? 'attachment' : 'general',
         handoff_at: now,
         operator_answered_at: null,
       }
@@ -2865,6 +2945,13 @@ export async function resolveCustomerStatus(
   const option = optionFromMessage(effectiveMessageText || undefined)
   let state = await findConversationState(channel.id, normalizedPhone)
   const controlMode = await loadCustomerControlMode(channel.id, normalizedPhone)
+  state = await normalizeLoadedHumanControlState({
+    channel,
+    phone: normalizedPhone,
+    state,
+    controlMode,
+    inboundMessageId: inbound.id,
+  })
   const storeProfile = await loadStoreProfile(channel.store_id)
   const settings = ((storeProfile.settings || {}) as StoreSettings) || {}
   const hoursFacts = settings.store_hours ? evaluateStoreHours(settings.store_hours) : null
@@ -3065,8 +3152,8 @@ export async function resolveCustomerStatus(
         await setConversationState(
           channel,
           normalizedPhone,
-          isWhatsAppToolAgentEnabled(automationSettings) ? 'awaiting_human' : 'human_pause',
-          isWhatsAppToolAgentEnabled(automationSettings) ? AWAITING_HUMAN_CONTEXT_MS : HUMAN_HANDOFF_PAUSE_MS,
+          'awaiting_human',
+          AWAITING_HUMAN_CONTEXT_MS,
           { ...payload, lastAction: 'human_handoff', reason: 'whatsapp_redesign_decision' },
           inbound.id
         )
@@ -3243,18 +3330,20 @@ export async function resolveCustomerStatus(
     ms: number,
     metadata: Json = {}
   ) {
-    const metadataRecord = toMetadataRecord(metadata)
-    const isAutomatedHandoff = metadataRecord.lastAction === 'human_handoff'
-      || metadataRecord.lastAction === 'silent_handoff'
-    const preserveConversation = toolAgentEnabled
-      && isAutomatedHandoff
-      && (nextState === 'human_pause' || nextState === 'waiting_human_after_attachment')
+    const resolvedState = normalizeConversationStateForHumanControl(
+      nextState,
+      metadata,
+      controlMode
+    ) as ConversationState
+    const resolvedTtl = resolvedState === 'awaiting_human'
+      ? AWAITING_HUMAN_CONTEXT_MS
+      : resolvedState === 'ai_session' ? AI_SESSION_MS : ms
 
     return setConversationState(
       channel!,
       normalizedPhone,
-      preserveConversation ? 'awaiting_human' : nextState,
-      preserveConversation ? AWAITING_HUMAN_CONTEXT_MS : ms,
+      resolvedState,
+      resolvedTtl,
       metadata,
       inbound.id
     )
@@ -3263,8 +3352,8 @@ export async function resolveCustomerStatus(
   const toolAgentEnabled = isWhatsAppToolAgentEnabled(automationSettings)
   async function setCurrentAutomatedHandoff(metadata: Json = {}) {
     return setCurrentConversationState(
-      toolAgentEnabled ? 'awaiting_human' : 'human_pause',
-      toolAgentEnabled ? AWAITING_HUMAN_CONTEXT_MS : HUMAN_HANDOFF_PAUSE_MS,
+      'awaiting_human',
+      AWAITING_HUMAN_CONTEXT_MS,
       metadata
     )
   }
@@ -3552,8 +3641,8 @@ export async function resolveCustomerStatus(
     return continueWithoutHoursOverride(async () => {
       await consumeForceAiOverrideIfNeeded()
       await setCurrentConversationState(
-        toolAgentEnabled ? 'awaiting_human' : 'human_pause',
-        toolAgentEnabled ? AWAITING_HUMAN_CONTEXT_MS : HUMAN_HANDOFF_PAUSE_MS,
+        'awaiting_human',
+        AWAITING_HUMAN_CONTEXT_MS,
         mergeMetadata(baseMetadata, {
           selectedOption: '2',
           ...buildDecisionMetadata({
@@ -5622,7 +5711,7 @@ export async function simulateCustomerStatus(
   const inboundPayloadMeta = extractWhatsAppInboundPayloadMeta(input.payload)
   const effectiveMessageText = normalizeDisplayText(input.messageText) || inboundPayloadMeta.caption || inboundPayloadMeta.text
   const automationSettings = await loadStoreWhatsAppSettings(channel.store_id)
-  const state = await findConversationState(channel.id, normalizedPhone)
+  const persistedState = await findConversationState(channel.id, normalizedPhone)
   const controlMode = await loadCustomerControlMode(channel.id, normalizedPhone)
   const aiDiagnostics: WhatsAppAiDiagnostic[] = []
   const storeProfile = await loadStoreProfile(channel.store_id)
@@ -5630,11 +5719,22 @@ export async function simulateCustomerStatus(
   const option = optionFromMessage(effectiveMessageText || undefined)
   const hoursFacts = settings.store_hours ? evaluateStoreHours(settings.store_hours) : null
   const releasedClosedTrapPause = shouldReleaseClosedTrapPause({
-    state: state?.state ?? null,
-    metadata: state?.metadata,
+    state: persistedState?.state ?? null,
+    metadata: persistedState?.metadata,
     isStoreOpenNow: hoursFacts?.is_open_now === true,
   })
-  const routingState = releasedClosedTrapPause ? null : state
+  const normalizedState = releasedClosedTrapPause || !persistedState
+    ? null
+    : {
+      ...persistedState,
+      state: normalizeConversationStateForHumanControl(
+        persistedState.state,
+        persistedState.metadata,
+        controlMode
+      ) as ConversationState,
+    }
+  const routingState = normalizedState
+  const state = routingState
   const debugState = routingState?.state ?? null
   const effectiveState = effectiveStateForControl(routingState, controlMode)
   const recentContext = buildRecentContextFromMetadata(routingState?.metadata, effectiveMessageText)
@@ -6221,8 +6321,8 @@ export async function markStoreInitiatedConversation(
 
   if (forceAiClearError) throw forceAiClearError
 
+  const humanActivityAt = new Date().toISOString()
   if (mirrorOutbound) {
-    const sentAt = new Date().toISOString()
     const { data: mirroredOutbound, error: outboundInsertError } = await (supabase.from('whatsapp_outbound_messages') as any)
       .insert({
         tenant_id: channel.tenant_id,
@@ -6234,7 +6334,7 @@ export async function markStoreInitiatedConversation(
         message_text: messageText || '[mensagem enviada pela loja sem texto legivel]',
         message_type: 'operator_store_initiated',
         status: 'sent',
-        sent_at: sentAt,
+        sent_at: humanActivityAt,
         payload: {
           source: 'store_device',
           sentBy: 'operator',
@@ -6259,18 +6359,14 @@ export async function markStoreInitiatedConversation(
         sentBy: 'operator',
         fromMe: true,
       },
-      sentAt,
+      sentAt: humanActivityAt,
     })
   }
 
-  const automationSettings = await loadStoreWhatsAppSettings(channel.store_id)
-  const humanPauseMs = isWhatsAppToolAgentEnabled(automationSettings)
-    ? HUMAN_ACTIVITY_PAUSE_MS
-    : HUMAN_HANDOFF_PAUSE_MS
-
-  await setConversationState(channel, normalizedPhone, 'human_pause', humanPauseMs, {
+  await setConversationState(channel, normalizedPhone, 'human_pause', HUMAN_ACTIVITY_PAUSE_MS, {
     reason: mirrorOutbound ? 'store_initiated' : 'app_manual_send',
     providerMessageId: providerMessageId || null,
+    humanActivityAt,
     preview: messageText.slice(0, 160) || null,
     handoffResolvedByOperator: true,
     ...buildDecisionMetadata({

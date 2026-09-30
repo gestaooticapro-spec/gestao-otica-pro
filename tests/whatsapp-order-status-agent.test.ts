@@ -75,10 +75,11 @@ test('prompt orienta a desambiguar nome citado e listar as OS realmente vinculad
   assert.match(prompt, /Odair/u)
   assert.match(prompt, /nao encontrou pedido desse nome vinculado a este WhatsApp/u)
   assert.match(prompt, /informe os pedidos que o resultado da consulta vinculada ao telefone encontrou/u)
+  assert.match(prompt, /Nunca escreva "do titular"/u)
   assert.deepEqual(validateOrderAgentReply(
-    'Não encontrei OS de Odair vinculada a este WhatsApp. No cadastro vinculado a este número, a OS 1043 do titular está na fila de montagem, com a lente já chegada. A OS 1041 do titular está em produção no laboratório.',
+    'Não encontrei OS de Odair vinculada a este WhatsApp. No cadastro vinculado a este número, a OS 1043 de Jaime Rodrigues Junior está na fila de montagem, com a lente já chegada. A OS 1041 de Jaime Rodrigues Junior está em produção no laboratório.',
     facts,
-    { allowPossessiveOwnerReference: true }
+    { customerName: 'Jaime Rodrigues Junior' }
   ), { valid: true })
 })
 
@@ -218,7 +219,7 @@ test('rejeita resposta de OS que omite ou associa incorretamente nome e situacao
   ), { valid: false, reason: 'mixed_orders' })
 })
 
-test('exige identificar a titular quando a OS nao tem dependente associado', () => {
+test('usa o nome do cliente quando existe e nao inventa rotulo quando falta nome', () => {
   const facts = [{
     orderNumber: '1008',
     patientName: null,
@@ -226,10 +227,16 @@ test('exige identificar a titular quando a OS nao tem dependente associado', () 
     statusText: 'O óculos entrou na fila de montagem.',
   }]
 
-  assert.deepEqual(validateOrderAgentReply('A OS 1008 do titular entrou na fila de montagem.', facts), { valid: true })
-  assert.deepEqual(validateOrderAgentReply('A OS 1008 entrou na fila de montagem.', facts), {
+  assert.deepEqual(validateOrderAgentReply(
+    'A OS 1008 de Jaime entrou na fila de montagem.', facts, { customerName: 'Jaime' }
+  ), { valid: true })
+  assert.deepEqual(validateOrderAgentReply(
+    'A OS 1008 do titular entrou na fila de montagem.', facts, { customerName: 'Jaime' }
+  ), { valid: false, reason: 'missing_patient' })
+  assert.deepEqual(validateOrderAgentReply('A OS 1008 entrou na fila de montagem.', facts), { valid: true })
+  assert.deepEqual(validateOrderAgentReply('A OS 1008 do titular entrou na fila de montagem.', facts), {
     valid: false,
-    reason: 'missing_patient',
+    reason: 'unsupported_patient_reference',
   })
 })
 
@@ -241,7 +248,7 @@ test('bloqueia previsao de retirada e convite para contatar a mesma loja sem fat
     facts
   ), { valid: false, reason: 'unsupported_time_or_contact' })
   assert.deepEqual(validateOrderAgentReply(
-    'A OS 1041 do titular esta em producao no laboratorio no momento.', facts
+    'A OS 1041 esta em producao no laboratorio no momento.', facts
   ), { valid: true })
 })
 
@@ -253,7 +260,7 @@ test('nao empresta a previsao oficial de uma OS para outra OS', () => {
       status: 'ready_for_pickup', statusText: 'Pronto para retirada hoje.' },
   ]
   assert.deepEqual(validateOrderAgentReply(
-    'A OS 1041 do titular esta em producao no laboratorio hoje. A OS 1042 do titular esta pronta para retirada hoje.',
+    'A OS 1041 esta em producao no laboratorio hoje. A OS 1042 esta pronta para retirada hoje.',
     facts
   ), { valid: false, reason: 'unsupported_time_or_contact' })
 })

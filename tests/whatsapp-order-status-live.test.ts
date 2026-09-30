@@ -53,7 +53,7 @@ test('revisao de duas OS nao exige copiar saudacao do status e preserva a valida
     },
     executeLookup: async (call) => {
       lookups += 1
-      return { tool: call.name, ok: true, data: { orders: [
+      return { tool: call.name, ok: true, data: { customerName: 'Jaime Rodrigues Junior', orders: [
         { orderNumber: '1043', patientName: null, status: 'lens_arrived_assembling', statusText: 'Oi, CLIENTE! A lente já chegou e seu óculos entrou na fila de montagem.' },
         { orderNumber: '1041', patientName: null, status: 'lens_in_production', statusText: 'Oi, CLIENTE! Seu pedido está em produção no laboratório no momento.' },
       ] } }
@@ -67,7 +67,8 @@ test('revisao de duas OS nao exige copiar saudacao do status e preserva a valida
       assert.match(prompt, /sem copiar saudacoes/u)
       assert.match(prompt, /Nunca junte duas OS na mesma frase/u)
       assert.doesNotMatch(prompt, /usando os valores exatos/u)
-      return fakeWriter('Não encontrei pedido do Odair vinculado a este WhatsApp. A OS 1043 do titular está na fila de montagem, com a lente já chegada. A OS 1041 do titular está em produção no laboratório.')()
+      assert.match(prompt, /Nunca escreva "do titular"/u)
+      return fakeWriter('Não encontrei pedido do Odair vinculado a este WhatsApp. A OS 1043 de Jaime Rodrigues Junior está na fila de montagem, com a lente já chegada. A OS 1041 de Jaime Rodrigues Junior está em produção no laboratório.')()
     },
   })
   assert.equal(lookups, 1)
@@ -187,11 +188,11 @@ test('resposta sem numero da OS e refeita com os mesmos fatos antes do envio', a
       writes += 1
       if (writes === 1) {
         assert.equal(input.rejectedOrderReply, undefined)
-        return fakeWriter('Seu pedido esta em producao no laboratorio.')()
+        return fakeWriter('Esta em producao no laboratorio.')()
       }
       assert.equal(input.rejectedOrderReply?.reason, 'missing_order')
       assert.equal(options?.model, 'gpt-4.1-mini')
-      return fakeWriter('A OS 1041, do titular, esta em producao no laboratorio.')()
+      return fakeWriter('A OS 1041 esta em producao no laboratorio.')()
     },
   })
   assert.equal(lookups, 1)
@@ -200,26 +201,28 @@ test('resposta sem numero da OS e refeita com os mesmos fatos antes do envio', a
   assert.equal(result.disposition.kind === 'send' && result.disposition.action, 'auto_reply')
 })
 
-test('pedido do titular pelo telefone aceita seu pedido, mas busca por identificador exige titular explicito', async () => {
+test('usa o nome cadastrado quando disponivel e omite pessoa quando nao ha nome', async () => {
   const fact = { orderNumber: '1041', patientName: null,
     status: 'lens_in_production', statusText: 'Em producao no laboratorio' }
-  const reply = 'Seu pedido numero 1041 esta em producao no laboratorio.'
+  const reply = 'A OS 1041 de Jaime esta em producao no laboratorio.'
   const phonePlan = plan('Qual e o status do meu oculos?')
   const identifierPlan = plan('OS 1041')
   assert.ok(phonePlan)
   assert.ok(identifierPlan)
   const phone = await runStoreOneOrderStatusTurn({ plan: phonePlan,
     assistant: { messageText: 'Qual e o status do meu oculos?' },
-    executeLookup: async (call) => ({ tool: call.name, ok: true, data: { orders: [fact] } }),
+    executeLookup: async (call) => ({ tool: call.name, ok: true,
+      data: { customerName: 'Jaime', orders: [fact] } }),
     writeReply: fakeWriter(reply),
   })
   assert.equal(phone.disposition.kind, 'send')
   const identifier = await runStoreOneOrderStatusTurn({ plan: identifierPlan,
     assistant: { messageText: 'OS 1041' },
-    executeLookup: async (call) => ({ tool: call.name, ok: true, data: { orders: [fact] } }),
+    executeLookup: async (call) => ({ tool: call.name, ok: true,
+      data: { customerName: 'Jaime', orders: [fact] } }),
     writeReply: fakeWriter(reply),
   })
-  assert.equal(identifier.disposition.kind, 'suppress')
+  assert.equal(identifier.disposition.kind, 'send')
 })
 
 test('negação de pronto em frase sem OS não bloqueia a OS numerada da frase seguinte', async () => {
@@ -227,7 +230,7 @@ test('negação de pronto em frase sem OS não bloqueia a OS numerada da frase s
   const identifierPlan = plan('OS 1043')
   assert.ok(phonePlan)
   assert.ok(identifierPlan)
-  const reply = 'Seu oculos ainda nao esta pronto. O pedido com numero 1043 esta na fila de montagem, pois a lente ja chegou.'
+  const reply = 'Ainda nao esta pronto. A OS 1043 esta na fila de montagem, pois a lente ja chegou.'
   const fact = { orderNumber: '1043', patientName: null,
     status: 'lens_arrived_assembling', statusText: 'A lente chegou e esta na fila de montagem' }
   const phone = await runStoreOneOrderStatusTurn({ plan: phonePlan,
@@ -241,7 +244,7 @@ test('negação de pronto em frase sem OS não bloqueia a OS numerada da frase s
     executeLookup: async (call) => ({ tool: call.name, ok: true, data: { orders: [fact] } }),
     writeReply: fakeWriter(reply),
   })
-  assert.equal(identifier.disposition.kind, 'suppress')
+  assert.equal(identifier.disposition.kind, 'send')
 })
 
 test('revisao ainda incompleta continua bloqueada', async () => {
@@ -252,7 +255,7 @@ test('revisao ainda incompleta continua bloqueada', async () => {
     plan: lookupPlan,
     assistant: { messageText: 'Qual e o status do meu oculos?' },
     executeLookup: async (call) => ({ tool: call.name, ok: true,
-      data: { orders: [{ orderNumber: '1041', patientName: null,
+      data: { customerName: 'Jaime', orders: [{ orderNumber: '1041', patientName: null,
         status: 'lens_in_production', statusText: 'Em producao no laboratorio' }] } }),
     writeReply: async () => {
       writes += 1
@@ -271,7 +274,7 @@ test('previsao inventada recebe uma revisao baseada apenas no status consultado'
   const result = await runStoreOneOrderStatusTurn({
     plan: lookupPlan, assistant: { messageText: 'Posso buscar a OS 1041 hoje?' },
     executeLookup: async (call) => ({ tool: call.name, ok: true,
-      data: { orders: [{ orderNumber: '1041', patientName: null,
+      data: { customerName: 'Jaime', orders: [{ orderNumber: '1041', patientName: null,
         status: 'lens_in_production', statusText: 'Em producao no laboratorio.' }] } }),
     writeReply: async (input) => {
       writes += 1
@@ -279,7 +282,7 @@ test('previsao inventada recebe uma revisao baseada apenas no status consultado'
         'A OS 1041 do titular esta em producao no laboratorio. Provavelmente nao estara pronta hoje; entre em contato conosco.'
       )()
       assert.equal(input.rejectedOrderReply?.reason, 'unsupported_time_or_contact')
-      return fakeWriter('A OS 1041 do titular esta em producao no laboratorio no momento.')()
+      return fakeWriter('A OS 1041 de Jaime esta em producao no laboratorio no momento.')()
     },
   })
   assert.equal(writes, 2)
