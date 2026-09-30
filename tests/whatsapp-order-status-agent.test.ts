@@ -232,3 +232,28 @@ test('exige identificar a titular quando a OS nao tem dependente associado', () 
     reason: 'missing_patient',
   })
 })
+
+test('bloqueia previsao de retirada e convite para contatar a mesma loja sem fatos oficiais', () => {
+  const facts = [{ orderNumber: '1041', patientName: null,
+    status: 'lens_in_production', statusText: 'Em producao no laboratorio.' }]
+  assert.deepEqual(validateOrderAgentReply(
+    'A OS 1041 do titular esta em producao no laboratorio. Provavelmente nao estara pronta hoje; entre em contato conosco.',
+    facts
+  ), { valid: false, reason: 'unsupported_time_or_contact' })
+  assert.deepEqual(validateOrderAgentReply(
+    'A OS 1041 do titular esta em producao no laboratorio no momento.', facts
+  ), { valid: true })
+})
+
+test('nao empresta a previsao oficial de uma OS para outra OS', () => {
+  const facts = [
+    { orderNumber: '1041', patientName: null,
+      status: 'lens_in_production', statusText: 'Em producao no laboratorio.' },
+    { orderNumber: '1042', patientName: null,
+      status: 'ready_for_pickup', statusText: 'Pronto para retirada hoje.' },
+  ]
+  assert.deepEqual(validateOrderAgentReply(
+    'A OS 1041 do titular esta em producao no laboratorio hoje. A OS 1042 do titular esta pronta para retirada hoje.',
+    facts
+  ), { valid: false, reason: 'unsupported_time_or_contact' })
+})

@@ -1222,7 +1222,7 @@ async function maybeHumanizeOutboundFromCanonical(
       model: humanized.model,
       attempts: humanized.attempts,
       replyText: humanized.data.reply_text,
-    })
+    }, { enforcePostSaleSemantics: failClosedOnError })
     const isIdentifierRequest = canonical.intent === 'order_status'
       && (canonical.action === 'request_identifier'
         || canonical.outboundType === 'identifier_prompt'
@@ -1246,7 +1246,7 @@ async function maybeHumanizeOutboundFromCanonical(
       ...renderWithoutContingencyText(applyWhatsAppHumanizationOutcome(payload, {
       success: false,
       error: humanized.error,
-      })),
+      }, { enforcePostSaleSemantics: failClosedOnError })),
       aiResult: humanized,
     }
   }
@@ -1258,7 +1258,7 @@ async function maybeHumanizeOutboundFromCanonical(
       model: humanized.model,
       attempts: humanized.attempts,
       replyText: humanized.data.reply_text,
-    })),
+    }, { enforcePostSaleSemantics: failClosedOnError })),
     aiResult: humanized,
   }
 }
@@ -3134,9 +3134,108 @@ export async function resolveCustomerStatus(
     }
   }
 
+  function logRoute(stage: string, details: Record<string, string | number | boolean | null> = {}) {
+    console.info('[whatsapp_route]', JSON.stringify({
+      inboundMessageId: inbound.id,
+      storeId: channel!.store_id,
+      stage,
+      ...details,
+    }))
+  }
+
+  logRoute('context_loaded', {
+    postSaleStage: pendingPostSaleContext?.stage ?? null,
+    postSaleSource: livePostSaleContext ? 'state' : recoveredPostSaleContext ? 'memory' : 'none',
+    explicitRatingDetected: explicitPostSaleRating !== null,
+    storeOnePilotSelected: storeOnePilotEnabled && useStoreOnePilot,
+  })
+
   async function consumeForceAiOverrideIfNeeded() {
     if (controlMode !== 'force_ai') return
     await clearCustomerControlMode(channel!.id, normalizedPhone)
+  }
+
+  async function sendStoreOneRatingConfirmation(input: {
+    context: PostSaleContext
+    rating: number
+    source: 'legacy_explicit' | 'legacy_ai_resolution'
+    suggestedReply?: string
+  }): Promise<CustomerStatusResponse> {
+    const postSalesId = input.context.postSalesId
+    if (!postSalesId) return ignoreInbound(inbound.id, {
+      stage: 'post_sale_rating', reason: 'missing_post_sale_id', route: input.source, action: 'suppress_reply',
+    })
+
+    let replyText: string | null = null
+    let writer = 'rating_resolver'
+    if (input.suggestedReply?.trim()) {
+      const validation = validatePostSaleActionReply({
+        text: input.suggestedReply, action: 'confirm_rating', rating: input.rating,
+      })
+      if (validation.valid) replyText = input.suggestedReply.trim()
+      else logRoute('post_sale_rating_candidate_rejected', { route: input.source, reason: validation.reason })
+    }
+    if (!replyText) {
+      writer = 'specialized_writer'
+      const reply = await writeWhatsAppPostSaleActionReply({
+        action: 'confirm_rating', rating: input.rating,
+        messageText: effectiveMessageText || '', storeName: storeProfile.name,
+      })
+      await recordAiResult('tool_agent_reply', reply)
+      if (reply.success) {
+        const validation = validatePostSaleActionReply({
+          text: reply.data.reply_text, action: 'confirm_rating', rating: input.rating,
+        })
+        if (validation.valid) replyText = reply.data.reply_text
+        else logRoute('post_sale_rating_candidate_rejected', { route: input.source, reason: validation.reason })
+      }
+    }
+    if (!replyText) {
+      logRoute('post_sale_rating_suppressed', { route: input.source, reason: 'no_valid_confirmation' })
+      return ignoreInbound(inbound.id, {
+        stage: 'post_sale_rating', reason: 'no_valid_confirmation', route: input.source,
+        intent: 'post_sale_positive', action: 'suppress_reply',
+      })
+    }
+
+    await consumeForceAiOverrideIfNeeded()
+    await concludePostSaleFromWhatsApp({
+      tenantId: channel!.tenant_id, storeId: channel!.store_id,
+      postSalesId, rating: input.rating,
+    })
+    const action = input.source === 'legacy_ai_resolution'
+      ? 'post_sale_rating_received_by_ai' : 'post_sale_rating_received'
+    const response = await createOutbound(
+      channel!, inbound.id, normalizedPhone, replyText, 'post_sale_rating_received', {
+        ...buildWhatsAppCanonicalPayload({
+          intent: 'post_sale_positive', action, outboundType: 'post_sale_rating_received',
+          canonicalReply: replyText,
+          facts: {
+            postSalesId, serviceOrderId: input.context.serviceOrderId ?? null,
+            customerId: input.context.customerId ?? null, rating: input.rating,
+          },
+        }),
+        automationTrace: {
+          route: input.source, postSaleStage: input.context.stage ?? null,
+          replyWriter: writer, semanticValidation: 'accepted',
+        },
+      }, inbound.id
+    )
+    logRoute('post_sale_rating_outcome', {
+      route: input.source, replyWriter: writer, outboundCreated: response.shouldReply,
+    })
+    if (response.shouldReply) {
+      await setCurrentConversationState('silent', AFTER_STATUS_SILENCE_MS,
+        appendAiSessionMessage(mergeMetadata(baseMetadata, {
+          reason: action,
+          postSaleContext: { ...input.context, stage: 'completed' } as unknown as Json,
+          ...buildDecisionMetadata({
+            intent: 'post_sale_positive', confidence: null,
+            action, outboundType: 'post_sale_rating_received',
+          }),
+        }), 'assistant', replyText))
+    }
+    return withAiDiagnostics(response)
   }
 
   async function setCurrentConversationState(
@@ -3238,6 +3337,13 @@ export async function resolveCustomerStatus(
       finalWriterEnabled,
       channel!.store_id === 1
     )
+
+    logRoute('outbound_humanization', {
+      outboundType: messageType,
+      action: extractWhatsAppCanonicalReply(canonicalPayload as Json)?.action ?? 'unknown',
+      accepted: rendered.shouldSend,
+      reason: rendered.shouldSend ? 'accepted' : 'semantic_or_provider_rejection',
+    })
 
     if (rendered.aiResult) {
       await recordAiResult('reply_humanization', rendered.aiResult)
@@ -3710,6 +3816,13 @@ export async function resolveCustomerStatus(
     for (let index = 0; index < agent.aiResults.length; index += 1) {
       await recordAiResult(agent.aiResultTasks[index], agent.aiResults[index])
     }
+    logRoute('order_lookup_disposition', {
+      route: orderLookupPlan.tool,
+      planSource: orderLookupPlan.source,
+      outcome: disposition.kind,
+      reason: disposition.reason,
+      writerAttempts: agent.aiResults.length,
+    })
     if (disposition.kind === 'suppress') {
       return withAiDiagnostics(await ignoreInbound(inbound.id, {
         stage: 'order_status', reason: disposition.reason,
@@ -3727,6 +3840,11 @@ export async function resolveCustomerStatus(
       }),
       aiToolCalls: agent.toolCalls as unknown as Json,
       aiToolResults: agent.toolResults as unknown as Json,
+      automationTrace: {
+        route: 'store_one_order_lookup', lookupTool: orderLookupPlan.tool,
+        planSource: orderLookupPlan.source, semanticValidation: 'accepted',
+        writerAttempts: agent.aiResults.length,
+      },
     } satisfies ConversationMetadataRecord
     const metadata = appendAiSessionMessage(mergeMetadata(baseMetadata, {
       reason: disposition.reason,
@@ -3817,6 +3935,13 @@ export async function resolveCustomerStatus(
       explicitRating: explicitPostSaleRating,
     })
     : null
+  if (channel.store_id === 1 && pendingPostSaleContext) {
+    logRoute('post_sale_disposition', {
+      postSaleStage: pendingPostSaleContext.stage ?? null,
+      disposition: postSaleTurnDisposition,
+      forcedAction: storeOnePostSaleAction?.name ?? null,
+    })
+  }
   if (storeOnePostSaleAction && pendingPostSaleContext?.postSalesId) {
     const isRatingRequest = storeOnePostSaleAction.name === 'request_post_sale_rating'
     const rating = isRatingRequest ? null : storeOnePostSaleAction.rating
@@ -3828,6 +3953,7 @@ export async function resolveCustomerStatus(
     })
     await recordAiResult('tool_agent_reply', reply)
     if (!reply.success) {
+      logRoute('post_sale_action_suppressed', { reason: 'ai_generation_failed', action: storeOnePostSaleAction.name })
       return withAiDiagnostics(await ignoreInbound(inbound.id, {
         stage: 'post_sale_reply_validation', reason: 'ai_generation_failed',
         route: 'post_sale_context', intent: 'post_sale_positive', action: 'suppress_reply',
@@ -3839,6 +3965,7 @@ export async function resolveCustomerStatus(
       rating,
     })
     if (!validation.valid) {
+      logRoute('post_sale_action_suppressed', { reason: validation.reason, action: storeOnePostSaleAction.name })
       return withAiDiagnostics(await ignoreInbound(inbound.id, {
         stage: 'post_sale_reply_validation',
         reason: validation.reason,
@@ -3876,8 +4003,19 @@ export async function resolveCustomerStatus(
         rating,
       },
     })
+    logRoute('post_sale_action_accepted', {
+      postSaleStage: pendingPostSaleContext.stage ?? null,
+      action: storeOnePostSaleAction.name,
+    })
     const response = await createOutbound(
-      channel, inbound.id, normalizedPhone, replyText, outboundType, payload, inbound.id
+      channel, inbound.id, normalizedPhone, replyText, outboundType, {
+        ...payload,
+        automationTrace: {
+          route: 'store_one_post_sale_action', postSaleStage: pendingPostSaleContext.stage ?? null,
+          forcedAction: storeOnePostSaleAction.name, replyWriter: 'specialized_writer',
+          semanticValidation: 'accepted',
+        },
+      }, inbound.id
     )
     if (response.shouldReply) {
       await setCurrentConversationState(
@@ -4376,6 +4514,12 @@ export async function resolveCustomerStatus(
 
   if (postSaleContext && !(channel.store_id === 1 && postSaleTurnDisposition === 'route_other_topic')) {
     if (postSaleRatingOutcome?.rating && postSaleContext.postSalesId) {
+      if (channel.store_id === 1) {
+        logRoute('post_sale_legacy_entry', { route: 'legacy_explicit', postSaleStage: postSaleContext.stage ?? null })
+        return sendStoreOneRatingConfirmation({
+          context: postSaleContext, rating: postSaleRatingOutcome.rating, source: 'legacy_explicit',
+        })
+      }
       await consumeForceAiOverrideIfNeeded()
       await concludePostSaleFromWhatsApp({
         tenantId: channel.tenant_id,
@@ -4424,9 +4568,21 @@ export async function resolveCustomerStatus(
       await recordAiResult('post_sale_rating_resolution', ratingResolution)
 
       if (ratingResolution.success) {
+        logRoute('post_sale_legacy_resolution', {
+          postSaleStage: postSaleContext.stage ?? null,
+          resolvedAction: ratingResolution.data.action,
+        })
         await consumeForceAiOverrideIfNeeded()
 
         if (ratingResolution.data.action === 'record_rating') {
+          if (channel.store_id === 1) {
+            return sendStoreOneRatingConfirmation({
+              context: postSaleContext,
+              rating: ratingResolution.data.rating,
+              source: 'legacy_ai_resolution',
+              suggestedReply: ratingResolution.data.reply_text,
+            })
+          }
           await concludePostSaleFromWhatsApp({
             tenantId: channel.tenant_id,
             storeId: channel.store_id,
@@ -4462,6 +4618,30 @@ export async function resolveCustomerStatus(
                 outboundType: 'post_sale_rating_received',
               }),
             }), 'assistant', sentText))
+          }))
+        }
+
+        if (ratingResolution.data.action === 'defer'
+          || (channel.store_id === 1 && postSaleContext.stage === 'awaiting_rating'
+            && ratingResolution.data.action === 'ask_rating')) {
+          logRoute('post_sale_rating_preserved', {
+            postSaleStage: postSaleContext.stage ?? null,
+            resolvedAction: ratingResolution.data.action,
+            reason: ratingResolution.data.action === 'defer' ? 'unrelated_or_social_turn' : 'rating_already_requested',
+          })
+          await setCurrentConversationState('ai_session', AI_SESSION_MS, mergeMetadata(baseMetadata, {
+            reason: ratingResolution.data.action === 'defer'
+              ? 'post_sale_rating_waiting_after_other_topic' : 'post_sale_rating_not_repeated',
+            postSaleContext: postSaleContext as unknown as Json,
+            ...buildDecisionMetadata({
+              intent: 'post_sale_positive', confidence: null,
+              action: 'suppress_reply', outboundType: null,
+            }),
+          }))
+          return withAiDiagnostics(await ignoreInbound(inbound.id, {
+            stage: 'post_sale_rating', reason: ratingResolution.data.action === 'defer'
+              ? 'unrelated_or_social_turn' : 'rating_already_requested',
+            route: 'legacy_ai_resolution', intent: 'post_sale_positive', action: 'suppress_reply',
           }))
         }
 

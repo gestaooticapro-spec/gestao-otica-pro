@@ -268,7 +268,7 @@ export function extractPostSaleRating(message: string | null | undefined) {
 
   // 1) Prioriza "nota N" explícita em qualquer ponto da mensagem.
   //    Ex.: "nota 5", "dei nota 4 pra voces", "nota:3".
-  const explicit = normalized.match(/\bnota\s*:?\s*([1-5])\b/)
+  const explicit = normalized.match(/\bnota\s*:?\s*(?:(?:e|foi|seria|fica)\s+)?([1-5])\b/)
   if (explicit) {
     const rating = Number(explicit[1])
     if (rating >= 1 && rating <= 5) return rating

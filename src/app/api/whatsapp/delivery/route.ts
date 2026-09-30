@@ -43,6 +43,12 @@ export async function POST(request: Request) {
     if (existing.status === 'sent' && parsed.data.status === 'failed') {
       return NextResponse.json({ success: true, ignored: 'sent_already_recorded' })
     }
+    if (parsed.data.status === 'sending' && existing.status !== 'pending') {
+      console.info('[whatsapp_delivery]', JSON.stringify({
+        outboundMessageId: existing.id, stage: 'claim', outcome: 'already_claimed', currentStatus: existing.status,
+      }))
+      return NextResponse.json({ success: true, claimed: false, currentStatus: existing.status })
+    }
 
     const existingPayload =
       existing?.payload && typeof existing.payload === 'object' && !Array.isArray(existing.payload)
@@ -66,7 +72,7 @@ export async function POST(request: Request) {
     }
 
     const sentAt = parsed.data.status === 'sent' ? new Date().toISOString() : null
-    const { error } = await (supabase.from('whatsapp_outbound_messages') as any)
+    const updateQuery = (supabase.from('whatsapp_outbound_messages') as any)
       .update({
         status: parsed.data.status,
         ...(parsed.data.providerMessageId ? { provider_message_id: parsed.data.providerMessageId } : {}),
@@ -75,10 +81,21 @@ export async function POST(request: Request) {
         ...(sentAt ? { sent_at: sentAt } : {}),
       })
       .eq('id', parsed.data.outboundMessageId)
-      .neq('status', 'sent')
+    const { data: updated, error } = await (parsed.data.status === 'sending'
+      ? updateQuery.eq('status', 'pending')
+      : updateQuery.neq('status', 'sent'))
+      .select('id')
+      .maybeSingle()
 
     if (error) throw error
-    if (sentAt) {
+    const applied = Boolean(updated)
+    console.info('[whatsapp_delivery]', JSON.stringify({
+      outboundMessageId: existing.id, stage: parsed.data.status,
+      outcome: parsed.data.status === 'sending'
+        ? applied ? 'claimed' : 'already_claimed'
+        : applied ? 'applied' : 'ignored',
+    }))
+    if (sentAt && applied) {
       await captureWhatsAppShadowOutbound({
         channel: {
           id: existing.channel_id,
@@ -94,7 +111,7 @@ export async function POST(request: Request) {
         sentAt,
       })
     }
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, applied, ...(parsed.data.status === 'sending' ? { claimed: applied } : {}) })
   } catch (error) {
     console.error('[WhatsApp] Failed to update delivery:', error)
     return NextResponse.json({ error: 'Internal error' }, { status: 500 })

@@ -65,6 +65,24 @@ test('falha da IA nao envia o texto canonico como contingencia', () => {
   assert.equal(result.payload.humanization.success, false)
 })
 
+test('Loja 1 rejeita humanizacao generica que omite confirmacao da nota', () => {
+  const canonical = buildWhatsAppCanonicalPayload({
+    intent: 'post_sale_positive', action: 'post_sale_rating_received_by_ai',
+    outboundType: 'post_sale_rating_received',
+    canonicalReply: 'Obrigado! Sua nota 5 foi registrada.',
+    facts: { rating: 5 },
+  })
+  const outcome = { success: true as const, provider: 'openai', model: 'test-model', attempts: 1,
+    replyText: 'Oi! Posso te ajudar com isso.' }
+  const rejected = applyWhatsAppHumanizationOutcome(canonical, outcome, { enforcePostSaleSemantics: true })
+  assert.equal(rejected.shouldSend, false)
+  assert.equal(rejected.payload.humanization.success, false)
+  const accepted = applyWhatsAppHumanizationOutcome(canonical, {
+    ...outcome, replyText: 'Obrigado pelo retorno! Sua nota 5 foi registrada.',
+  }, { enforcePostSaleSemantics: true })
+  assert.equal(accepted.shouldSend, true)
+})
+
 test('aceita humanizacao natural que preserva a etapa pronta para retirada', () => {
   const canonical = buildWhatsAppCanonicalPayload({
     intent: 'order_status',

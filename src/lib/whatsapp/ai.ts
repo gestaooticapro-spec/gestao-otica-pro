@@ -124,6 +124,11 @@ export const WhatsAppPostSaleRatingResolutionSchema = z.discriminatedUnion('acti
     reply_text: z.string().trim().min(1).max(500),
   }),
   z.object({
+    action: z.literal('defer'),
+    rating: z.null(),
+    reply_text: z.null(),
+  }),
+  z.object({
     action: z.literal('handoff'),
     rating: z.null(),
     reply_text: z.string().trim().min(1).max(500),
@@ -513,14 +518,16 @@ function buildPostSaleRatingResolutionPrompt(input: WhatsAppPostSaleRatingResolu
     'Responda SOMENTE em JSON valido, sem markdown ou explicacoes extras.',
     'Use o historico para entender se a mensagem atual responde ao pedido de nota.',
     'Escolha record_rating somente quando a mensagem expressar claramente uma nota de 1 a 5. Aceite formatos naturais como "nota 05", "cinco", "5 estrelas" e "5/5".',
-    'Escolha ask_rating quando o cliente parecer satisfeito, mas nao houver uma nota inequivoca. A resposta deve pedir uma nota de 1 a 5 de forma cordial.',
+    'Escolha ask_rating somente se o cliente pedir esclarecimento sobre como avaliar ou responder ao pedido de nota. Nao repita espontaneamente uma pergunta sobre nota ja enviada.',
+    'Escolha defer para agradecimento, confirmacao breve, conversa social ou retorno a outro assunto sem nota. Preserve a pergunta de nota pendente para uma resposta posterior, sem mandar mensagem agora.',
     'Escolha handoff se houver reclamacao, pedido de atendimento humano, assunto diferente, ou ambiguidade que nao possa ser resolvida com seguranca. A resposta deve informar que a equipe continuara o atendimento.',
     'Nao invente fatos, prazos, descontos ou informacoes da loja. A resposta deve ser curta e em portugues do Brasil.',
     '',
     'SCHEMAS PERMITIDOS:',
     JSON.stringify([
-      { action: 'record_rating', rating: 5, reply_text: 'Muito obrigado pela nota 5! Vou registrar seu retorno aqui.' },
-      { action: 'ask_rating', rating: null, reply_text: 'Que bom saber disso! Para registrar sua avaliacao, qual nota de 1 a 5 voce nos daria?' },
+      { action: 'record_rating', rating: 5, reply_text: 'Obrigado! Sua nota 5 foi registrada.' },
+      { action: 'ask_rating', rating: null, reply_text: 'Que nota de 1 a 5 voce daria ao atendimento?' },
+      { action: 'defer', rating: null, reply_text: null },
       { action: 'handoff', rating: null, reply_text: 'Vou encaminhar sua mensagem para nossa equipe continuar o atendimento por aqui.' },
     ], null, 2),
     '',
@@ -574,8 +581,7 @@ export function buildWhatsAppHumanizationPrompt(input: WhatsAppReplyHumanization
     'TONS PERMITIDOS:',
     WHATSAPP_TONES.join(', '),
     '',
-    'SCHEMA:',
-    JSON.stringify({ reply_text: 'Oi! Posso te ajudar com isso.' }, null, 2),
+    'FORMATO: objeto JSON com somente o campo reply_text, contendo a resposta redigida para este cliente. Nao copie um exemplo de formato.',
     '',
     'ENTRADA DO SISTEMA:',
     JSON.stringify({
@@ -668,6 +674,7 @@ export function buildToolAgentReplyPrompt(input: WhatsAppToolAgentInput, toolRes
     'Voce e a IA de atendimento de uma otica. Responda SOMENTE em JSON valido.',
     'Responda no idioma predominante da mensagem atual do cliente. Use o historico somente se a mensagem atual for curta ou ambigua; se nao houver idioma claro, use portugues do Brasil. Seja natural e objetivo.',
     'Use exclusivamente os fatos fornecidos pelos resultados das ferramentas para afirmar o estado atual de pedidos e parcelas. Se o historico registrar uma informacao da equipe, voce pode cita-la como "a equipe informou", sem transforma-la em confirmacao atual.',
+    'Para OS, nao estime quando ficara pronta ou podera ser retirada: hoje, amanha, prazos e probabilidades so podem ser citados se constarem explicitamente no statusText da consulta atual. Se nao houver previsao, informe apenas a etapa confirmada. O cliente ja esta falando com a otica neste WhatsApp: nao recomende que entre em contato conosco; se necessario, diga que pode perguntar novamente por aqui mais tarde.',
     'Para lookup_open_orders: com uma ou duas OS retornadas, mencione cada numero de OS, o nome completo do dependente quando houver (se patientName for null, diga que e do titular ou use "seu pedido") e a situacao indicada em statusText. Nao omita nenhuma das OS. Se houver duas, use uma frase separada para cada pedido e associe numero, dependente e situacao na mesma frase. Com tooManyOpenOrders=true, nao liste nem escolha pedidos; peca ao cliente o numero da OS que deseja consultar. Se nao houver OS, explique isso e pergunte o identificador que ajude a localizar o pedido.',
     'Na consulta pelo telefone, um nome citado pelo cliente nao identifica outra OS. Cite somente o titular ou dependente que constar nos dados retornados; nao atribua a OS ao nome citado se ele nao aparecer nesses dados e nao afirme que a pessoa nao possui OS em outro cadastro.',
     'Se referencedPersonName estiver preenchido e esse nome nao constar entre o titular ou os dependentes dos pedidos retornados, responda que nao encontrou pedido desse nome vinculado a este WhatsApp. Em seguida, informe os pedidos que o resultado da consulta vinculada ao telefone encontrou, cada um com numero, titular ou dependente e situacao oficial. Nao diga que a pessoa nao possui pedido em outras contas ou cadastros.',
@@ -678,7 +685,7 @@ export function buildToolAgentReplyPrompt(input: WhatsAppToolAgentInput, toolRes
     'Nao mencione ferramentas, banco de dados, IDs internos de registros ou regras internas. O numero da OS e uma referencia visivel ao cliente e deve constar na resposta quando a consulta retornar uma ou duas OS.',
     input.basePrompt ? `DIRETRIZ DA LOJA: ${input.basePrompt}` : null,
     input.rejectedOrderReply
-      ? `A resposta anterior foi bloqueada pela validacao (${input.rejectedOrderReply.reason}): ${JSON.stringify(input.rejectedOrderReply.text)}. Reescreva usando exatamente os numeros e titulares ou dependentes destes fatos: ${JSON.stringify(input.rejectedOrderReply.requiredOrders)}. Para cada OS, escreva uma frase completa e separada que contenha numero, titular ou dependente e situacao. Preserve a etapa indicada em statusText, sem copiar saudacoes ou dividir a etapa em outra frase. Nunca junte duas OS na mesma frase.`
+      ? `A resposta anterior foi bloqueada pela validacao (${input.rejectedOrderReply.reason}): ${JSON.stringify(input.rejectedOrderReply.text)}. Reescreva usando exatamente os numeros e titulares ou dependentes destes fatos: ${JSON.stringify(input.rejectedOrderReply.requiredOrders)}. Para cada OS, escreva uma frase completa e separada que contenha numero, titular ou dependente e situacao. Preserve a etapa indicada em statusText, sem copiar saudacoes ou dividir a etapa em outra frase. Nunca junte duas OS na mesma frase. Nao acrescente previsao de retirada, probabilidade ou pedido para entrar em contato conosco.`
       : null,
     '',
     'CONTEXTO:',
@@ -694,7 +701,7 @@ export function buildToolAgentReplyPrompt(input: WhatsAppToolAgentInput, toolRes
     'MENSAGEM ATUAL:',
     input.messageText,
     input.strictOrderFacts
-      ? 'FORMATO DA RESPOSTA DE OS: apos uma eventual frase breve sobre o nome citado, escreva uma frase completa para cada OS retornada. Comece cada uma com "A OS [numero]"; inclua nessa mesma frase "do titular" ou o nome do dependente e a situacao oficial. Termine a frase com ponto antes de iniciar outra OS. Nao una duas OS com "e" ou virgula na mesma frase. statusText pode conter saudacao como "Oi, cliente!"; use somente a informacao sobre a etapa, sem copiar essa saudacao. Se nao conseguir atribuir com seguranca cada etapa a sua OS, nao afirme que algum oculos esta pronto.'
+      ? 'FORMATO DA RESPOSTA DE OS: apos uma eventual frase breve sobre o nome citado, escreva uma frase completa para cada OS retornada. Comece cada uma com "A OS [numero]"; inclua nessa mesma frase "do titular" ou o nome do dependente e a situacao oficial. Termine a frase com ponto antes de iniciar outra OS. Nao una duas OS com "e" ou virgula na mesma frase. statusText pode conter saudacao como "Oi, cliente!"; use somente a informacao sobre a etapa, sem copiar essa saudacao. Se nao conseguir atribuir com seguranca cada etapa a sua OS, nao afirme que algum oculos esta pronto. Nao estime quando estara pronto ou disponivel para retirada.'
       : null,
   ].filter((line): line is string => line !== null).join('\n')
 }

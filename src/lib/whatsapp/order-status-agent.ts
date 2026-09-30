@@ -119,7 +119,7 @@ function negatesOrderStage(normalizedText: string) {
 
 export type OrderAgentReplyValidation =
   | { valid: true }
-  | { valid: false; reason: 'no_order_facts' | 'too_many_orders' | 'missing_order' | 'mixed_orders' | 'missing_patient' | 'missing_status' }
+  | { valid: false; reason: 'no_order_facts' | 'too_many_orders' | 'missing_order' | 'mixed_orders' | 'missing_patient' | 'missing_status' | 'unsupported_time_or_contact' }
 
 export function validateOrderAgentReply(
   replyText: string,
@@ -129,7 +129,17 @@ export function validateOrderAgentReply(
   if (orders.length === 0) return { valid: false, reason: 'no_order_facts' }
   if (orders.length > 2) return { valid: false, reason: 'too_many_orders' }
 
+  const normalizedReply = normalizeOrderReplyText(replyText)
+  const refersCustomerBackToStore = /\b(?:entre|entrar|fale|ligue)\s+(?:em\s+contato\s+)?(?:conosco|com\s+(?:a\s+)?(?:loja|otica|equipe))\b/u.test(normalizedReply)
   const sentences = replyText.split(/[\n.!?;]+/u).map(normalizeOrderReplyText).filter(Boolean)
+  const timingPattern = /\b(?:hoje|amanha|prazo|previsao|provavel\w*|possivel\w*|estimad\w*|\d+\s*(?:dias?|semanas?|horas?))\b/gu
+  if (refersCustomerBackToStore || sentences.some((sentence) => {
+    const timingClaims = sentence.match(timingPattern) || []
+    if (timingClaims.length === 0) return false
+    const order = orders.find((candidate) => containsOrderReplyPhrase(sentence, candidate.orderNumber))
+    return !order || timingClaims.some((claim) => !containsOrderReplyPhrase(order.statusText, claim))
+  })) return { valid: false, reason: 'unsupported_time_or_contact' }
+
   const mentionedOrders = new Set<string>()
 
   // Uma segunda frase sem OS nao pode acrescentar um status contraditorio.

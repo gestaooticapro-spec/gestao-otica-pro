@@ -163,7 +163,7 @@ export async function runStoreOneOrderStatusTurn(input: {
     lookup,
     replyText: agent.success ? agent.replyText : null,
   })
-  const correctableReasons = new Set(['missing_order', 'mixed_orders', 'missing_patient', 'missing_status'])
+  const correctableReasons = new Set(['missing_order', 'mixed_orders', 'missing_patient', 'missing_status', 'unsupported_time_or_contact'])
   if (agent.success && agent.replyText && disposition.kind === 'suppress'
     && correctableReasons.has(disposition.reason)) {
     const orders = Array.isArray(lookup?.data.orders) ? lookup.data.orders as OpenOrderAgentFact[] : []

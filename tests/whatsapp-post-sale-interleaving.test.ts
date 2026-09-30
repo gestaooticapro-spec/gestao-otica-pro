@@ -11,6 +11,7 @@ import {
   validatePostSaleActionReply,
   type PostSaleContext,
 } from '../src/lib/whatsapp/post-sale-followup'
+import { WhatsAppPostSaleRatingResolutionSchema } from '../src/lib/whatsapp/ai'
 
 const MIN_CONFIDENCE = 0.72
 
@@ -144,4 +145,12 @@ test('aceita redacoes naturais que cumprem a acao e rejeita resposta generica ou
   assert.deepEqual(validatePostSaleActionReply({
     action: 'request_rating', text: 'Que bom! A OS 1041 está pronta. Pode dar uma nota de 1 a 5?',
   }), { valid: false, reason: 'unrelated_customer_facts' })
+})
+
+test('agradecimento entre assuntos pode preservar a nota pendente sem responder de novo', () => {
+  assert.deepEqual(WhatsAppPostSaleRatingResolutionSchema.parse({
+    action: 'defer', rating: null, reply_text: null,
+  }), { action: 'defer', rating: null, reply_text: null })
+  assert.equal(extractPostSaleRatingForStage('Certo, obrigado!', 'awaiting_rating'), null)
+  assert.equal(extractPostSaleRatingForStage('Voltando a adaptacao, minha nota e 5', 'awaiting_rating'), 5)
 })

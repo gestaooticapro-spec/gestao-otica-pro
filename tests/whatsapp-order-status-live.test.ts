@@ -264,6 +264,28 @@ test('revisao ainda incompleta continua bloqueada', async () => {
   assert.equal(result.disposition.kind === 'suppress' && result.disposition.reason, 'missing_order')
 })
 
+test('previsao inventada recebe uma revisao baseada apenas no status consultado', async () => {
+  const lookupPlan = plan('Posso buscar a OS 1041 hoje?')
+  assert.ok(lookupPlan)
+  let writes = 0
+  const result = await runStoreOneOrderStatusTurn({
+    plan: lookupPlan, assistant: { messageText: 'Posso buscar a OS 1041 hoje?' },
+    executeLookup: async (call) => ({ tool: call.name, ok: true,
+      data: { orders: [{ orderNumber: '1041', patientName: null,
+        status: 'lens_in_production', statusText: 'Em producao no laboratorio.' }] } }),
+    writeReply: async (input) => {
+      writes += 1
+      if (writes === 1) return fakeWriter(
+        'A OS 1041 do titular esta em producao no laboratorio. Provavelmente nao estara pronta hoje; entre em contato conosco.'
+      )()
+      assert.equal(input.rejectedOrderReply?.reason, 'unsupported_time_or_contact')
+      return fakeWriter('A OS 1041 do titular esta em producao no laboratorio no momento.')()
+    },
+  })
+  assert.equal(writes, 2)
+  assert.equal(result.disposition.kind, 'send')
+})
+
 test('OS inexistente aceita apenas encaminhamento sem status inventado nem repeticao do identificador', async () => {
   const lookupPlan = plan('Consegue verificar a OS 9999999999?')
   assert.equal(lookupPlan?.tool, 'lookup_open_orders_by_identifier')

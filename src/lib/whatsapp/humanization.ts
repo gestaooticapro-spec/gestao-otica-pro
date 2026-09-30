@@ -1,6 +1,7 @@
 import type { Json } from '@/lib/database.types'
 import type { WhatsAppCanonicalReply } from './canonical'
 import { extractWhatsAppCanonicalReply, getWhatsAppCanonicalHumanizableIntent } from './canonical'
+import { validatePostSaleActionReply } from './post-sale-followup'
 
 export type WhatsAppHumanizationDecision =
   | 'skip_disabled'
@@ -96,7 +97,8 @@ export function decideWhatsAppHumanization(
 
 export function applyWhatsAppHumanizationOutcome(
   payload: PayloadRecord,
-  outcome: WhatsAppHumanizationOutcome
+  outcome: WhatsAppHumanizationOutcome,
+  options: { enforcePostSaleSemantics?: boolean } = {}
 ) {
   if (!outcome.success) {
     return {
@@ -129,6 +131,38 @@ export function applyWhatsAppHumanizationOutcome(
           rejectionReason: 'order_status_not_preserved',
         },
       } satisfies PayloadRecord,
+    }
+  }
+
+  const canonical = extractWhatsAppCanonicalReply(payload as Json)
+  if (options.enforcePostSaleSemantics && canonical?.intent === 'post_sale_positive') {
+    const rating = Number(canonical.facts.rating)
+    const action = canonical.outboundType === 'post_sale_rating_received'
+      ? 'confirm_rating' : canonical.outboundType === 'post_sale_rating_prompt'
+        ? 'request_rating' : null
+    if (action) {
+      const validation = validatePostSaleActionReply({
+        text: outcome.replyText,
+        action,
+        rating: action === 'confirm_rating' ? rating : null,
+      })
+      if (!validation.valid) {
+        return {
+          shouldSend: false as const,
+          text: null,
+          payload: {
+            ...payload,
+            humanization: {
+              enabled: true,
+              success: false,
+              provider: outcome.provider,
+              model: outcome.model,
+              attempts: outcome.attempts,
+              rejectionReason: validation.reason,
+            },
+          } satisfies PayloadRecord,
+        }
+      }
     }
   }
 

@@ -953,9 +953,21 @@ async function updateDelivery(outboundMessageId, status, details = {}) {
   }
 }
 
+async function claimPendingReply(outboundMessageId) {
+  const result = await appRequest('/api/whatsapp/delivery', {
+    outboundMessageId,
+    status: 'sending',
+  })
+  const claimed = result.claimed === true
+  console.info('[delivery_trace]', JSON.stringify({
+    outboundMessageId, stage: 'claim', outcome: claimed ? 'claimed' : 'already_claimed',
+  }))
+  return claimed
+}
+
 async function deliverPendingReply(instanceKey, status) {
-  const attemptSynced = await updateDelivery(status.outboundMessageId, 'sending')
-  if (!attemptSynced) throw new Error(`Could not mark outbound ${status.outboundMessageId} as sending`)
+  const claimed = await claimPendingReply(status.outboundMessageId)
+  if (!claimed) return { skipped: true, providerMessageId: null, deliverySynced: false }
 
   let result
   try {
@@ -976,6 +988,10 @@ async function deliverPendingReply(instanceKey, status) {
     providerMessageId,
     payload: result,
   })
+  console.info('[delivery_trace]', JSON.stringify({
+    outboundMessageId: status.outboundMessageId, stage: 'provider_send',
+    outcome: deliverySynced ? 'sent_and_synced' : 'sent_sync_failed',
+  }))
   if (!deliverySynced) console.error('[whatsapp-automation] Reply sent, but delivery sync failed.')
   return { providerMessageId, deliverySynced }
 }
@@ -1011,7 +1027,8 @@ async function processInbound(instanceKey, inbound, payload) {
     return { ignored: true, duplicate: Boolean(status.duplicate) }
   }
 
-  const { providerMessageId, deliverySynced } = await deliverPendingReply(instanceKey, status)
+  const { providerMessageId, deliverySynced, skipped } = await deliverPendingReply(instanceKey, status)
+  if (skipped) return { ignored: true, duplicate: true, reason: 'outbound_already_claimed' }
 
   console.log(`[webhook] sent instance=${instanceKey} phone=${status.phone} outbound=${status.outboundMessageId} text="${previewText(status.replyText)}" deliverySynced=${deliverySynced}`)
   return { sent: true, providerMessageId, deliverySynced }
@@ -1275,6 +1292,7 @@ async function reconcileChannel(channel) {
 
   for (const pending of pendingReplies) {
     const delivered = await deliverPendingReply(instanceKey, pending)
+    if (delivered.skipped) continue
     await auditWebhookEvent(instanceKey, {
       providerMessageId: pending.providerMessageId,
       phone: pending.phone,
