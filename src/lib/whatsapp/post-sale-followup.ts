@@ -34,6 +34,23 @@ export type PostSaleContext = {
 
 export type PostSaleTurnDisposition = 'handle_post_sale' | 'route_other_topic' | 'suppress_preserving_context'
 
+export function shouldUseStoreOnePilotDuringPostSale(input: {
+  context: PostSaleContext | null
+  explicitRating: number | null
+  explicitOrderRequest: boolean
+  classificationSucceeded: boolean
+  intent: string | null
+  confidence: number
+  minimumConfidence: number
+}) {
+  if (!input.context?.postSalesId || input.context.stage === 'completed') return true
+  if (input.explicitRating) return false
+  if (input.explicitOrderRequest) return true
+  return input.classificationSucceeded
+    && input.intent === 'order_status'
+    && input.confidence >= input.minimumConfidence
+}
+
 export const STORE_ONE_POST_SALE_TEST_PROTOCOL = '1043'
 export const STORE_ONE_POST_SALE_TEST_MARKER = 'store_1_protocol_1043'
 

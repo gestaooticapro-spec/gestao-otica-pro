@@ -50,6 +50,7 @@ import {
   extractPostSaleRatingForStage,
   getPostSaleForcedToolCall,
   readPostSaleContext,
+  shouldUseStoreOnePilotDuringPostSale,
   transitionPostSaleContextAfterTurn,
   type PostSaleContext,
   type PostSaleTurnDisposition,
@@ -2882,12 +2883,60 @@ export async function resolveCustomerStatus(
     state = null
   }
 
+  const storeOnePilotEnabled = isStoreOneSafeRepliesPilotEnabled(channel.store_id, automationSettings)
+  const livePostSaleContext = readPostSaleContext(state?.metadata)
+  const prePilotPersistentPostSaleMemory = storeOnePilotEnabled && !livePostSaleContext
+    ? await loadPersistentPostSaleMemory(channel, normalizedPhone)
+    : null
+  const prePilotPostSaleContext = livePostSaleContext
+    ?? (prePilotPersistentPostSaleMemory?.isRecoverableAutomationContext
+      ? prePilotPersistentPostSaleMemory.context : null)
+  const pendingPrePilotPostSaleContext = prePilotPostSaleContext?.stage === 'completed'
+    ? null : prePilotPostSaleContext
+  const explicitPostSaleRating = extractPostSaleRatingForStage(
+    effectiveMessageText, pendingPrePilotPostSaleContext?.stage
+  )
+  const explicitOrderRequest = isExplicitOrderStatusOrReadinessQuestion(effectiveMessageText)
+    || Boolean(extractExplicitOrderNumber(effectiveMessageText))
+  let postSaleTurnClassification: WhatsAppAiResult<WhatsAppIntentClassification> | null = null
+  let prePilotPostSaleDiagnostic: WhatsAppAiDiagnostic | null = null
+  if (storeOnePilotEnabled && pendingPrePilotPostSaleContext?.postSalesId
+    && !explicitPostSaleRating && !explicitOrderRequest
+    && controlMode !== 'force_human' && controlMode !== 'force_ai'
+    && !['human_pause', 'waiting_human_after_attachment'].includes(state?.state ?? '')) {
+    postSaleTurnClassification = await classifyWhatsAppIntent({
+      messageText: effectiveMessageText || '',
+      channelLabel: channel.instance_key,
+      storeName: storeProfile.name,
+      conversationState: state?.state ?? null,
+      recentContext: [
+        ...(statusContextLine ? [statusContextLine] : []),
+        ...buildRecentContextFromMetadata(state?.metadata, effectiveMessageText),
+        ...(prePilotPersistentPostSaleMemory?.recentContextLines || []),
+      ].slice(0, 8),
+      conversationHistory: buildAiConversationHistoryFromMetadata(state?.metadata),
+      hasRecentAttachment: hasRecentAttachmentContext(state),
+      hasOpenOrder: hasKnownOpenOrderContext(state),
+      handoffActive: false,
+    })
+    prePilotPostSaleDiagnostic = await logAiResult(channel, inbound.id, 'intent_classification', postSaleTurnClassification)
+  }
+  const useStoreOnePilot = shouldUseStoreOnePilotDuringPostSale({
+    context: pendingPrePilotPostSaleContext,
+    explicitRating: explicitPostSaleRating,
+    explicitOrderRequest,
+    classificationSucceeded: postSaleTurnClassification?.success ?? false,
+    intent: postSaleTurnClassification?.success ? postSaleTurnClassification.data.intent : null,
+    confidence: postSaleTurnClassification?.success ? postSaleTurnClassification.data.confidence : 0,
+    minimumConfidence: AI_AUTOMATION_MIN_CONFIDENCE,
+  })
+
   let orderLookupPlan: StoreOneOrderLookupPlan | null = null
   let referencedOrderPersonName: string | null = null
   let redesignConversationHistory: string[] = []
   const isRepeatedMessageDuringSilentWindow = state?.state === 'silent'
     && isRepeatedSilentInbound(effectiveMessageText, state.metadata)
-  if (isStoreOneSafeRepliesPilotEnabled(channel.store_id, automationSettings)
+  if (storeOnePilotEnabled && useStoreOnePilot
     && shadowCapture.captured && 'turnId' in shadowCapture
     && typeof shadowCapture.turnId === 'string'
     && controlMode !== 'force_human'
@@ -3037,10 +3086,10 @@ export async function resolveCustomerStatus(
     'customer',
     effectiveMessageText
   )
-  const livePostSaleContext = readPostSaleContext(state?.metadata)
   const persistentPostSaleMemory = livePostSaleContext
     ? null
-    : await loadPersistentPostSaleMemory(channel, normalizedPhone)
+    : storeOnePilotEnabled ? prePilotPersistentPostSaleMemory
+      : await loadPersistentPostSaleMemory(channel, normalizedPhone)
   let recoveredPostSaleContext = persistentPostSaleMemory?.isRecoverableAutomationContext
     ? persistentPostSaleMemory.context
     : null
@@ -3055,7 +3104,6 @@ export async function resolveCustomerStatus(
     })
   }
   let recoveredPostSaleClassification: WhatsAppAiResult<WhatsAppIntentClassification> | null = null
-  let postSaleTurnClassification: WhatsAppAiResult<WhatsAppIntentClassification> | null = null
   let postSaleTurnDisposition: PostSaleTurnDisposition | null = null
   const persistedConversationHistory = isWhatsAppToolAgentEnabled(automationSettings)
     ? await loadPersistedConversationHistory(channel, normalizedPhone, inbound.id)
@@ -3075,7 +3123,8 @@ export async function resolveCustomerStatus(
         : buildAiConversationHistoryFromMetadata(baseMetadata)),
     ].slice(-AI_PERSISTED_HISTORY_MAX),
   }
-  const aiDiagnostics: WhatsAppAiDiagnostic[] = []
+  const aiDiagnostics: WhatsAppAiDiagnostic[] = prePilotPostSaleDiagnostic
+    ? [prePilotPostSaleDiagnostic] : []
 
   async function recordAiResult(task: WhatsAppAiDiagnostic['task'], result: WhatsAppAiResult<any>) {
     aiDiagnostics.push(await logAiResult(channel!, inbound.id, task, result))
@@ -3715,15 +3764,11 @@ export async function resolveCustomerStatus(
     })
   }
 
-  const explicitPostSaleRating = extractPostSaleRatingForStage(
-    effectiveMessageText,
-    pendingPostSaleContext?.stage
-  )
   if (channel.store_id === 1 && pendingPostSaleContext) {
     if (explicitPostSaleRating) {
       postSaleTurnDisposition = 'handle_post_sale'
     } else {
-      postSaleTurnClassification = await classifyWhatsAppIntent({
+      postSaleTurnClassification ??= await classifyWhatsAppIntent({
         messageText: effectiveMessageText || '',
         channelLabel: channel.instance_key,
         storeName: storeProfile.name,
@@ -3734,7 +3779,7 @@ export async function resolveCustomerStatus(
         hasOpenOrder: hasKnownOpenOrderContext(state),
         handoffActive: false,
       })
-      await recordAiResult('intent_classification', postSaleTurnClassification)
+      if (!prePilotPostSaleDiagnostic) await recordAiResult('intent_classification', postSaleTurnClassification)
       postSaleTurnDisposition = decidePostSaleTurnDisposition({
         classificationSucceeded: postSaleTurnClassification.success,
         confidence: postSaleTurnClassification.success ? postSaleTurnClassification.data.confidence : 0,

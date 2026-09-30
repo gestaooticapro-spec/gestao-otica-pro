@@ -6,6 +6,7 @@ import {
   extractPostSaleRatingForStage,
   getPostSaleForcedToolCall,
   isStoreOnePostSaleTestProtocol,
+  shouldUseStoreOnePilotDuringPostSale,
   transitionPostSaleContextAfterTurn,
   type PostSaleContext,
 } from '../src/lib/whatsapp/post-sale-followup'
@@ -78,6 +79,37 @@ test('mantem o pos-venda pendente ao intercalar OS e retirada antes da nota', ()
   context = transitionPostSaleContextAfterTurn(context, 'rating_recorded')!
   assert.equal(context.stage, 'completed')
   assert.equal(extractPostSaleRatingForStage('Nota 4', context.stage), null)
+})
+
+test('piloto da Loja 1 deixa o pos-venda tratar adaptacao e nota apos uma consulta de OS', () => {
+  let context: PostSaleContext = { postSalesId: 34, stage: 'awaiting_feedback' }
+  const route = (intent: string | null, overrides: Partial<Parameters<typeof shouldUseStoreOnePilotDuringPostSale>[0]> = {}) =>
+    shouldUseStoreOnePilotDuringPostSale({
+      context,
+      explicitRating: null,
+      explicitOrderRequest: false,
+      classificationSucceeded: true,
+      intent,
+      confidence: 0.95,
+      minimumConfidence: 0.78,
+      ...overrides,
+    })
+
+  assert.equal(route('order_status'), true)
+  assert.equal(route('order_status', { confidence: 0.4 }), false)
+  assert.equal(route(null, { classificationSucceeded: false }), false)
+  assert.equal(route('post_sale_positive'), false)
+  assert.equal(route('complaint_or_adaptation'), false)
+  assert.equal(route('post_sale_positive', { explicitOrderRequest: true }), true)
+  assert.equal(route('order_status', { explicitRating: 5 }), false)
+
+  context = transitionPostSaleContextAfterTurn(context, 'rating_requested')!
+  assert.equal(context.stage, 'awaiting_rating')
+  assert.equal(route('pickup_or_scheduling'), false)
+  assert.equal(route(null, { explicitRating: 5, classificationSucceeded: false }), false)
+  context = transitionPostSaleContextAfterTurn(context, 'rating_recorded')!
+  assert.equal(route('order_status'), true)
+  assert.equal(route('order_status', { context: null }), true)
 })
 
 test('mensagem incerta suprime resposta sem converter o acompanhamento em handoff', () => {
