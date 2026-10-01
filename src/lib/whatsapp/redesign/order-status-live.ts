@@ -164,6 +164,17 @@ export async function runStoreOneOrderStatusTurn(input: {
     lookup,
     replyText: agent.success ? agent.replyText : null,
   })
+  const replyValidationAttempts: Array<{
+    attempt: number
+    replyText: string | null
+    outcome: 'send' | 'suppress'
+    reason: string | null
+  }> = [{
+    attempt: 1,
+    replyText: agent.success ? agent.replyText : null,
+    outcome: disposition.kind,
+    reason: disposition.kind === 'suppress' ? disposition.reason : null,
+  }]
   const correctableReasons = new Set(['missing_order', 'mixed_orders', 'missing_patient',
     'unsupported_patient_reference', 'missing_status', 'unsupported_time_or_contact'])
   if (agent.success && agent.replyText && disposition.kind === 'suppress'
@@ -186,9 +197,16 @@ export async function runStoreOneOrderStatusTurn(input: {
     }, agent.toolResults, { model: 'gpt-4.1-mini' })
     agent.aiResults.push(revision)
     agent.aiResultTasks.push('tool_agent_reply')
-    disposition = revision.success
+    const revisionDisposition: StoreOneOrderDisposition = revision.success
       ? resolveStoreOneOrderDisposition({ plan: input.plan, lookup, replyText: revision.data.reply_text })
       : { kind: 'suppress', reason: 'order_reply_revision_failed' }
+    replyValidationAttempts.push({
+      attempt: 2,
+      replyText: revision.success ? revision.data.reply_text : null,
+      outcome: revisionDisposition.kind,
+      reason: revisionDisposition.kind === 'suppress' ? revisionDisposition.reason : null,
+    })
+    disposition = revisionDisposition
   }
-  return { agent, disposition }
+  return { agent, disposition, replyValidationAttempts }
 }

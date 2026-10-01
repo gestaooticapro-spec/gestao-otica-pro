@@ -3885,7 +3885,7 @@ export async function resolveCustomerStatus(
         route: 'store_one_order_status', intent: 'order_status', action: 'suppress_reply',
       })
     }
-    const { agent, disposition } = await runStoreOneOrderStatusTurn({
+    const { agent, disposition, replyValidationAttempts } = await runStoreOneOrderStatusTurn({
       plan: orderLookupPlan,
       assistant: {
         messageText: effectiveMessageText || '',
@@ -3912,6 +3912,22 @@ export async function resolveCustomerStatus(
       reason: disposition.reason,
       writerAttempts: agent.aiResults.length,
     })
+    if (disposition.kind === 'suppress' || replyValidationAttempts.length > 1) {
+      console.info('[whatsapp_order_status_reply_audit]', JSON.stringify({
+        inboundMessageId: inbound.id,
+        storeId: channel!.store_id,
+        route: orderLookupPlan.tool,
+        finalOutcome: disposition.kind,
+        finalReason: disposition.kind === 'suppress' ? disposition.reason : null,
+        attempts: replyValidationAttempts.map((attempt) => ({
+          ...attempt,
+          // Evita deixar telefone/CPF em logs de função; preserva protocolo e texto para diagnóstico.
+          replyText: attempt.replyText
+            ?.replace(/\+?\d[\d\s().-]{8,}\d/gu, '[identificador_redigido]')
+            .slice(0, 2000) ?? null,
+        })),
+      }))
+    }
     if (disposition.kind === 'suppress') {
       return withAiDiagnostics(await ignoreInbound(inbound.id, {
         stage: 'order_status', reason: disposition.reason,

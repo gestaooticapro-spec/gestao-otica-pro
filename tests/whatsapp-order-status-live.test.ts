@@ -76,6 +76,36 @@ test('revisao de duas OS nao exige copiar saudacao do status e preserva a valida
   assert.equal(result.disposition.kind, 'send')
 })
 
+test('rastreia texto e motivo de cada tentativa quando a resposta continua insegura', async () => {
+  const lookupPlan = plan('Como estao meus pedidos?')
+  assert.ok(lookupPlan)
+  let writes = 0
+  const result = await runStoreOneOrderStatusTurn({
+    plan: lookupPlan,
+    assistant: { messageText: 'Como estao meus pedidos?' },
+    executeLookup: async () => ({ tool: lookupPlan.tool, ok: true, data: {
+      customerName: 'Jaime',
+      orders: [order('6809', 'Raquel', 'lens_in_production'),
+        order('1041', '', 'lens_in_production')],
+    } }),
+    writeReply: async () => {
+      writes += 1
+      return fakeWriter(writes === 1
+        ? 'A OS 6809 da Raquel esta em producao. A OS 1041 esta em producao.'
+        : 'A OS 6809 da Raquel esta em producao. A OS 1041 esta em producao.')()
+    },
+  })
+
+  assert.equal(writes, 2)
+  assert.deepEqual(result.replyValidationAttempts, [
+    { attempt: 1, replyText: 'A OS 6809 da Raquel esta em producao. A OS 1041 esta em producao.',
+      outcome: 'suppress', reason: 'missing_patient' },
+    { attempt: 2, replyText: 'A OS 6809 da Raquel esta em producao. A OS 1041 esta em producao.',
+      outcome: 'suppress', reason: 'missing_patient' },
+  ])
+  assert.equal(result.disposition.kind, 'suppress')
+})
+
 test('Loja 1: pergunta, identificador e consulta usam uma busca por turno e nenhuma segunda IA planejadora', async () => {
   const firstPlan = plan('Qual e o status do meu oculos?')
   assert.equal(firstPlan?.tool, 'lookup_open_orders')
