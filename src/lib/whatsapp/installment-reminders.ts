@@ -13,6 +13,7 @@ const BUSINESS_END_HOUR = 18
 const SCHEDULE_SPACING_MINUTES = 5
 const DEFAULT_DISPATCH_LIMIT = 1
 const PAYMENT_REMINDER_CONTEXT_MS = 48 * 60 * 60 * 1000
+const STORE_ONE_INSTALLMENT_REMINDER_TEST_ID = 2838
 
 const LEGACY_INSTALLMENT_DUE_REMINDER_TEMPLATE = [
   'Olá, {nome}! Passando para lembrar que a parcela {numero_parcela} do {paciente} vence em {data_vencimento}.',
@@ -52,6 +53,7 @@ type InstallmentRow = {
   valor_pago?: number | null
   valor_transferido_entrada?: number | null
   valor_transferido_saida?: number | null
+  valor_renegociado_saida?: number | null
   status: string
   customer_id: number
   store_id: number
@@ -259,6 +261,14 @@ function addDaysToDateString(date: string, days: number) {
   return base.toISOString().slice(0, 10)
 }
 
+export function getInstallmentReminderTargetDates(today: string, daysBeforeDue: number) {
+  return [...new Set(
+    [daysBeforeDue, 1]
+      .filter((days) => Number.isFinite(days) && days > 0)
+      .map((days) => addDaysToDateString(today, days))
+  )]
+}
+
 function isBusinessTime(now: Date) {
   const parts = zonedParts(now)
   const weekend = parts.weekday === 'Sat' || parts.weekday === 'Sun'
@@ -365,6 +375,7 @@ async function loadDueInstallments(storeId: number, targetDate: string) {
       valor_pago,
       valor_transferido_entrada,
       valor_transferido_saida,
+      valor_renegociado_saida,
       status,
       customer_id,
       store_id,
@@ -397,6 +408,7 @@ async function loadInstallmentForDispatch(storeId: number, installmentId: number
       valor_pago,
       valor_transferido_entrada,
       valor_transferido_saida,
+      valor_renegociado_saida,
       status,
       customer_id,
       store_id,
@@ -446,11 +458,10 @@ async function scheduleReminders(now: Date) {
     const forcedHumanPhones = await loadForcedHumanPhones(channel.id)
     const optedOutPhones = await loadInstallmentReminderOptOutPhones(channel.store_id)
 
-    const reminderDays = [...new Set([settings.days_before_due, 1].filter((days) => days > 0))]
+    const reminderTargetDates = getInstallmentReminderTargetDates(today, settings.days_before_due)
     const installmentsWithTargetDate: Array<InstallmentRow & { reminderTargetDate: string }> = []
 
-    for (const daysBeforeDue of reminderDays) {
-      const targetDate = addDaysToDateString(today, daysBeforeDue)
+    for (const targetDate of reminderTargetDates) {
       targetDates.add(targetDate)
 
       const installments = await loadDueInstallments(channel.store_id, targetDate)
@@ -559,14 +570,19 @@ async function automationSendRequest(payload: {
   return result
 }
 
-async function dispatchDueReminders(now: Date, limit = DEFAULT_DISPATCH_LIMIT) {
+async function dispatchDueReminders(
+  now: Date,
+  limit = DEFAULT_DISPATCH_LIMIT,
+  onlyReminderId?: number
+) {
   const supabase = createAdminClient()
-  const { data, error } = await (supabase.from('whatsapp_installment_reminders') as any)
+  let query = (supabase.from('whatsapp_installment_reminders') as any)
     .select('id, tenant_id, store_id, channel_id, installment_id, customer_id, remote_phone, due_date, message_text, status, scheduled_for, outbound_message_id, payload, whatsapp_store_channels(instance_key), stores(settings)')
     .eq('status', 'scheduled')
     .lte('scheduled_for', now.toISOString())
     .order('scheduled_for', { ascending: true })
-    .limit(limit)
+  if (onlyReminderId) query = query.eq('id', onlyReminderId)
+  const { data, error } = await query.limit(limit)
 
   if (error) throw error
 
@@ -757,6 +773,191 @@ async function dispatchDueReminders(now: Date, limit = DEFAULT_DISPATCH_LIMIT) {
   }
 
   return { attempted, sent, failed }
+}
+
+export type InstallmentReminderTestReason =
+  | 'invalid_recipient'
+  | 'channel_unavailable_or_ambiguous'
+  | 'reminder_disabled'
+  | 'outside_business_hours'
+  | 'installment_not_found'
+  | 'installment_not_eligible'
+  | 'recipient_mismatch'
+  | 'recipient_opted_out'
+  | 'human_control_active'
+  | 'reminder_already_exists'
+  | 'failed'
+  | 'cancelled'
+  | 'delivery_pending_review'
+
+export type InstallmentReminderTestResult =
+  | { outcome: 'accepted'; reminderId: number; installmentId: number }
+  | { outcome: 'not_sent'; reason: InstallmentReminderTestReason }
+
+/**
+ * One-off, authenticated test path for Loja 1's reserved installment.
+ * It inserts only this reminder and dispatches only the inserted row, never
+ * running or draining the global reminder queue.
+ */
+export async function triggerStoreOneInstallmentReminderTest(input: {
+  expectedRecipient: string
+}, now = new Date()): Promise<InstallmentReminderTestResult> {
+  const expectedDigits = input.expectedRecipient.replace(/\D/g, '')
+  const expectedPhone = toEvolutionNumber(input.expectedRecipient)
+  if (expectedDigits.length < 10 || !expectedPhone) {
+    return { outcome: 'not_sent', reason: 'invalid_recipient' }
+  }
+
+  if (!isBusinessTime(now)) {
+    return { outcome: 'not_sent', reason: 'outside_business_hours' }
+  }
+
+  const supabase = createAdminClient()
+  const { data: channels, error: channelsError } = await (supabase.from('whatsapp_store_channels') as any)
+    .select('id, tenant_id, store_id, instance_key, phone_number, is_active, connection_status, stores(settings)')
+    .eq('store_id', 1)
+    .eq('provider', 'evolution')
+    .eq('is_active', true)
+    .eq('connection_status', 'connected')
+
+  if (channelsError) throw channelsError
+  if (!Array.isArray(channels) || channels.length !== 1) {
+    return { outcome: 'not_sent', reason: 'channel_unavailable_or_ambiguous' }
+  }
+
+  const channel = channels[0] as ChannelRow
+  const settings = reminderSettingsFromChannel(channel)
+  if (!settings) return { outcome: 'not_sent', reason: 'reminder_disabled' }
+
+  const { data: installment, error: installmentError } = await (supabase.from('financiamento_parcelas') as any)
+    .select(`
+      id,
+      financiamento_id,
+      numero_parcela,
+      data_vencimento,
+      valor_parcela,
+      valor_pago,
+      valor_transferido_entrada,
+      valor_transferido_saida,
+      valor_renegociado_saida,
+      status,
+      customer_id,
+      store_id,
+      customers ( id, full_name, phone, fone_movel ),
+      financiamento_loja ( venda_id, quantidade_parcelas, vendas!financiamento_loja_venda_id_fkey ( status ) )
+    `)
+    .eq('id', STORE_ONE_INSTALLMENT_REMINDER_TEST_ID)
+    .eq('store_id', 1)
+    .in('status', ['Pendente', 'pendente'])
+    .gt('valor_parcela', 0.01)
+    .maybeSingle()
+
+  if (installmentError) throw installmentError
+  if (!installment) return { outcome: 'not_sent', reason: 'installment_not_found' }
+
+  const saleStatus = String(installment.financiamento_loja?.vendas?.status || '').toLowerCase()
+  const currentOutstanding = getInstallmentOutstanding(installment as InstallmentRow)
+  const today = zonedParts(now).date
+  const targetDates = getInstallmentReminderTargetDates(today, settings.days_before_due)
+  const dueDate = String(installment.data_vencimento || '').slice(0, 10)
+  if (saleStatus === 'cancelada'
+    || currentOutstanding <= 0.01
+    || !targetDates.includes(dueDate)) {
+    return { outcome: 'not_sent', reason: 'installment_not_eligible' }
+  }
+
+  const customerPhone = toEvolutionNumber(
+    installment.customers?.fone_movel || installment.customers?.phone
+  )
+  if (!customerPhone) return { outcome: 'not_sent', reason: 'installment_not_eligible' }
+  if (!phonesMatch(expectedPhone, customerPhone)) {
+    return { outcome: 'not_sent', reason: 'recipient_mismatch' }
+  }
+
+  if (await isCustomerForcedToHuman(channel.id, customerPhone)) {
+    return { outcome: 'not_sent', reason: 'human_control_active' }
+  }
+
+  const optedOutPhones = await loadInstallmentReminderOptOutPhones(channel.store_id)
+  if (optedOutPhones.some((phone) => phonesMatch(phone, customerPhone))) {
+    return { outcome: 'not_sent', reason: 'recipient_opted_out' }
+  }
+
+  const { data: existingReminder, error: existingReminderError } = await (supabase.from('whatsapp_installment_reminders') as any)
+    .select('id, status')
+    .eq('channel_id', channel.id)
+    .eq('installment_id', STORE_ONE_INSTALLMENT_REMINDER_TEST_ID)
+    .maybeSingle()
+
+  if (existingReminderError) throw existingReminderError
+  if (existingReminder?.id) {
+    return { outcome: 'not_sent', reason: 'reminder_already_exists' }
+  }
+
+  const currentVendaId = installment.financiamento_loja?.venda_id ?? null
+  const patientNames = currentVendaId
+    ? await loadPatientNames(channel.store_id, [currentVendaId])
+    : new Map<number, string | null>()
+  const messageText = buildMessage(
+    settings.template,
+    installment as InstallmentRow,
+    currentVendaId ? patientNames.get(currentVendaId) ?? null : null
+  )
+  const daysBeforeDue = Math.round(
+    (new Date(`${dueDate}T12:00:00Z`).getTime() - new Date(`${today}T12:00:00Z`).getTime())
+      / 86_400_000
+  )
+  const scheduledFor = now.toISOString()
+  const { data: insertedReminder, error: insertError } = await (supabase.from('whatsapp_installment_reminders') as any)
+    .insert({
+      tenant_id: channel.tenant_id,
+      store_id: channel.store_id,
+      channel_id: channel.id,
+      installment_id: STORE_ONE_INSTALLMENT_REMINDER_TEST_ID,
+      customer_id: installment.customer_id,
+      remote_phone: customerPhone,
+      due_date: dueDate,
+      scheduled_for: scheduledFor,
+      status: 'scheduled',
+      message_text: messageText,
+      payload: {
+        testDispatch: true,
+        financingId: installment.financiamento_id,
+        installmentNumber: installment.numero_parcela,
+        totalInstallments: installment.financiamento_loja?.quantidade_parcelas ?? null,
+        outstanding: currentOutstanding,
+        targetDate: dueDate,
+        daysBeforeDue,
+      },
+    })
+    .select('id')
+    .maybeSingle()
+
+  if (insertError?.code === '23505') {
+    return { outcome: 'not_sent', reason: 'reminder_already_exists' }
+  }
+  if (insertError) throw insertError
+  if (!insertedReminder?.id) {
+    return { outcome: 'not_sent', reason: 'delivery_pending_review' }
+  }
+
+  const dispatch = await dispatchDueReminders(now, 1, Number(insertedReminder.id))
+  if (dispatch.sent === 1) {
+    return {
+      outcome: 'accepted',
+      reminderId: Number(insertedReminder.id),
+      installmentId: STORE_ONE_INSTALLMENT_REMINDER_TEST_ID,
+    }
+  }
+
+  const { data: finalReminder, error: finalReminderError } = await (supabase.from('whatsapp_installment_reminders') as any)
+    .select('status')
+    .eq('id', insertedReminder.id)
+    .maybeSingle()
+  if (finalReminderError) throw finalReminderError
+  if (finalReminder?.status === 'failed') return { outcome: 'not_sent', reason: 'failed' }
+  if (finalReminder?.status === 'cancelled') return { outcome: 'not_sent', reason: 'cancelled' }
+  return { outcome: 'not_sent', reason: 'delivery_pending_review' }
 }
 
 export async function runInstallmentReminderJob(now = new Date()): Promise<InstallmentReminderJobResult> {

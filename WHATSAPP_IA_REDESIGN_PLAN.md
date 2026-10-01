@@ -54,9 +54,24 @@ de parcelas. O primeiro recorte implementado na Loja 1 preserva o pós-venda
 pendente ao responder outro assunto, retoma a avaliação quando o cliente volta
 a ela e só registra uma nota explícita enquanto aguarda avaliação. Mensagens
 sem intenção confiável são silenciadas sem fallback genérico e sem converter o
-contexto em `human_pause`. A simulação local cobre OS, retirada, retorno à
-avaliação e registro de nota; ainda faltam deploy e validação ao vivo. Lembretes
-de parcelas e suas respostas continuam como próximo recorte depois desta base.
+contexto em `human_pause`. Em 01/10/2026, o cenário positivo de mudança de
+assunto, retorno à avaliação e persistência da nota 5 passou no piloto ao vivo;
+os limites e a conferência cruzada com o banco estão em
+`docs/whatsapp-post-sale-interleaving-live-validation.md`. Isso valida somente
+esse recorte, não toda a etapa 5 nem reclamações/handoff. Lembretes de parcelas
+e suas respostas continuam como próximo recorte.
+
+**Ponto de validação em aberto — pós-venda com OSs agrupadas:** o código do
+disparo agrupa OSs elegíveis do mesmo cliente e beneficiário, registra as OSs
+cobertas e cria acompanhamento para cada uma. Ainda não foi validado se, no
+redesign conversacional, a resposta positiva e a nota recebida continuam
+associadas a todas as OSs cobertas: o contexto persistido para a conversa
+aparenta carregar apenas a OS representativa. Também falta confirmar a
+preservação do grupo durante mudanças de assunto e o resultado final (status e
+interações) de cada `post_sales`. O teste ao vivo documentado acima cobriu uma
+única OS; a outra OS consultada estava em produção e não era elegível para o
+agrupamento. Não tratar esse comportamento como aprovado até um teste dedicado
+com duas OSs entregues do mesmo beneficiário.
 
 ### Evidências já observadas no piloto ao vivo
 
