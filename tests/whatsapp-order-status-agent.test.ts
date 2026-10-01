@@ -3,6 +3,7 @@ import test from 'node:test'
 import { buildToolAgentReplyPrompt, buildWhatsAppHumanizationPrompt } from '../src/lib/whatsapp/ai'
 import {
   canUseIdentifierLookupAgentReply,
+  completeVerifiedOrderNames,
   prepareOpenOrdersForAgent,
   resolveToolAgentReplySemantics,
   validateOrderAgentReply,
@@ -238,6 +239,25 @@ test('usa o nome do cliente quando existe e nao inventa rotulo quando falta nome
     valid: false,
     reason: 'unsupported_patient_reference',
   })
+})
+
+test('completa apenas nome oficial omitido sem trocar pessoa ou situacao da OS', () => {
+  const facts = [{ orderNumber: '1041', patientName: null,
+    status: 'lens_in_production', statusText: 'Em producao no laboratorio.' }]
+  const options = { customerName: 'JAIME RODRIGUES JUNIOR' }
+
+  assert.equal(completeVerifiedOrderNames(
+    'A OS 1041 está em produção no laboratório.', facts, options
+  ), 'A OS 1041 de JAIME RODRIGUES JUNIOR está em produção no laboratório.')
+  assert.equal(completeVerifiedOrderNames(
+    'A OS 1041 de Odair está em produção no laboratório.', facts, options
+  ), null)
+  assert.equal(completeVerifiedOrderNames(
+    'A OS 1041 está em produção para Odair.', facts, options
+  ), null)
+  assert.equal(completeVerifiedOrderNames(
+    'A OS 1041 está pronta para retirada.', facts, options
+  ), null)
 })
 
 test('bloqueia previsao de retirada e convite para contatar a mesma loja sem fatos oficiais', () => {

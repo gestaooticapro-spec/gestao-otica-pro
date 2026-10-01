@@ -28,7 +28,7 @@ function plan(messageText: string, awaitingIdentifier = false) {
     decision, messageText, awaitingIdentifier })
 }
 
-const order = (number: string, patient: string, status: string) => ({
+const order = (number: string, patient: string | null, status: string) => ({
   orderNumber: number, patientName: patient, status,
   statusText: status === 'ready_for_pickup' ? 'Pronto para retirada'
     : 'Em producao no laboratorio',
@@ -76,34 +76,36 @@ test('revisao de duas OS nao exige copiar saudacao do status e preserva a valida
   assert.equal(result.disposition.kind, 'send')
 })
 
-test('rastreia texto e motivo de cada tentativa quando a resposta continua insegura', async () => {
+test('completa o nome confirmado da OS apos duas redacoes omitirem o cliente', async () => {
   const lookupPlan = plan('Como estao meus pedidos?')
   assert.ok(lookupPlan)
   let writes = 0
+  const firstDraft = 'Seu outro oculos ainda nao esta pronto. A OS 6809 para RAQUEL esta em producao no laboratorio. A OS 1041 esta em producao no laboratorio.'
+  const revisionDraft = 'A OS 6809 para RAQUEL esta em producao no laboratorio. A OS 1041 esta em producao no laboratorio.'
+  const completedDraft = 'A OS 6809 para RAQUEL esta em producao no laboratorio. A OS 1041 de JAIME RODRIGUES JUNIOR esta em producao no laboratorio.'
   const result = await runStoreOneOrderStatusTurn({
     plan: lookupPlan,
     assistant: { messageText: 'Como estao meus pedidos?' },
     executeLookup: async () => ({ tool: lookupPlan.tool, ok: true, data: {
-      customerName: 'Jaime',
-      orders: [order('6809', 'Raquel', 'lens_in_production'),
-        order('1041', '', 'lens_in_production')],
+      customerName: 'JAIME RODRIGUES JUNIOR',
+      orders: [order('6809', 'RAQUEL', 'lens_in_production'),
+        order('1041', null, 'lens_in_production')],
     } }),
     writeReply: async () => {
       writes += 1
-      return fakeWriter(writes === 1
-        ? 'A OS 6809 da Raquel esta em producao. A OS 1041 esta em producao.'
-        : 'A OS 6809 da Raquel esta em producao. A OS 1041 esta em producao.')()
+      return fakeWriter(writes === 1 ? firstDraft : revisionDraft)()
     },
   })
 
   assert.equal(writes, 2)
   assert.deepEqual(result.replyValidationAttempts, [
-    { attempt: 1, replyText: 'A OS 6809 da Raquel esta em producao. A OS 1041 esta em producao.',
-      outcome: 'suppress', reason: 'missing_patient' },
-    { attempt: 2, replyText: 'A OS 6809 da Raquel esta em producao. A OS 1041 esta em producao.',
-      outcome: 'suppress', reason: 'missing_patient' },
+    { attempt: 1, replyText: firstDraft, outcome: 'suppress', reason: 'missing_patient' },
+    { attempt: 2, replyText: revisionDraft, outcome: 'suppress', reason: 'missing_patient' },
+    { attempt: 3, replyText: completedDraft, outcome: 'send', reason: null,
+      source: 'verified_name_completion' },
   ])
-  assert.equal(result.disposition.kind, 'suppress')
+  assert.equal(result.disposition.kind, 'send')
+  assert.equal(result.disposition.kind === 'send' && result.disposition.text, completedDraft)
 })
 
 test('Loja 1: pergunta, identificador e consulta usam uma busca por turno e nenhuma segunda IA planejadora', async () => {

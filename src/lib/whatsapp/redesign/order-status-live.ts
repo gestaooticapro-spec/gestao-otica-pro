@@ -1,5 +1,5 @@
 import { writeWhatsAppToolAgentReply, type WhatsAppToolAgentInput } from '../ai'
-import { validateOrderAgentReply, type OpenOrderAgentFact } from '../order-status-agent'
+import { completeVerifiedOrderNames, validateOrderAgentReply, type OpenOrderAgentFact } from '../order-status-agent'
 import {
   runWhatsAppToolAgent,
   type WhatsAppToolCall,
@@ -169,6 +169,7 @@ export async function runStoreOneOrderStatusTurn(input: {
     replyText: string | null
     outcome: 'send' | 'suppress'
     reason: string | null
+    source?: 'verified_name_completion'
   }> = [{
     attempt: 1,
     replyText: agent.success ? agent.replyText : null,
@@ -207,6 +208,26 @@ export async function runStoreOneOrderStatusTurn(input: {
       reason: revisionDisposition.kind === 'suppress' ? revisionDisposition.reason : null,
     })
     disposition = revisionDisposition
+    if (revision.success && revisionDisposition.kind === 'suppress'
+      && revisionDisposition.reason === 'missing_patient') {
+      const completedReply = completeVerifiedOrderNames(revision.data.reply_text, orders, {
+        customerName,
+        referencedPersonName: input.assistant.referencedPersonName,
+      })
+      if (completedReply) {
+        const completedDisposition = resolveStoreOneOrderDisposition({
+          plan: input.plan, lookup, replyText: completedReply,
+        })
+        replyValidationAttempts.push({
+          attempt: 3,
+          replyText: completedReply,
+          outcome: completedDisposition.kind,
+          reason: completedDisposition.kind === 'suppress' ? completedDisposition.reason : null,
+          source: 'verified_name_completion',
+        })
+        disposition = completedDisposition
+      }
+    }
   }
   return { agent, disposition, replyValidationAttempts }
 }

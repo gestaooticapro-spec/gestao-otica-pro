@@ -186,3 +186,55 @@ export function validateOrderAgentReply(
     ? { valid: true }
     : { valid: false, reason: 'missing_order' }
 }
+
+/** Completes only a missing, verified name immediately after its own OS number. */
+export function completeVerifiedOrderNames(
+  replyText: string,
+  orders: OpenOrderAgentFact[],
+  options: { customerName?: string | null; referencedPersonName?: string | null } = {}
+): string | null {
+  const originalValidation = validateOrderAgentReply(replyText, orders, options)
+  if (originalValidation.valid || originalValidation.reason !== 'missing_patient') return null
+
+  let corrected = replyText
+  let changed = false
+  for (const order of orders) {
+    const name = (order.patientName || options.customerName || '').trim().replace(/\s+/gu, ' ')
+    const number = order.orderNumber.trim()
+    if (!name || name.length > 120 || /[.!?;\n]/u.test(name) || !/^\d{1,10}$/u.test(number)) return null
+
+    const orderPattern = new RegExp(`\\b(?:OS|pedido)\\s*${number}\\b`, 'giu')
+    const matches = [...corrected.matchAll(orderPattern)]
+    if (matches.length !== 1) return null
+    const match = matches[0]
+    const matchStart = match.index
+    const insertAt = matchStart + match[0].length
+    const before = corrected.slice(0, matchStart)
+    const sentenceStart = Math.max(...['.', '!', '?', ';', '\n'].map((mark) => before.lastIndexOf(mark))) + 1
+    const after = corrected.slice(insertAt)
+    const nextBoundary = after.search(/[.!?;\n]/u)
+    const sentenceEnd = nextBoundary < 0 ? corrected.length : insertAt + nextBoundary
+    const sentence = corrected.slice(sentenceStart, sentenceEnd)
+    if (orders.some((other) => other !== order && containsOrderReplyPhrase(sentence, other.orderNumber))) return null
+    if (containsOrderReplyPhrase(sentence, name)) continue
+    const sentencePrefix = corrected.slice(sentenceStart, insertAt)
+    if (!new RegExp(`^\\s*(?:(?:A|O)\\s+)?(?:OS|pedido)\\s*${number}$`, 'iu').test(sentencePrefix)) return null
+    if (orders.some((other) => {
+      const otherName = other.patientName || options.customerName?.trim()
+      return other !== order && otherName && normalizeOrderReplyText(otherName) !== normalizeOrderReplyText(name)
+        && containsOrderReplyPhrase(sentence, otherName)
+    })) return null
+    const referencedName = options.referencedPersonName?.trim()
+    if (referencedName && normalizeOrderReplyText(referencedName) !== normalizeOrderReplyText(name)
+      && containsOrderReplyPhrase(sentence, referencedName)) return null
+    if (/\b(?:titular|owner|account holder)\b/u.test(normalizeOrderReplyText(sentence))) return null
+    if (!/^\s+(?:está|esta|tá|ta|segue|continua|permanece|ficou|encontra-se|foi|já|ja|ainda)(?=\s|$|[,.!?;])/iu.test(after)) return null
+    const sentenceSuffix = after.slice(0, nextBoundary < 0 ? after.length : nextBoundary)
+    if (/\b(?:de|do|da|para)\s+\p{Lu}\p{L}+/u.test(sentenceSuffix)) return null
+
+    corrected = `${corrected.slice(0, insertAt)} de ${name}${corrected.slice(insertAt)}`
+    changed = true
+  }
+
+  return changed && validateOrderAgentReply(corrected, orders, options).valid ? corrected : null
+}
