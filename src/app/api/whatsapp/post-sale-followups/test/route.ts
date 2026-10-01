@@ -69,8 +69,14 @@ export async function POST(request: Request) {
 
   try {
     const result = await triggerStoreOnePostSaleFollowupTest(parsed.data)
-    if (result.outcome === 'sent') {
-      return json({ ok: true, outcome: 'sent', message: 'Disparo de teste enviado à OS autorizada.' })
+    if (result.outcome === 'accepted') {
+      return json({
+        ok: true,
+        outcome: 'accepted',
+        providerStatus: result.providerStatus,
+        providerMessageId: result.providerMessageId,
+        message: 'A Evolution aceitou o disparo de teste. Confira o WhatsApp para confirmar a chegada; a aceitação do envio não confirma a entrega no aparelho.',
+      })
     }
 
     const status = result.reason === 'protocol_not_allowed' || result.reason === 'invalid_recipient' ? 400 : 409

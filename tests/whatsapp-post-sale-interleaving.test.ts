@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   canBypassPostSaleBusinessHoursForTest,
+  canReuseStoreOnePostSaleTestFollowup,
   decidePostSaleTurnDisposition,
   extractPostSaleRatingForStage,
   getPostSaleForcedToolCall,
@@ -33,6 +34,25 @@ test('bypass de expediente exige a OS de teste, Loja 1 e o ID exato da fila', ()
   assert.equal(canBypassPostSaleBusinessHoursForTest({ ...base, targetFollowupId: 8 }), false)
   assert.equal(canBypassPostSaleBusinessHoursForTest({ ...base, storeId: 2 }), false)
   assert.equal(canBypassPostSaleBusinessHoursForTest({ ...base, manualTestMarker: null }), false)
+})
+
+test('somente um follow-up marcado como teste da OS 1043 pode ser reutilizado para novo teste', () => {
+  const base = {
+    protocol: '1043',
+    storeId: 1,
+    status: 'sent',
+    serviceOrderId: 1043,
+    expectedServiceOrderId: 1043,
+    coveredServiceOrderIds: [1043],
+    remotePhoneMatches: true,
+  }
+  assert.equal(canReuseStoreOnePostSaleTestFollowup(base), true)
+  assert.equal(canReuseStoreOnePostSaleTestFollowup({ ...base, status: 'sending' }), false)
+  assert.equal(canReuseStoreOnePostSaleTestFollowup({ ...base, status: 'sent', storeId: 2 }), false)
+  assert.equal(canReuseStoreOnePostSaleTestFollowup({ ...base, protocol: '1044' }), false)
+  assert.equal(canReuseStoreOnePostSaleTestFollowup({ ...base, serviceOrderId: 999 }), false)
+  assert.equal(canReuseStoreOnePostSaleTestFollowup({ ...base, coveredServiceOrderIds: [1043, 1044] }), false)
+  assert.equal(canReuseStoreOnePostSaleTestFollowup({ ...base, remotePhoneMatches: false }), false)
 })
 
 function classify(intent: string, automationCandidate = true, confidence = 0.95) {

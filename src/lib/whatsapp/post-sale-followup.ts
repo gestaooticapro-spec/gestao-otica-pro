@@ -109,6 +109,25 @@ export function canBypassPostSaleBusinessHoursForTest(input: {
     && input.manualTestMarker === STORE_ONE_POST_SALE_TEST_MARKER
 }
 
+export function canReuseStoreOnePostSaleTestFollowup(input: {
+  protocol: string
+  storeId: number
+  status: string
+  serviceOrderId: number | null | undefined
+  expectedServiceOrderId: number
+  coveredServiceOrderIds: number[] | null | undefined
+  remotePhoneMatches: boolean
+}) {
+  const coveredIds = input.coveredServiceOrderIds ?? []
+  return input.storeId === 1
+    && isStoreOnePostSaleTestProtocol(input.protocol)
+    && input.serviceOrderId === input.expectedServiceOrderId
+    && coveredIds.length === 1
+    && coveredIds[0] === input.expectedServiceOrderId
+    && input.remotePhoneMatches
+    && ['scheduled', 'sent', 'failed', 'cancelled'].includes(input.status)
+}
+
 export type PostSaleForcedToolCall =
   | { name: 'request_post_sale_rating' }
   | { name: 'record_post_sale_rating'; rating: number }

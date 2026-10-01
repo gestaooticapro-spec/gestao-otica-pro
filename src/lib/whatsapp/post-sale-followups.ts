@@ -12,6 +12,7 @@ import {
   buildPostSaleFollowupMessage,
   buildPostSaleFollowupSettings,
   canBypassPostSaleBusinessHoursForTest,
+  canReuseStoreOnePostSaleTestFollowup,
   decidePostSaleDeadlineOutcome,
   decideStalePostSaleFollowupRecovery,
   DEFAULT_POST_SALE_FOLLOWUP_DAYS,
@@ -1035,7 +1036,7 @@ async function dispatchScheduledFollowups(
         .eq('tenant_id', followup.tenant_id)
         .maybeSingle()
       if (currentPostSaleError) throw currentPostSaleError
-      if (currentPostSale?.status === 'Em Acompanhamento' || currentPostSale?.status === 'Concluido') {
+      if ((currentPostSale?.status === 'Em Acompanhamento' || currentPostSale?.status === 'Concluido') && !isScopedStoreOneTest) {
         await markCancelled(followup.id, `Fluxo cancelado porque o pos-venda ja esta ${currentPostSale.status}.`)
         continue
       }
@@ -1207,7 +1208,7 @@ async function dispatchScheduledFollowups(
 }
 
 export type StoreOnePostSaleTestResult =
-  | { outcome: 'sent' }
+  | { outcome: 'accepted'; providerMessageId: string | null; providerStatus: string | null }
   | { outcome: 'not_sent'; reason: string }
 
 /**
@@ -1285,9 +1286,6 @@ export async function triggerStoreOnePostSaleFollowupTest(input: {
   const postSales = order.post_sales ?? []
   if (postSales.length > 1) return { outcome: 'not_sent', reason: 'post_sale_ambiguous' }
   const postSale = postSales[0]
-  if (postSale?.status === 'Concluido' || postSale?.status === 'Em Acompanhamento') {
-    return { outcome: 'not_sent', reason: 'post_sale_already_active_or_complete' }
-  }
 
   const now = new Date()
   if (await hasActiveHumanBlock(channel.id, phone)) {
@@ -1298,15 +1296,41 @@ export async function triggerStoreOnePostSaleFollowupTest(input: {
   }
 
   const { data: existingCoverage, error: coverageError } = await (supabase.from('whatsapp_post_sale_followups') as any)
-    .select('id')
+    .select('id,status,payload,service_order_id,covered_service_order_ids,remote_phone')
     .eq('store_id', 1)
     .overlaps('covered_service_order_ids', [order.id])
     .limit(1)
   if (coverageError) throw coverageError
-  if ((existingCoverage ?? []).length > 0) {
+
+  const existingFollowup = existingCoverage?.[0] as {
+    id: number
+    status: string
+    payload: Json | null
+    service_order_id: number | null
+    covered_service_order_ids: number[] | null
+    remote_phone: string | null
+  } | undefined
+  const existingPayload = existingFollowup?.payload
+    && typeof existingFollowup.payload === 'object'
+    && !Array.isArray(existingFollowup.payload)
+    ? existingFollowup.payload as Record<string, Json>
+    : {}
+  const reusableTestFollowup = existingFollowup && canReuseStoreOnePostSaleTestFollowup({
+    protocol: input.protocol,
+    storeId: 1,
+    status: existingFollowup.status,
+    serviceOrderId: existingFollowup.service_order_id,
+    expectedServiceOrderId: order.id,
+    coveredServiceOrderIds: existingFollowup.covered_service_order_ids,
+    remotePhoneMatches: Boolean(existingFollowup.remote_phone && phonesMatch(existingFollowup.remote_phone, phone)),
+  })
+
+  if (existingFollowup?.status === 'sending') {
+    return { outcome: 'not_sent', reason: 'sending' }
+  }
+  if (existingFollowup && !reusableTestFollowup) {
     return { outcome: 'not_sent', reason: 'followup_already_exists' }
   }
-
   const customerName = order.customers?.full_name || 'Cliente'
   const messageText = buildPostSaleFollowupMessage({
     template: settings.template,
@@ -1315,48 +1339,103 @@ export async function triggerStoreOnePostSaleFollowupTest(input: {
     daysSinceDelivery: Math.max(1, ageDays),
   })
   const deliveredDate = deliveredAt.slice(0, 10)
-  const { data: insertedFollowup, error: insertError } = await (supabase.from('whatsapp_post_sale_followups') as any)
-    .insert({
-      tenant_id: order.tenant_id,
-      store_id: 1,
-      channel_id: channel.id,
-      service_order_id: order.id,
-      covered_service_order_ids: [order.id],
-      customer_id: order.customer_id,
-      post_sales_id: postSale?.id ?? null,
-      remote_phone: phone,
-      delivered_at: deliveredDate,
-      scheduled_for: new Date(now.getTime() - 1_000).toISOString(),
-      status: 'scheduled',
-      message_text: messageText,
-      payload: {
-        deliveryDate: deliveredDate,
-        daysSinceDelivery: Math.max(1, ageDays),
-        groupedServiceOrderIds: [order.id],
-        groupedServiceOrderCount: 1,
-        groupedBeneficiary: order.dependente_id
-          ? { type: 'dependent', id: order.dependente_id, name: order.dependentes?.full_name ?? null }
-          : { type: 'customer', id: order.customer_id, name: customerName },
-        manualTest: STORE_ONE_POST_SALE_TEST_MARKER,
-      },
-    })
-    .select('id')
-    .single()
+  const nowIso = now.toISOString()
+  const manualTestPayload = {
+    ...existingPayload,
+    deliveryDate: deliveredDate,
+    daysSinceDelivery: Math.max(1, ageDays),
+    groupedServiceOrderIds: [order.id],
+    groupedServiceOrderCount: 1,
+    groupedBeneficiary: order.dependente_id
+      ? { type: 'dependent', id: order.dependente_id, name: order.dependentes?.full_name ?? null }
+      : { type: 'customer', id: order.customer_id, name: customerName },
+    manualTest: STORE_ONE_POST_SALE_TEST_MARKER,
+  }
 
-  if (insertError?.code === '23505') return { outcome: 'not_sent', reason: 'followup_already_exists' }
-  if (insertError) throw insertError
+  let followupId: number
+  if (existingFollowup && reusableTestFollowup) {
+    const { data: resetFollowup, error: resetError } = await (supabase.from('whatsapp_post_sale_followups') as any)
+      .update({
+        status: 'scheduled',
+        scheduled_for: new Date(now.getTime() - 1_000).toISOString(),
+        message_text: messageText,
+        payload: manualTestPayload,
+        error_message: null,
+        sent_at: null,
+        updated_at: nowIso,
+      })
+      .eq('id', existingFollowup.id)
+      .eq('status', existingFollowup.status)
+      .select('id')
+      .maybeSingle()
+    if (resetError) throw resetError
+    if (!resetFollowup?.id) return { outcome: 'not_sent', reason: 'sending' }
+    followupId = Number(resetFollowup.id)
+  } else {
+    const { data: insertedFollowup, error: insertError } = await (supabase.from('whatsapp_post_sale_followups') as any)
+      .insert({
+        tenant_id: order.tenant_id,
+        store_id: 1,
+        channel_id: channel.id,
+        service_order_id: order.id,
+        covered_service_order_ids: [order.id],
+        customer_id: order.customer_id,
+        post_sales_id: postSale?.id ?? null,
+        remote_phone: phone,
+        delivered_at: deliveredDate,
+        scheduled_for: new Date(now.getTime() - 1_000).toISOString(),
+        status: 'scheduled',
+        message_text: messageText,
+        payload: manualTestPayload,
+      })
+      .select('id')
+      .single()
 
-  await dispatchScheduledFollowups(now, 1, Number(insertedFollowup.id))
+    if (insertError?.code === '23505') return { outcome: 'not_sent', reason: 'followup_already_exists' }
+    if (insertError) throw insertError
+    followupId = Number(insertedFollowup.id)
+  }
+
+  await dispatchScheduledFollowups(now, 1, followupId)
 
   const { data: finalFollowup, error: finalFollowupError } = await (supabase.from('whatsapp_post_sale_followups') as any)
-    .select('status')
-    .eq('id', insertedFollowup.id)
+    .select('status,outbound_message_id')
+    .eq('id', followupId)
     .maybeSingle()
   if (finalFollowupError) throw finalFollowupError
 
-  return finalFollowup?.status === 'sent'
-    ? { outcome: 'sent' }
-    : { outcome: 'not_sent', reason: finalFollowup?.status || 'delivery_pending_review' }
+  if (finalFollowup?.status !== 'sent' || !finalFollowup.outbound_message_id) {
+    return { outcome: 'not_sent', reason: finalFollowup?.status || 'delivery_pending_review' }
+  }
+
+  const { data: outbound, error: outboundError } = await (supabase.from('whatsapp_outbound_messages') as any)
+    .select('provider_message_id,payload')
+    .eq('id', finalFollowup.outbound_message_id)
+    .maybeSingle()
+  if (outboundError) throw outboundError
+
+  const outboundPayload = outbound?.payload
+    && typeof outbound.payload === 'object'
+    && !Array.isArray(outbound.payload)
+    ? outbound.payload as Record<string, Json>
+    : {}
+  const providerDelivery = outboundPayload.delivery
+    && typeof outboundPayload.delivery === 'object'
+    && !Array.isArray(outboundPayload.delivery)
+    ? outboundPayload.delivery as Record<string, Json>
+    : {}
+  const providerStatus = typeof providerDelivery.status === 'string' ? providerDelivery.status : null
+  const providerMessageId = typeof outbound?.provider_message_id === 'string' ? outbound.provider_message_id : null
+
+  console.info('[post-sale-followups:test-send]', JSON.stringify({
+    followupId,
+    outboundMessageId: finalFollowup.outbound_message_id,
+    providerMessageId,
+    providerStatus,
+    followupStatus: finalFollowup.status,
+  }))
+
+  return { outcome: 'accepted', providerMessageId, providerStatus }
 }
 
 export type ManualPostSaleRequeueResult = {

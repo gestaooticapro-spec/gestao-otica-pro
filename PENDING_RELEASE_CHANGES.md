@@ -5,4 +5,4 @@
 - Quando uma resposta automática é suprimida por segurança ou pausa humana, o WhatsApp Operacional informa o motivo na própria mensagem.
 - Na Loja 1, um acompanhamento de pós-venda permanece pendente enquanto a conversa trata de outros assuntos; mensagens ambíguas são silenciadas sem criar pausa humana, e a nota só é gravada quando explícita na etapa de avaliação.
 - Handoffs automáticos do WhatsApp ficam como pendência para a equipe e não silenciam novas mensagens do cliente. `human_pause` só é ativado por mensagem manual confirmada do lojista e expira duas horas após a última mensagem; fila operacional, retenção e elegibilidade do pós-venda seguem a mesma regra.
-- A OS fictícia 1043 da Loja 1 pode iniciar um disparo de teste isolado, confirmado pelo telefone cadastrado, mesmo fora do expediente; os disparos normais continuam respeitando o horário da loja.
+- A OS fictícia 1043 da Loja 1 pode iniciar ou repetir um disparo de teste isolado, confirmado pelo telefone cadastrado, mesmo fora do expediente; a resposta informa que o provedor aceitou o envio, sem afirmar que a mensagem chegou ao aparelho. Os disparos normais continuam respeitando o horário da loja.
