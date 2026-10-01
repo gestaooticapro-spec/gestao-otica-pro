@@ -9,6 +9,7 @@ export type Release = {
 // altera o Dashboard ou o modal de histórico.
 export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'Lembretes de parcela e pos-venda enviados pelo sistema retomam a conversa apos uma pausa humana anterior, mantem a memoria de assuntos anteriores e reconhecem agradecimentos ligados ao lembrete mais recente sem confundi-los com outras conversas.',
   'No WhatsApp da Loja 1, respostas de OS sem previsao oficial deixam de prometer retirada ou recomendar novo contato; o envio concorrente da mesma resposta e bloqueado, e o caminho do atendimento ganha rastreamento sem dados pessoais.',
   'No pos-venda da Loja 1, respostas como "minha nota e 5" encerram a avaliacao com confirmacao contextual; agradecimentos e mudancas de assunto preservam a nota pendente sem repetir a pergunta.',
   'Na Loja 1, a IA redige o pedido de nota e a confirmacao da avaliacao de pos-venda com base na acao aprovada pelo sistema; respostas genericas ou inconsistentes nao sao enviadas.',

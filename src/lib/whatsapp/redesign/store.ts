@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/lib/database.types'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getPhoneVariants } from '../phone'
+import { getPhoneVariants, phonesMatch } from '../phone'
 import {
   WhatsAppConversationSummarySchema,
   WhatsAppRedesignClassificationSchema,
@@ -136,10 +136,11 @@ export class WhatsAppRedesignConversationStore {
   async loadMemory(identityInput: WhatsAppConversationIdentity): Promise<WhatsAppConversationMemory> {
     const identity = WhatsAppConversationIdentitySchema.parse(identityInput)
     const conversation = await this.getOrCreateConversation(identity)
+    const equivalent = await this.findEquivalentConversations(identity.channelId, identity.remotePhone)
     const { data: messages, error } = await (this.client
       .from('whatsapp_conversation_messages') as any)
       .select('id, provider_message_id, role, message_kind, message_text, occurred_at')
-      .eq('conversation_id', conversation.id)
+      .in('conversation_id', equivalent.map((row) => row.id))
       .order('occurred_at', { ascending: false })
       .order('created_at', { ascending: false })
       .limit(10)
@@ -311,10 +312,13 @@ export class WhatsAppRedesignConversationStore {
       .single()
     if (conversationError) throw conversationError
 
+    const equivalent = await this.findEquivalentConversations(conversation.channel_id, conversation.remote_phone)
+    const conversationIds = [...new Set([conversation.id, ...equivalent.map((row) => row.id)])]
+
     const { data: recentRows, error: recentError } = await (this.client
       .from('whatsapp_conversation_messages') as any)
       .select('id, provider_message_id, role, message_kind, message_text, occurred_at')
-      .eq('conversation_id', conversation.id)
+      .in('conversation_id', conversationIds)
       // A resposta do legado pode ser gravada antes de o processador sombra
       // rodar. Ela nao pode contaminar a decisao que esta sendo reconstruida.
       .lte('occurred_at', turn.closes_at)
@@ -326,7 +330,7 @@ export class WhatsAppRedesignConversationStore {
     const { data: latestHuman, error: humanError } = await (this.client
       .from('whatsapp_conversation_messages') as any)
       .select('occurred_at')
-      .eq('conversation_id', conversation.id)
+      .in('conversation_id', conversationIds)
       .eq('role', 'human')
       .lte('occurred_at', turn.closes_at)
       .order('occurred_at', { ascending: false })
@@ -404,7 +408,7 @@ export class WhatsAppRedesignConversationStore {
     const { data: latestControlEvent, error: controlError } = await (this.client
       .from('whatsapp_conversation_control_events') as any)
       .select('action, occurred_at, reason')
-      .eq('conversation_id', conversation.id)
+      .in('conversation_id', conversationIds)
       .lte('occurred_at', turn.closes_at)
       .order('occurred_at', { ascending: false })
       .order('id', { ascending: false })
@@ -565,14 +569,21 @@ export class WhatsAppRedesignConversationStore {
   }
 
   private async findConversation(channelId: number, remotePhone: string): Promise<ConversationRow | null> {
+    return (await this.findEquivalentConversations(channelId, remotePhone))[0] ?? null
+  }
+
+  private async findEquivalentConversations(channelId: number, remotePhone: string): Promise<ConversationRow[]> {
+    const variants = [...getPhoneVariants(remotePhone)]
+    if (!variants.length) return []
     const { data, error } = await (this.client
       .from('whatsapp_conversation_memory') as any)
       .select('*')
       .eq('channel_id', channelId)
-      .eq('remote_phone', remotePhone)
-      .maybeSingle()
+      .in('remote_phone', variants)
 
     if (error) throw error
-    return data
+    return ((data ?? []) as ConversationRow[])
+      .filter((row) => phonesMatch(row.remote_phone, remotePhone))
+      .sort((left, right) => Date.parse(right.updated_at) - Date.parse(left.updated_at))
   }
 }

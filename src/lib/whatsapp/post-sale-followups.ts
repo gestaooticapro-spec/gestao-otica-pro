@@ -4,6 +4,7 @@ import { Json } from '@/lib/database.types'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getStoreModules, StoreSettings } from '@/lib/store-modules'
 import { digitsOnly, phonesMatch, toEvolutionNumber } from '@/lib/whatsapp/phone'
+import { recordAutomatedOutboundConversationContext } from '@/lib/whatsapp/automated-conversation-context'
 import { buildWhatsAppCanonicalPayload } from '@/lib/whatsapp/canonical'
 import { isOperatorPauseActive } from '@/lib/whatsapp/human-control-policy'
 import { WHATSAPP_REDESIGN_HUMAN_ACTIVE_MS } from '@/lib/whatsapp/redesign/contracts'
@@ -482,22 +483,19 @@ async function markPostSaleConversationContext(input: {
   deliveredAt: string
   messageText: string
 }) {
-  const supabase = createAdminClient()
-  const payload = {
-    tenant_id: input.channel.tenant_id,
-    store_id: input.channel.store_id,
-    channel_id: input.channel.id,
-    remote_phone: input.remotePhone,
-    state: 'ai_session',
-    expires_at: reminderExpiresAt(POST_SALE_CONTEXT_MS),
-    updated_at: input.sentAtIso,
+  await recordAutomatedOutboundConversationContext({
+    tenantId: input.channel.tenant_id,
+    storeId: input.channel.store_id,
+    channelId: input.channel.id,
+    remotePhone: input.remotePhone,
+    sentAtIso: input.sentAtIso,
+    retentionMs: POST_SALE_CONTEXT_MS,
+    messageText: input.messageText,
     metadata: {
       reason: 'post_sale_followup_sent',
       lastAction: 'post_sale_followup_sent',
       lastOutboundType: 'post_sale_followup',
       lastDecisionAt: input.sentAtIso,
-      lastKnownCustomerId: input.customerId,
-      lastKnownServiceOrderId: input.serviceOrderId,
       postSaleContext: {
         followupId: input.followupId,
         postSalesId: input.postSalesId,
@@ -507,21 +505,8 @@ async function markPostSaleConversationContext(input: {
         stage: 'awaiting_feedback',
         ratingPromptCount: 0,
       },
-      aiSessionMessages: [
-        {
-          role: 'assistant',
-          text: input.messageText,
-          at: input.sentAtIso,
-        },
-      ],
-      aiSessionUpdatedAt: input.sentAtIso,
     },
-  }
-
-  const { error } = await (supabase.from('whatsapp_conversation_states') as any)
-    .upsert(payload, { onConflict: 'channel_id,remote_phone' })
-
-  if (error) throw error
+  })
 }
 
 async function scheduleFollowups(now: Date) {
@@ -720,28 +705,25 @@ async function finalizeSentFollowup(input: {
     await ensureSentInteraction({ supabase: input.supabase, followup: input.followup, postSalesId })
   }
 
-  const humanBlockActive = await hasActiveHumanBlock(input.followup.channel_id, input.followup.remote_phone)
-  if (!humanBlockActive) {
-    await markPostSaleConversationContext({
-      channel: {
-        id: input.followup.channel_id,
-        tenant_id: input.followup.tenant_id,
-        store_id: input.followup.store_id,
-        instance_key: input.instanceKey,
-        phone_number: '',
-        is_active: true,
-        connection_status: 'connected',
-      },
-      followupId: input.followup.id,
-      postSalesId: input.postSalesId,
-      serviceOrderId: input.followup.service_order_id,
-      customerId: input.followup.customer_id,
-      remotePhone: input.followup.remote_phone,
-      sentAtIso: input.sentAtIso,
-      deliveredAt: input.followup.delivered_at,
-      messageText: input.followup.message_text,
-    })
-  }
+  await markPostSaleConversationContext({
+    channel: {
+      id: input.followup.channel_id,
+      tenant_id: input.followup.tenant_id,
+      store_id: input.followup.store_id,
+      instance_key: input.instanceKey,
+      phone_number: '',
+      is_active: true,
+      connection_status: 'connected',
+    },
+    followupId: input.followup.id,
+    postSalesId: input.postSalesId,
+    serviceOrderId: input.followup.service_order_id,
+    customerId: input.followup.customer_id,
+    remotePhone: input.followup.remote_phone,
+    sentAtIso: input.sentAtIso,
+    deliveredAt: input.followup.delivered_at,
+    messageText: input.followup.message_text,
+  })
 
   let updateQuery = (input.supabase.from('whatsapp_post_sale_followups') as any)
     .update({

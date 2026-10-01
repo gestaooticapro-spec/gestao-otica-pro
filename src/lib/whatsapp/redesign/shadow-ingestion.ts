@@ -155,6 +155,18 @@ export function inferShadowOutboundRole(
   return 'assistant'
 }
 
+export function shouldReleaseHumanPauseForAutomatedOutbound(input: {
+  role: WhatsAppConversationRole
+  messageType: string
+  humanControl: string
+  customerControlMode: string
+}) {
+  return input.role === 'assistant'
+    && (input.messageType === 'installment_due_reminder' || input.messageType === 'post_sale_followup')
+    && input.humanControl === 'human_active'
+    && input.customerControlMode !== 'force_human'
+}
+
 export function buildShadowInboundTurn(
   providerMessageId: string,
   storedMessages: WhatsAppStoredMessageRow[],
@@ -324,6 +336,25 @@ export async function captureWhatsAppShadowOutbound(input: WhatsAppShadowOutboun
         actor: 'confirmed_outbound',
         messageId: storedMessage.id,
       })
+    }
+    if (role === 'assistant' && (input.messageType === 'installment_due_reminder'
+      || input.messageType === 'post_sale_followup')) {
+      const memory = await store.loadMemory(identity(input.channel, input.remotePhone, mode))
+      if (shouldReleaseHumanPauseForAutomatedOutbound({
+        role,
+        messageType: input.messageType,
+        humanControl: memory.summary.humanControl,
+        customerControlMode: memory.summary.customerControlMode,
+      })) {
+        await store.recordControlEvent({
+          conversationId: storedMessage.conversation_id,
+          eventKey: `outbound:${input.outboundMessageId}:release`,
+          action: 'release',
+          occurredAt: storedMessage.occurred_at,
+          actor: 'confirmed_automation',
+          reason: input.messageType,
+        })
+      }
     }
     if (role === 'assistant' && canonicalIntent === 'order_status'
       && (canonicalAction === 'request_identifier' || canonicalAction === 'auto_reply')) {

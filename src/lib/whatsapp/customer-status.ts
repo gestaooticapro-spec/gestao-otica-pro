@@ -224,6 +224,8 @@ type PaymentReminderContext = {
   installmentId?: number | null
   customerId?: number | null
   outboundMessageId?: number | null
+  sentAt?: string | null
+  expiresAt?: string | null
   dueDate?: string | null
   amount?: number | null
   installmentNumber?: number | null
@@ -811,12 +813,16 @@ function readPaymentReminderContext(metadata: Json | null | undefined): PaymentR
   const value = raw as Record<string, unknown>
   const toNumber = (input: unknown) => (typeof input === 'number' && Number.isFinite(input) ? input : null)
   const toString = (input: unknown) => (typeof input === 'string' && input.trim() ? input.trim() : null)
+  const expiresAt = toString(value.expiresAt)
+  if (expiresAt && (!Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now())) return null
 
   return {
     reminderId: toNumber(value.reminderId),
     installmentId: toNumber(value.installmentId),
     customerId: toNumber(value.customerId),
     outboundMessageId: toNumber(value.outboundMessageId),
+    sentAt: toString(value.sentAt),
+    expiresAt,
     dueDate: toString(value.dueDate),
     amount: toNumber(value.amount),
     installmentNumber: toNumber(value.installmentNumber),
@@ -876,6 +882,61 @@ function isPaymentReminderAcknowledgement(message: string | null | undefined) {
 
 function paymentReminderAcknowledgementText() {
   return 'De nada! Estamos à disposição para ajudar.'
+}
+
+export function shouldAcknowledgeLatestPaymentReminder(input: {
+  message: string | null | undefined
+  reminderOutboundId: number | null | undefined
+  latestOutboundId: number | null | undefined
+  latestOutboundType: string | null | undefined
+  hasInterveningInbound: boolean
+}) {
+  return isPaymentReminderAcknowledgement(input.message)
+    && typeof input.reminderOutboundId === 'number'
+    && input.reminderOutboundId === input.latestOutboundId
+    && input.latestOutboundType === 'installment_due_reminder'
+    && !input.hasInterveningInbound
+}
+
+async function isImmediatePaymentReminderAcknowledgement(input: {
+  channelId: number
+  phone: string
+  inboundMessageId: number
+  message: string | null | undefined
+  context: PaymentReminderContext
+}) {
+  if (!isPaymentReminderAcknowledgement(input.message) || !input.context.outboundMessageId) return false
+  const supabase = createAdminClient()
+  const variants = [...getPhoneVariants(input.phone)]
+  const { data: latestOutbound, error: outboundError } = await (supabase.from('whatsapp_outbound_messages') as any)
+    .select('id, message_type, sent_at, created_at')
+    .eq('channel_id', input.channelId)
+    .in('remote_phone', variants)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (outboundError) throw outboundError
+  if (Number(latestOutbound?.id) !== input.context.outboundMessageId) return false
+  const sentAt = latestOutbound.sent_at || input.context.sentAt || latestOutbound.created_at
+  if (!sentAt) return false
+
+  const { data: interveningInbound, error: inboundError } = await (supabase.from('whatsapp_inbound_messages') as any)
+    .select('id')
+    .eq('channel_id', input.channelId)
+    .in('remote_phone', variants)
+    .gte('created_at', sentAt)
+    .lt('id', input.inboundMessageId)
+    .limit(1)
+    .maybeSingle()
+  if (inboundError) throw inboundError
+
+  return shouldAcknowledgeLatestPaymentReminder({
+    message: input.message,
+    reminderOutboundId: input.context.outboundMessageId,
+    latestOutboundId: Number(latestOutbound.id),
+    latestOutboundType: latestOutbound.message_type,
+    hasInterveningInbound: Boolean(interveningInbound),
+  })
 }
 
 function looksLikePixRequest(message: string | null | undefined) {
@@ -2966,6 +3027,52 @@ export async function resolveCustomerStatus(
     state = null
   }
 
+  const immediateReminderContext = readPaymentReminderContext(state?.metadata)
+  if (immediateReminderContext
+    && state?.state !== 'human_pause'
+    && state?.state !== 'waiting_human_after_attachment'
+    && controlMode !== 'force_human'
+    && await isImmediatePaymentReminderAcknowledgement({
+      channelId: channel.id,
+      phone: normalizedPhone,
+      inboundMessageId: inbound.id,
+      message: effectiveMessageText,
+      context: immediateReminderContext,
+    })) {
+    const text = paymentReminderAcknowledgementText()
+    if (controlMode === 'force_ai') await clearCustomerControlMode(channel.id, normalizedPhone)
+    const response = await createOutbound(channel, inbound.id, normalizedPhone, text,
+      'payment_reminder_acknowledgement', {
+        ...buildWhatsAppCanonicalPayload({
+          intent: 'payment_info',
+          action: 'payment_reminder_acknowledged',
+          outboundType: 'payment_reminder_acknowledgement',
+          canonicalReply: text,
+          facts: {
+            reminderId: immediateReminderContext.reminderId ?? null,
+            installmentId: immediateReminderContext.installmentId ?? null,
+          },
+        }),
+        paymentReminderContext: immediateReminderContext,
+      }, inbound.id)
+    if (response.shouldReply) {
+      const remainingMs = Date.parse(state!.expires_at) - Date.now()
+      await setConversationState(channel, normalizedPhone, 'ai_session',
+        Math.max(AI_SESSION_MS, Number.isFinite(remainingMs) ? remainingMs : 0),
+        appendAiSessionMessage(mergeMetadata(
+          appendAiSessionMessage(state!.metadata, 'customer', effectiveMessageText), {
+            reason: 'payment_reminder_acknowledged',
+            ...buildDecisionMetadata({
+              intent: 'payment_info',
+              action: 'payment_reminder_acknowledged',
+              outboundType: 'payment_reminder_acknowledgement',
+            }),
+          }
+        ), 'assistant', text), inbound.id)
+    }
+    return response
+  }
+
   const storeOnePilotEnabled = isStoreOneSafeRepliesPilotEnabled(channel.store_id, automationSettings)
   const livePostSaleContext = readPostSaleContext(state?.metadata)
   const prePilotPersistentPostSaleMemory = storeOnePilotEnabled && !livePostSaleContext
@@ -4518,7 +4625,6 @@ export async function resolveCustomerStatus(
   }
 
   const paymentReminderContext = readPaymentReminderContext(state?.metadata)
-  const paymentReminderAcknowledgement = paymentReminderContext && isPaymentReminderAcknowledgement(effectiveMessageText)
   const reminderFinancialHandoff = paymentReminderContext && (looksLikePixRequest(effectiveMessageText) || looksLikeAmountRequest(effectiveMessageText))
     ? paymentMatchedHandoffText(toolAgentEnabled ? {
       storeName: storeProfile.name,
@@ -4526,34 +4632,6 @@ export async function resolveCustomerStatus(
       language: detectWhatsAppConversationLanguage(effectiveMessageText, aiReplyContext.conversationHistory),
     } : undefined)
     : null
-
-  if (paymentReminderAcknowledgement && paymentReminderContext) {
-    await consumeForceAiOverrideIfNeeded()
-    const text = paymentReminderAcknowledgementText()
-    await setCurrentConversationState('ai_session', AI_SESSION_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
-      reason: 'payment_reminder_acknowledged',
-      lastKnownCustomerId: paymentReminderContext.customerId ?? null,
-      ...buildPaymentInstallmentMetadataFromReminderContext(paymentReminderContext, normalizedPhone),
-      ...buildDecisionMetadata({
-        intent: 'payment_info',
-        action: 'payment_reminder_acknowledged',
-        outboundType: 'payment_reminder_acknowledgement',
-      }),
-    }), 'assistant', text))
-    return createCurrentOutbound(text, 'payment_reminder_acknowledgement', {
-      ...buildWhatsAppCanonicalPayload({
-        intent: 'payment_info',
-        action: 'payment_reminder_acknowledged',
-        outboundType: 'payment_reminder_acknowledgement',
-        canonicalReply: text,
-        facts: {
-          reminderId: paymentReminderContext.reminderId ?? null,
-          installmentId: paymentReminderContext.installmentId ?? null,
-        },
-      }),
-      paymentReminderContext,
-    })
-  }
 
   if (reminderFinancialHandoff && paymentReminderContext) {
     await consumeForceAiOverrideIfNeeded()

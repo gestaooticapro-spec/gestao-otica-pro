@@ -61,6 +61,24 @@ os limites e a conferência cruzada com o banco estão em
 esse recorte, não toda a etapa 5 nem reclamações/handoff. Lembretes de parcelas
 e suas respostas continuam como próximo recorte.
 
+Em 01/10/2026, o disparo isolado do lembrete da Loja 1 chegou ao número de
+teste, mas o retorno curto "obrigado" foi ignorado. A conferência com o
+comparador de telefones do sistema confirmou que o cadastro, o destino do
+lembrete e o remetente eram o mesmo número lógico, embora aparecessem com e
+sem o nono dígito. Havia dois estados legados equivalentes: um `human_pause`
+criado por envio manual anterior e um `ai_session` com o contexto do lembrete.
+O piloto decidiu `no_reply` antes de alcançar o tratamento do agradecimento.
+Esse teste não valida a conversa após o lembrete.
+
+A correção pendente de validação ao vivo sincroniza os estados equivalentes
+após um disparo confirmado, libera a pausa anterior também na memória do
+redesign, preserva separadamente contextos de pós-venda e cobrança e associa
+agradecimentos curtos ao lembrete somente quando ele é a última interação
+relevante. Nova mensagem humana posterior ao disparo continua iniciando uma
+pausa de duas horas; `Humano sempre` permanece soberano. Perguntas sobre valor,
+parcelas restantes e pagamento exigem teste próprio antes da aprovação desse
+recorte financeiro.
+
 **Ponto de validação em aberto — pós-venda com OSs agrupadas:** o código do
 disparo agrupa OSs elegíveis do mesmo cliente e beneficiário, registra as OSs
 cobertas e cria acompanhamento para cada uma. Ainda não foi validado se, no

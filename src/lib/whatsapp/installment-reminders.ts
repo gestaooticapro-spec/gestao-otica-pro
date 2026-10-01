@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getInstallmentOutstanding } from '@/lib/installment-balance'
 import { getStoreModules, StoreSettings, WhatsAppInstallmentDueReminderSettings } from '@/lib/store-modules'
 import { phonesMatch, toEvolutionNumber } from '@/lib/whatsapp/phone'
+import { recordAutomatedOutboundConversationContext } from '@/lib/whatsapp/automated-conversation-context'
 
 const SAO_PAULO_TIME_ZONE = 'America/Sao_Paulo'
 const DEFAULT_DAYS_BEFORE_DUE = 2
@@ -135,10 +136,6 @@ async function loadInstallmentReminderOptOutPhones(storeId: number): Promise<str
     .filter((phone: string | null | undefined): phone is string => Boolean(phone))
 }
 
-function reminderExpiresAt(ms: number) {
-  return new Date(Date.now() + ms).toISOString()
-}
-
 async function markReminderConversationContext(
   reminder: ReminderRow,
   outboundMessageId: number,
@@ -151,58 +148,34 @@ async function markReminderConversationContext(
     totalInstallments: number | null
   }
 ) {
-  const supabase = createAdminClient()
-  const payload = {
-    tenant_id: reminder.tenant_id,
-    store_id: reminder.store_id,
-    channel_id: reminder.channel_id,
-    remote_phone: reminder.remote_phone,
-    state: 'ai_session',
-    expires_at: reminderExpiresAt(PAYMENT_REMINDER_CONTEXT_MS),
-    updated_at: sentAtIso,
+  await recordAutomatedOutboundConversationContext({
+    tenantId: reminder.tenant_id,
+    storeId: reminder.store_id,
+    channelId: reminder.channel_id,
+    remotePhone: reminder.remote_phone,
+    sentAtIso,
+    retentionMs: PAYMENT_REMINDER_CONTEXT_MS,
+    messageText: metadata.messageText,
     metadata: {
       reason: 'installment_due_reminder_sent',
       reminderId: reminder.id,
       lastAction: 'installment_due_reminder',
       lastOutboundType: 'installment_due_reminder',
       lastDecisionAt: sentAtIso,
-      lastKnownCustomerId: reminder.customer_id,
       paymentReminderContext: {
         reminderId: reminder.id,
         installmentId: reminder.installment_id,
         customerId: reminder.customer_id,
         outboundMessageId,
+        sentAt: sentAtIso,
+        expiresAt: new Date(Date.parse(sentAtIso) + PAYMENT_REMINDER_CONTEXT_MS).toISOString(),
         dueDate: metadata.dueDate,
         amount: metadata.amount,
         installmentNumber: metadata.installmentNumber,
         totalInstallments: metadata.totalInstallments,
       },
-      paymentInstallmentHint: {
-        count: 1,
-        firstInstallmentId: reminder.installment_id,
-        customerId: reminder.customer_id,
-        customerName: null,
-        dueDate: metadata.dueDate,
-        amount: metadata.amount,
-        searchQuery: reminder.remote_phone,
-      },
-      aiSessionMessages: [
-        {
-          role: 'assistant',
-          text: metadata.messageText,
-          at: sentAtIso,
-        },
-      ],
-      aiSessionUpdatedAt: sentAtIso,
     },
-  }
-
-  const { error } = await (supabase.from('whatsapp_conversation_states') as any)
-    .upsert(payload, { onConflict: 'channel_id,remote_phone' })
-
-  if (error) {
-    console.error('[WhatsApp] Failed to persist reminder conversation context:', error)
-  }
+  })
 }
 
 export type InstallmentReminderJobResult = {
@@ -744,19 +717,26 @@ async function dispatchDueReminders(
         })
         .eq('id', reminder.id)
 
-      await markReminderConversationContext(reminder, outbound.id, sentAtIso, {
-        messageText: currentMessageText,
-        dueDate: currentInstallment.data_vencimento.slice(0, 10),
-        amount: typeof (currentPayload as any)?.valorParcela === 'number'
-          ? (currentPayload as any).valorParcela
-          : null,
-        installmentNumber: typeof (currentPayload as any)?.numeroParcela === 'number'
-          ? (currentPayload as any).numeroParcela
-          : null,
-        totalInstallments: typeof (currentPayload as any)?.totalParcelas === 'number'
-          ? (currentPayload as any).totalParcelas
-          : null,
-      })
+      try {
+        await markReminderConversationContext(reminder, outbound.id, sentAtIso, {
+          messageText: currentMessageText,
+          dueDate: currentInstallment.data_vencimento.slice(0, 10),
+          amount: typeof (currentPayload as any)?.valorParcela === 'number'
+            ? (currentPayload as any).valorParcela
+            : null,
+          installmentNumber: typeof (currentPayload as any)?.numeroParcela === 'number'
+            ? (currentPayload as any).numeroParcela
+            : null,
+          totalInstallments: typeof (currentPayload as any)?.totalParcelas === 'number'
+            ? (currentPayload as any).totalParcelas
+            : null,
+        })
+      } catch (contextError) {
+        console.error('[WhatsApp] Lembrete enviado, mas o contexto da conversa nao foi salvo.', {
+          reminderId: reminder.id,
+          reason: contextError instanceof Error ? contextError.name : 'unknown',
+        })
+      }
 
       sent += 1
     } catch (sendError) {
