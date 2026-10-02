@@ -7,6 +7,7 @@ import { Json } from '@/lib/database.types'
 import { isValidWhatsAppInternalRequest } from '@/lib/whatsapp/internal-auth'
 import { extractWhatsAppCanonicalReply } from '@/lib/whatsapp/canonical'
 import { captureWhatsAppShadowOutbound } from '@/lib/whatsapp/redesign/shadow-ingestion'
+import { recordWhatsAppInboundProcessingEvent } from '@/lib/whatsapp/inbound-processing-trace'
 
 export const runtime = 'nodejs'
 
@@ -31,7 +32,7 @@ export async function POST(request: Request) {
 
     const supabase = createAdminClient()
     const { data: existing, error: existingError } = await (supabase.from('whatsapp_outbound_messages') as any)
-      .select('id, tenant_id, store_id, channel_id, remote_phone, provider_message_id, message_text, message_type, status, payload, sent_at')
+      .select('id, tenant_id, store_id, channel_id, inbound_message_id, remote_phone, provider_message_id, message_text, message_type, status, payload, sent_at')
       .eq('id', parsed.data.outboundMessageId)
       .maybeSingle()
 
@@ -41,12 +42,34 @@ export async function POST(request: Request) {
     }
 
     if (existing.status === 'sent' && parsed.data.status === 'failed') {
+      if (existing.inbound_message_id) {
+        await recordWhatsAppInboundProcessingEvent({
+          tenantId: existing.tenant_id,
+          storeId: existing.store_id,
+          channelId: existing.channel_id,
+          inboundMessageId: existing.inbound_message_id,
+          stage: 'delivery',
+          outcome: 'ignored_after_sent',
+          details: { messageType: existing.message_type, outboundId: existing.id },
+        })
+      }
       return NextResponse.json({ success: true, ignored: 'sent_already_recorded' })
     }
     if (parsed.data.status === 'sending' && existing.status !== 'pending') {
       console.info('[whatsapp_delivery]', JSON.stringify({
         outboundMessageId: existing.id, stage: 'claim', outcome: 'already_claimed', currentStatus: existing.status,
       }))
+      if (existing.inbound_message_id) {
+        await recordWhatsAppInboundProcessingEvent({
+          tenantId: existing.tenant_id,
+          storeId: existing.store_id,
+          channelId: existing.channel_id,
+          inboundMessageId: existing.inbound_message_id,
+          stage: 'delivery',
+          outcome: 'claim_rejected',
+          details: { messageType: existing.message_type, outboundId: existing.id, state: existing.status },
+        })
+      }
       return NextResponse.json({ success: true, claimed: false, currentStatus: existing.status })
     }
 
@@ -95,6 +118,23 @@ export async function POST(request: Request) {
         ? applied ? 'claimed' : 'already_claimed'
         : applied ? 'applied' : 'ignored',
     }))
+    if (existing.inbound_message_id) {
+      await recordWhatsAppInboundProcessingEvent({
+        tenantId: existing.tenant_id,
+        storeId: existing.store_id,
+        channelId: existing.channel_id,
+        inboundMessageId: existing.inbound_message_id,
+        stage: 'delivery',
+        outcome: parsed.data.status === 'sending'
+          ? applied ? 'claimed' : 'claim_rejected'
+          : applied ? parsed.data.status : 'update_ignored',
+        details: {
+          messageType: existing.message_type,
+          outboundId: existing.id,
+          state: parsed.data.status,
+        },
+      })
+    }
     if (sentAt && applied) {
       await captureWhatsAppShadowOutbound({
         channel: {

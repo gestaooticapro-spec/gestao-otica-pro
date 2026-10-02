@@ -642,6 +642,37 @@ export interface Database {
         }
       }
 
+      whatsapp_inbound_processing_events: {
+        Row: {
+          id: string
+          tenant_id: string
+          store_id: number
+          channel_id: number
+          inbound_message_id: number
+          stage: string
+          outcome: string
+          details: Json
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          store_id: number
+          channel_id: number
+          inbound_message_id: number
+          stage: string
+          outcome: string
+          details?: Json
+          created_at?: string
+        }
+        Update: {
+          stage?: string
+          outcome?: string
+          details?: Json
+        }
+        Relationships: []
+      }
+
       whatsapp_ai_logs: {
         Row: {
           id: string

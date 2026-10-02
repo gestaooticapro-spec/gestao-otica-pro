@@ -105,6 +105,7 @@ import {
   runStoreOneOrderStatusTurn,
   type StoreOneOrderLookupPlan,
 } from './redesign/order-status-live'
+import { recordWhatsAppInboundProcessingEvent } from './inbound-processing-trace'
 
 const SAME_STATUS_SILENCE_WINDOW_MS = 2 * 60 * 60 * 1000
 const HUMAN_PAUSE_MS = 60 * 60 * 1000
@@ -2403,6 +2404,25 @@ async function createOutbound(
       .update({ status: 'processed' })
       .eq('id', inboundMessageId)
     if (markProcessedError) throw markProcessedError
+    const canonical = extractWhatsAppCanonicalReply(payload)
+    await recordWhatsAppInboundProcessingEvent({
+      tenantId: channel.tenant_id,
+      storeId: channel.store_id,
+      channelId: channel.id,
+      inboundMessageId,
+      stage: 'outbound_queue',
+      outcome: 'reused_existing',
+      details: { outboundId: existingOutbound.id, messageType },
+    })
+    await recordWhatsAppInboundProcessingEvent({
+      tenantId: channel.tenant_id,
+      storeId: channel.store_id,
+      channelId: channel.id,
+      inboundMessageId,
+      stage: 'inbound_terminal',
+      outcome: 'processed',
+      details: { action: canonical?.action ?? null, intent: canonical?.intent ?? null },
+    })
     return { shouldReply: false, duplicate: true }
   }
 
@@ -2434,15 +2454,58 @@ async function createOutbound(
         .update({ status: 'processed' })
         .eq('id', inboundMessageId)
       if (markProcessedError) throw markProcessedError
+      await recordWhatsAppInboundProcessingEvent({
+        tenantId: channel.tenant_id,
+        storeId: channel.store_id,
+        channelId: channel.id,
+        inboundMessageId,
+        stage: 'outbound_queue',
+        outcome: 'reused_existing',
+        details: { outboundId: racedOutbound.id, messageType },
+      })
+      await recordWhatsAppInboundProcessingEvent({
+        tenantId: channel.tenant_id,
+        storeId: channel.store_id,
+        channelId: channel.id,
+        inboundMessageId,
+        stage: 'inbound_terminal',
+        outcome: 'processed',
+      })
       return { shouldReply: false, duplicate: true }
     }
   }
   if (error) throw error
 
+  const canonical = extractWhatsAppCanonicalReply(payload)
+  await recordWhatsAppInboundProcessingEvent({
+    tenantId: channel.tenant_id,
+    storeId: channel.store_id,
+    channelId: channel.id,
+    inboundMessageId,
+    stage: 'outbound_queue',
+    outcome: 'created',
+    details: {
+      action: canonical?.action ?? null,
+      intent: canonical?.intent ?? null,
+      messageType,
+      outboundId: outbound.id,
+    },
+  })
+
   const { error: markProcessedError } = await (supabase.from('whatsapp_inbound_messages') as any)
     .update({ status: 'processed' })
     .eq('id', inboundMessageId)
   if (markProcessedError) throw markProcessedError
+
+  await recordWhatsAppInboundProcessingEvent({
+    tenantId: channel.tenant_id,
+    storeId: channel.store_id,
+    channelId: channel.id,
+    inboundMessageId,
+    stage: 'inbound_terminal',
+    outcome: 'processed',
+    details: { outboundId: outbound.id },
+  })
 
   return {
     shouldReply: true,
@@ -2481,6 +2544,27 @@ async function ignoreInbound(
     .update(updates)
     .eq('id', inboundMessageId)
   if (error) throw error
+
+  const { data: inboundScope } = await (supabase.from('whatsapp_inbound_messages') as any)
+    .select('tenant_id, store_id, channel_id')
+    .eq('id', inboundMessageId)
+    .maybeSingle()
+  if (inboundScope) {
+    await recordWhatsAppInboundProcessingEvent({
+      tenantId: inboundScope.tenant_id,
+      storeId: inboundScope.store_id,
+      channelId: inboundScope.channel_id,
+      inboundMessageId,
+      stage: 'inbound_terminal',
+      outcome: 'ignored',
+      details: diagnostic ? {
+        action: diagnostic.action ?? null,
+        intent: diagnostic.intent ?? null,
+        reason: diagnostic.reason,
+        route: diagnostic.route ?? null,
+      } : undefined,
+    })
+  }
 
   return { shouldReply: false }
 }
@@ -2857,10 +2941,26 @@ async function logAiResult(
     console.error('Failed to log AI result', err)
   }
 
+  await recordWhatsAppInboundProcessingEvent({
+    tenantId: channel.tenant_id,
+    storeId: channel.store_id,
+    channelId: channel.id,
+    inboundMessageId: inboundId,
+    stage: 'ai_call',
+    outcome: result.success ? 'succeeded' : 'failed',
+    details: {
+      task,
+      provider: diagnostic.provider,
+      model: diagnostic.model,
+      latencyMs: diagnostic.latencyMs,
+      success: diagnostic.success,
+    },
+  })
+
   return diagnostic
 }
 
-export async function resolveCustomerStatus(
+async function resolveCustomerStatusInternal(
   input: CustomerStatusRequest
 ): Promise<CustomerStatusResponse> {
   const channel = await findActiveChannel(input.instanceKey)
@@ -2925,11 +3025,33 @@ export async function resolveCustomerStatus(
 
     const oldEnoughToResume = existingInbound?.status === 'received'
       && new Date(existingInbound.created_at).getTime() < Date.now() - 90_000
-    if (!oldEnoughToResume) return { shouldReply: false, duplicate: true }
+    if (!oldEnoughToResume) {
+      if (existingInbound) {
+        await recordWhatsAppInboundProcessingEvent({
+          tenantId: channel.tenant_id,
+          storeId: channel.store_id,
+          channelId: channel.id,
+          inboundMessageId: existingInbound.id,
+          stage: 'dedupe',
+          outcome: 'recent_duplicate_skipped',
+          details: { duplicate: true, state: existingInbound.status },
+        })
+      }
+      return { shouldReply: false, duplicate: true }
+    }
     inbound = existingInbound
   }
   if (inboundError && inboundError.code !== '23505') throw inboundError
   if (!inbound) throw new Error('Inbound do WhatsApp nao foi criado nem recuperado.')
+
+  await recordWhatsAppInboundProcessingEvent({
+    tenantId: channel.tenant_id,
+    storeId: channel.store_id,
+    channelId: channel.id,
+    inboundMessageId: inbound.id,
+    stage: 'inbound',
+    outcome: insertedInbound ? 'stored' : 'resumed_existing',
+  })
 
   const shadowCapture = await captureWhatsAppShadowInbound({
     channel,
@@ -3012,6 +3134,21 @@ export async function resolveCustomerStatus(
     state,
     controlMode,
     inboundMessageId: inbound.id,
+  })
+  const humanControlBlocked = controlMode === 'force_human'
+    || ['human_pause', 'waiting_human_after_attachment'].includes(state?.state ?? '')
+  await recordWhatsAppInboundProcessingEvent({
+    tenantId: channel.tenant_id,
+    storeId: channel.store_id,
+    channelId: channel.id,
+    inboundMessageId: inbound.id,
+    stage: 'control_gate',
+    outcome: humanControlBlocked ? 'blocked' : 'allowed',
+    details: {
+      controlMode,
+      reason: humanControlBlocked ? 'human_control_active' : null,
+      state: state?.state ?? null,
+    },
   })
   const storeProfile = await loadStoreProfile(channel.store_id)
   const settings = ((storeProfile.settings || {}) as StoreSettings) || {}
@@ -3163,6 +3300,19 @@ export async function resolveCustomerStatus(
           || classification.entities.customerName
           || null
         const decision = WhatsAppSystemDecisionSchema.parse(shadowProcessing.decision)
+        await recordWhatsAppInboundProcessingEvent({
+          tenantId: channel.tenant_id,
+          storeId: channel.store_id,
+          channelId: channel.id,
+          inboundMessageId: inbound.id,
+          stage: 'decision',
+          outcome: decision.action,
+          details: {
+            action: decision.action,
+            intent: classification.intent,
+            route: 'store_one_safe_reply_pilot',
+          },
+        })
         const currentTurnMessageIds = new Set(turnContext.turnMessages.map((message) => message.id))
         redesignConversationHistory = turnContext.memory.messages
           .filter((message) => !currentTurnMessageIds.has(message.id))
@@ -3236,6 +3386,20 @@ export async function resolveCustomerStatus(
         pilotReply,
         generationResult ?? { success: false }
       )
+      await recordWhatsAppInboundProcessingEvent({
+        tenantId: channel.tenant_id,
+        storeId: channel.store_id,
+        channelId: channel.id,
+        inboundMessageId: inbound.id,
+        stage: 'reply_validation',
+        outcome: renderedReply.shouldSend ? 'accepted' : 'suppressed',
+        details: {
+          action: pilotReply.action,
+          intent: pilotReply.replyInput.intent,
+          reason: renderedReply.reason ?? null,
+          validation: renderedReply.generatedBy,
+        },
+      })
       if (!renderedReply.shouldSend) {
         console.warn(`[WhatsApp redesign pilot] Resposta suprimida: ${renderedReply.reason}`)
         return ignoreInbound(inbound.id, {
@@ -5761,6 +5925,41 @@ export async function resolveCustomerStatus(
       }),
     }))
   })
+}
+
+export async function resolveCustomerStatus(
+  input: CustomerStatusRequest
+): Promise<CustomerStatusResponse> {
+  try {
+    return await resolveCustomerStatusInternal(input)
+  } catch (error) {
+    try {
+      const channel = await findActiveChannel(input.instanceKey)
+      if (channel && input.providerMessageId) {
+        const supabase = createAdminClient()
+        const { data: inbound } = await (supabase.from('whatsapp_inbound_messages') as any)
+          .select('id')
+          .eq('channel_id', channel.id)
+          .eq('provider_message_id', input.providerMessageId)
+          .maybeSingle()
+
+        if (inbound) {
+          await recordWhatsAppInboundProcessingEvent({
+            tenantId: channel.tenant_id,
+            storeId: channel.store_id,
+            channelId: channel.id,
+            inboundMessageId: inbound.id,
+            stage: 'processing_error',
+            outcome: 'failed',
+            details: { errorName: error instanceof Error ? error.name : 'UnknownError' },
+          })
+        }
+      }
+    } catch {
+      console.warn('[whatsapp_trace] failure_persist_failed')
+    }
+    throw error
+  }
 }
 
 export async function simulateCustomerStatus(
