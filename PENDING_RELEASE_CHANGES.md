@@ -14,3 +14,4 @@
 - O texto de Visagismo explica somente os formatos e as proporcoes das armacoes, sem recomendacoes de cores.
 - A Loja 1 pode enviar uma mensagem unica, identificada como teste, para validar o contexto de conversa do lembrete de cobranca da parcela reservada; o disparo confirma telefone, elegibilidade, opt-out e pausa humana sem alterar o registro normal do lembrete.
 - A memória do redesign usa o horário do WhatsApp em cada mensagem agrupada, sem depender do relógio da VPS.
+- Encaminhamentos da IAra continuam respondendo quando a IA usa uma apresentação natural com o nome fora da ordem esperada; a mensagem explicita a identidade da assistente antes de passar pelas demais validações.

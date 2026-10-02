@@ -255,7 +255,7 @@ test('geracao contextual preserva a marca e nunca afirma disponibilidade em esto
   const prompt = buildWhatsAppRedesignReplyPrompt(candidate.replyInput)
   assert.match(prompt, /escreva uma resposta nova e contextual/)
   assert.match(prompt, /nunca confirme nem sugira disponibilidade em estoque/)
-  assert.match(prompt, /identifique-se explicitamente pelo nome IAra/)
+  assert.match(prompt, /frase exata.*Sou a IAra, assistente virtual da otica/)
   assert.match(prompt, /lentes Varilux/)
   assert.doesNotMatch(prompt, /Fallback de contingência para lentes Varilux/)
 
@@ -315,6 +315,14 @@ test('handoff gerado precisa preservar o encaminhamento humano', () => {
   assert.equal(missingHandoff.shouldSend, false)
   assert.equal(missingHandoff.generatedBy, 'suppressed')
   assert.equal(missingHandoff.reason, 'handoff_omitted')
+
+  const reorderedIdentity = resolveStoreOnePilotReplyText(candidate, {
+    success: true,
+    data: { reply_text: 'Olá, Iara aqui! Vou pedir para a equipe conferir essa informação.' },
+  })
+  assert.equal(reorderedIdentity.shouldSend, true)
+  assert.equal(reorderedIdentity.generatedBy, 'ai')
+  assert.equal(reorderedIdentity.text, 'Sou a IAra, assistente virtual da ótica. Vou pedir para a equipe conferir essa informação.')
 })
 
 test('Pix gerado inclui a chave oficial e e suprimido se a resposta falhar na validacao', () => {

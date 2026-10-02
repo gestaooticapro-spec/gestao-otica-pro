@@ -197,12 +197,19 @@ export function resolveStoreOnePilotReplyText(
     return suppressed('provider_failure')
   }
 
-  const replyText = result.data.reply_text.trim()
-  const normalizedReply = normalizeForComparison(replyText)
+  let replyText = result.data.reply_text.trim()
+  let normalizedReply = normalizeForComparison(replyText)
   const productMention = candidate.replyInput.facts.productMention
-  if (candidate.replyInput.facts.mustIdentifyIara === true
-    && !/\b(?:eu sou |sou |aqui e |soy |yo soy |i am |i m |this is )(?:a |la )?(?:assistente virtual )?iara\b/u.test(normalizedReply)) {
-    return suppressed('assistant_identity_omitted')
+  if (candidate.replyInput.facts.mustIdentifyIara === true) {
+    const hasExplicitIdentity = /\b(?:eu sou |sou |aqui e |soy |yo soy |i am |i m |this is )(?:a |la )?(?:assistente virtual )?iara\b/u.test(normalizedReply)
+    if (!hasExplicitIdentity) {
+      const misorderedIntroduction = replyText.match(/^(?:(?:ol[aá]|oi)\s*,?\s*)?iara\s+aqui[!.,;:]?\s*/iu)
+      if (!misorderedIntroduction) return suppressed('assistant_identity_omitted')
+
+      const continuation = replyText.slice(misorderedIntroduction[0].length).trim()
+      replyText = `Sou a IAra, assistente virtual da ótica.${continuation ? ` ${continuation}` : ''}`
+      normalizedReply = normalizeForComparison(replyText)
+    }
   }
 
   if (candidate.replyInput.intent === 'product_availability'
