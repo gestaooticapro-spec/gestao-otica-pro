@@ -4,8 +4,9 @@ import { Json } from '@/lib/database.types'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getInstallmentOutstanding } from '@/lib/installment-balance'
 import { getStoreModules, StoreSettings, WhatsAppInstallmentDueReminderSettings } from '@/lib/store-modules'
-import { phonesMatch, toEvolutionNumber } from '@/lib/whatsapp/phone'
+import { getPhoneVariants, phonesMatch, toEvolutionNumber } from '@/lib/whatsapp/phone'
 import { recordAutomatedOutboundConversationContext } from '@/lib/whatsapp/automated-conversation-context'
+import { isOperatorPauseActive } from '@/lib/whatsapp/human-control-policy'
 
 const SAO_PAULO_TIME_ZONE = 'America/Sao_Paulo'
 const DEFAULT_DAYS_BEFORE_DUE = 2
@@ -15,6 +16,7 @@ const SCHEDULE_SPACING_MINUTES = 5
 const DEFAULT_DISPATCH_LIMIT = 1
 const PAYMENT_REMINDER_CONTEXT_MS = 48 * 60 * 60 * 1000
 const STORE_ONE_INSTALLMENT_REMINDER_TEST_ID = 2838
+const STORE_ONE_APARECIDA_CONVERSATION_TEST_KEY = 'store1-aparecida-reminder-context-20261002'
 
 const LEGACY_INSTALLMENT_DUE_REMINDER_TEMPLATE = [
   'Olá, {nome}! Passando para lembrar que a parcela {numero_parcela} do {paciente} vence em {data_vencimento}.',
@@ -773,6 +775,214 @@ export type InstallmentReminderTestReason =
 export type InstallmentReminderTestResult =
   | { outcome: 'accepted'; reminderId: number; installmentId: number }
   | { outcome: 'not_sent'; reason: InstallmentReminderTestReason }
+
+export type InstallmentReminderConversationTestReason =
+  | 'invalid_recipient'
+  | 'channel_unavailable_or_ambiguous'
+  | 'reminder_disabled'
+  | 'outside_business_hours'
+  | 'installment_not_found'
+  | 'installment_not_eligible'
+  | 'recipient_mismatch'
+  | 'recipient_opted_out'
+  | 'human_control_active'
+  | 'test_already_sent'
+  | 'delivery_pending_review'
+
+export type InstallmentReminderConversationTestResult =
+  | { outcome: 'accepted'; outboundMessageId: number; installmentId: number; contextSaved: boolean }
+  | { outcome: 'not_sent'; reason: InstallmentReminderConversationTestReason }
+
+/**
+ * Sends one explicitly labeled conversation probe for the reserved Store 1 installment.
+ * It does not create or modify a billing reminder row, and its fixed test key prevents repeats.
+ */
+export async function triggerStoreOneInstallmentReminderConversationTest(input: {
+  expectedRecipient: string
+}, now = new Date()): Promise<InstallmentReminderConversationTestResult> {
+  const expectedDigits = input.expectedRecipient.replace(/\D/g, '')
+  const expectedPhone = toEvolutionNumber(input.expectedRecipient)
+  if (expectedDigits.length < 10 || !expectedPhone) {
+    return { outcome: 'not_sent', reason: 'invalid_recipient' }
+  }
+
+  if (!isBusinessTime(now)) {
+    return { outcome: 'not_sent', reason: 'outside_business_hours' }
+  }
+
+  const supabase = createAdminClient()
+  const { data: channels, error: channelsError } = await (supabase.from('whatsapp_store_channels') as any)
+    .select('id, tenant_id, store_id, instance_key, phone_number, is_active, connection_status, stores(settings)')
+    .eq('store_id', 1)
+    .eq('provider', 'evolution')
+    .eq('is_active', true)
+    .eq('connection_status', 'connected')
+
+  if (channelsError) throw channelsError
+  if (!Array.isArray(channels) || channels.length !== 1) {
+    return { outcome: 'not_sent', reason: 'channel_unavailable_or_ambiguous' }
+  }
+
+  const channel = channels[0] as ChannelRow
+  const settings = reminderSettingsFromChannel(channel)
+  if (!settings) return { outcome: 'not_sent', reason: 'reminder_disabled' }
+
+  const installment = await loadInstallmentForDispatch(1, STORE_ONE_INSTALLMENT_REMINDER_TEST_ID)
+  if (!installment || installment.store_id !== 1
+    || !/^aparecida(?:\s|$)/i.test(installment.customers?.full_name?.trim() || '')) {
+    return { outcome: 'not_sent', reason: 'installment_not_found' }
+  }
+
+  const currentOutstanding = getInstallmentOutstanding(installment)
+  const dueDate = installment.data_vencimento.slice(0, 10)
+  const targetDates = getInstallmentReminderTargetDates(zonedParts(now).date, settings.days_before_due)
+  const saleStatus = String(installment.financiamento_loja?.vendas?.status || '').toLowerCase()
+  if (String(installment.status || '').toLowerCase() !== 'pendente'
+    || saleStatus === 'cancelada'
+    || currentOutstanding <= 0.01
+    || !targetDates.includes(dueDate)) {
+    return { outcome: 'not_sent', reason: 'installment_not_eligible' }
+  }
+
+  const customerPhone = toEvolutionNumber(installment.customers?.fone_movel || installment.customers?.phone)
+  if (!customerPhone) return { outcome: 'not_sent', reason: 'installment_not_eligible' }
+  if (!phonesMatch(expectedPhone, customerPhone)) {
+    return { outcome: 'not_sent', reason: 'recipient_mismatch' }
+  }
+
+  if (await isCustomerForcedToHuman(channel.id, customerPhone)) {
+    return { outcome: 'not_sent', reason: 'human_control_active' }
+  }
+
+  const phoneVariants = [...getPhoneVariants(customerPhone)]
+  const { data: states, error: statesError } = await (supabase.from('whatsapp_conversation_states') as any)
+    .select('state, updated_at, expires_at, metadata')
+    .eq('channel_id', channel.id)
+    .in('remote_phone', phoneVariants)
+  if (statesError) throw statesError
+  const nowMs = now.getTime()
+  const hasActiveOperatorPause = (states ?? []).some((state: {
+    state: string
+    updated_at: string
+    expires_at: string
+    metadata: Json | null
+  }) => isOperatorPauseActive({
+    state: state.state,
+    metadata: state.metadata,
+    updatedAt: state.updated_at,
+    nowMs,
+    pauseMs: 2 * 60 * 60 * 1000,
+  }))
+  if (hasActiveOperatorPause) return { outcome: 'not_sent', reason: 'human_control_active' }
+
+  const optedOutPhones = await loadInstallmentReminderOptOutPhones(1)
+  if (optedOutPhones.some((phone) => phonesMatch(phone, customerPhone))) {
+    return { outcome: 'not_sent', reason: 'recipient_opted_out' }
+  }
+
+  const { data: previousTest, error: previousTestError } = await (supabase.from('whatsapp_outbound_messages') as any)
+    .select('id, status')
+    .eq('channel_id', channel.id)
+    .eq('message_type', 'installment_due_reminder')
+    .contains('payload', { testKey: STORE_ONE_APARECIDA_CONVERSATION_TEST_KEY })
+    .limit(1)
+    .maybeSingle()
+  if (previousTestError) throw previousTestError
+  if (previousTest?.id) return { outcome: 'not_sent', reason: 'test_already_sent' }
+
+  const currentVendaId = installment.financiamento_loja?.venda_id ?? null
+  const patientNames = currentVendaId
+    ? await loadPatientNames(1, [currentVendaId])
+    : new Map<number, string | null>()
+  const regularMessage = buildMessage(
+    settings.template,
+    installment,
+    currentVendaId ? patientNames.get(currentVendaId) ?? null : null
+  )
+  const messageText = regularMessage
+  const sentAtIso = now.toISOString()
+  const { data: outbound, error: outboundError } = await (supabase.from('whatsapp_outbound_messages') as any)
+    .insert({
+      tenant_id: channel.tenant_id,
+      store_id: channel.store_id,
+      channel_id: channel.id,
+      inbound_message_id: null,
+      remote_phone: customerPhone,
+      message_text: messageText,
+      message_type: 'installment_due_reminder',
+      status: 'pending',
+      payload: {
+        testDispatch: true,
+        testKey: STORE_ONE_APARECIDA_CONVERSATION_TEST_KEY,
+        installmentId: installment.id,
+        customerId: installment.customer_id,
+        dueDate,
+        amount: currentOutstanding,
+      },
+    })
+    .select('id')
+    .single()
+  if (outboundError) throw outboundError
+
+  try {
+    await automationSendRequest({
+      instanceKey: channel.instance_key,
+      phone: customerPhone,
+      text: messageText,
+      outboundMessageId: Number(outbound.id),
+    })
+  } catch (sendError) {
+    const detail = sendError instanceof Error ? sendError.message : String(sendError)
+    await (supabase.from('whatsapp_outbound_messages') as any)
+      .update({ error_message: detail.slice(0, 2000) })
+      .eq('id', outbound.id)
+    return { outcome: 'not_sent', reason: 'delivery_pending_review' }
+  }
+
+  let contextSaved = false
+  try {
+    contextSaved = await recordAutomatedOutboundConversationContext({
+      tenantId: channel.tenant_id,
+      storeId: channel.store_id,
+      channelId: channel.id,
+      remotePhone: customerPhone,
+      sentAtIso,
+      retentionMs: PAYMENT_REMINDER_CONTEXT_MS,
+      messageText,
+      metadata: {
+        reason: 'installment_due_reminder_test_sent',
+        lastAction: 'installment_due_reminder',
+        lastOutboundType: 'installment_due_reminder',
+        lastDecisionAt: sentAtIso,
+        paymentReminderContext: {
+          testKey: STORE_ONE_APARECIDA_CONVERSATION_TEST_KEY,
+          installmentId: installment.id,
+          customerId: installment.customer_id,
+          outboundMessageId: Number(outbound.id),
+          sentAt: sentAtIso,
+          expiresAt: new Date(Date.parse(sentAtIso) + PAYMENT_REMINDER_CONTEXT_MS).toISOString(),
+          dueDate,
+          amount: currentOutstanding,
+          installmentNumber: installment.numero_parcela,
+          totalInstallments: installment.financiamento_loja?.quantidade_parcelas ?? null,
+          testDispatch: true,
+        },
+      },
+    }, supabase)
+  } catch (contextError) {
+    console.error('[WhatsApp] Teste de lembrete enviado, mas o contexto da conversa nao foi salvo.', {
+      outboundMessageId: outbound.id,
+      reason: contextError instanceof Error ? contextError.name : 'unknown',
+    })
+  }
+
+  return {
+    outcome: 'accepted',
+    outboundMessageId: Number(outbound.id),
+    installmentId: installment.id,
+    contextSaved,
+  }
+}
 
 /**
  * One-off, authenticated test path for Loja 1's reserved installment.
