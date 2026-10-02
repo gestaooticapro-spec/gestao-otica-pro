@@ -49,7 +49,7 @@ type AggregatedMessage = {
   providerMessageId?: unknown
   messageText?: unknown
   attachmentKind?: unknown
-  receivedAt?: unknown
+  providerCreatedAt?: unknown
 }
 
 export type WhatsAppShadowTurnEnvelope = {
@@ -111,7 +111,7 @@ export function extractShadowInboundMessages(
         role: 'customer' as const,
         kind,
         text: normalizedText(candidate.messageText),
-        occurredAt: normalizedDate(candidate.receivedAt, fallbackAt),
+        occurredAt: normalizedDate(candidate.providerCreatedAt, fallbackAt),
         metadata: {
           aggregated: true,
           attachmentKind: candidate.attachmentKind ?? null,

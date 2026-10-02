@@ -346,7 +346,7 @@ function buildAggregatedInboundPayload(messages) {
       providerMessageId: message.providerMessageId,
       messageText: message.messageText,
       attachmentKind: message.attachmentKind || null,
-      receivedAt: message.receivedAt,
+      providerCreatedAt: message.providerCreatedAt,
     })),
   }
 }
@@ -1117,7 +1117,6 @@ function enqueueBufferedInbound(instanceKey, inbound) {
     messageText: inbound.messageText,
     attachmentKind: inbound.attachmentKind,
     providerCreatedAt: inbound.providerCreatedAt,
-    receivedAt: new Date().toISOString(),
   })
   entry.providerMessageIds.add(inbound.providerMessageId)
   inboundBuffers.set(key, entry)
