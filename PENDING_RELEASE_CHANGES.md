@@ -1,5 +1,8 @@
 # Alterações pendentes para o próximo deploy
 
+- O pagamento da mensalidade exibe o QR Code no celular e informa com clareza quando os dados Pix ainda não estão disponíveis.
+- Os recibos de parcela enviados pelo WhatsApp mostram somente o valor recebido naquela operação, sem incluir pagamentos anteriores da mesma parcela.
+
 - Mensagens de WhatsApp que o webhook não entregar passam a ser recuperadas em cerca de cinco minutos.
 - Na Loja 1, consultar a OS de outra pessoa não troca a identificação associada ao telefone; o vínculo automático exige correspondência única com o telefone cadastrado.
 - Na Loja 1, perguntas sobre o andamento dos óculos consultam o pedido e mantêm o contexto quando o cliente informa o número ou CPF. Havendo até duas OS, a resposta informa o número, o nome do dependente ou do cliente cadastrado e a situação de cada uma; se a IA omitir um nome confirmado, ele é incluído na frase da OS correspondente e a resposta é validada novamente. Sem nome disponível, não atribui a OS a um titular genérico. Se o pedido informado não for localizado, a equipe continua a verificação sem repetir a pergunta.

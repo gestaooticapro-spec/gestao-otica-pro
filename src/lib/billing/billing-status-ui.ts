@@ -80,9 +80,15 @@ export function getBillingBannerPresentation(status: BillingBannerStatus, now = 
         ? `Sua mensalidade venceu em ${paidUntil}. Seu acesso será bloqueado em ${daysUntilBlock} ${daysUntilBlock === 1 ? 'dia' : 'dias'}. Regularize para evitar a interrupção.`
         : `Sua mensalidade venceu em ${paidUntil}. Regularize o pagamento para evitar bloqueio de novas vendas.`
     } else if (isDueToday) {
-      message = 'Sua mensalidade vence hoje. Use o QR Code para realizar o pagamento por Pix.'
+      message = hasPayment
+        ? 'Sua mensalidade vence hoje. Use o QR Code para realizar o pagamento por Pix.'
+        : 'Sua mensalidade vence hoje, mas os dados para pagamento Pix ainda não estão disponíveis.'
     } else {
-      message = `Sua mensalidade vence em ${paidUntil}. O QR Code já está disponível para pagamento antecipado.`
+      message = canPay
+        ? `Sua mensalidade vence em ${paidUntil}. O QR Code já está disponível para pagamento antecipado.`
+        : hasPayment
+          ? `Sua mensalidade vence em ${paidUntil}. A opção de pagamento ficará disponível nos dois dias antes do vencimento.`
+          : `Sua mensalidade vence em ${paidUntil}. Os dados para pagamento Pix ainda não estão disponíveis.`
     }
   } else {
     message = 'Existe uma mensalidade pendente.'

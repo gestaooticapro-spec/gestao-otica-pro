@@ -964,8 +964,11 @@ export async function sendInstallmentReceiptWhatsApp(input: SendInstallmentRecei
     }
 
     const { data: installmentPayments, error: paymentsError } = await (supabaseAdmin.from('pagamentos') as any)
-      .select('valor_pago, created_at, data_pagamento')
+      .select('id, valor_pago, created_at, data_pagamento, receipt_operation_id')
       .eq('parcela_id', installmentId)
+      .eq('store_id', storeId)
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
 
     if (paymentsError) throw paymentsError
     if (installment.status !== 'Pago' && (!installmentPayments || installmentPayments.length === 0)) {
@@ -976,6 +979,19 @@ export async function sendInstallmentReceiptWhatsApp(input: SendInstallmentRecei
         shouldOpenExternal: false,
       }
     }
+
+    const latestInstallmentPayment = installmentPayments?.[installmentPayments.length - 1]
+    const latestReceiptOperationId = latestInstallmentPayment?.receipt_operation_id == null
+      ? null
+      : Number(latestInstallmentPayment.receipt_operation_id)
+    const receiptPayments = latestReceiptOperationId
+      ? (installmentPayments || []).filter((payment: any) => Number(payment.receipt_operation_id) === latestReceiptOperationId)
+      : installmentPayments || []
+    const receiptAmount = receiptPayments.reduce(
+      (total: number, payment: any) => total + Number(payment.valor_pago || 0),
+      0
+    )
+    const latestReceiptPayment = receiptPayments[receiptPayments.length - 1]
 
     const remotePhone = customer.fone_movel || customer.phone
     if (!remotePhone) {
@@ -992,15 +1008,9 @@ export async function sendInstallmentReceiptWhatsApp(input: SendInstallmentRecei
       customerName: customer.full_name,
       installmentNumber: installment.numero_parcela,
       totalInstallments: totalInstallments || 1,
-      amount: (() => {
-        const receivedAmount = (installmentPayments || []).reduce(
-          (total: number, payment: any) => total + Number(payment.valor_pago || 0),
-          0
-        )
-        return receivedAmount > 0 ? Number(receivedAmount.toFixed(2)) : installment.valor_parcela
-      })(),
+      amount: receiptAmount > 0 ? Number(receiptAmount.toFixed(2)) : installment.valor_parcela,
       dueDate: installment.data_vencimento,
-      paymentDate: installment.data_pagamento || installmentPayments?.[installmentPayments.length - 1]?.data_pagamento || installmentPayments?.[installmentPayments.length - 1]?.created_at || new Date().toISOString(),
+      paymentDate: latestReceiptPayment?.data_pagamento || latestReceiptPayment?.created_at || installment.data_pagamento || new Date().toISOString(),
       isReprint: Boolean(installment.receipt_printed_at),
       store: storeProfile,
     })
@@ -1021,6 +1031,8 @@ export async function sendInstallmentReceiptWhatsApp(input: SendInstallmentRecei
         financingId: financing.id,
         saleId: financing.venda_id,
         customerId: customer.id,
+        receiptOperationId: latestReceiptOperationId,
+        receiptAmount: Number((receiptAmount > 0 ? receiptAmount : Number(installment.valor_parcela || 0)).toFixed(2)),
         documentType: 'installment_receipt',
       },
     }, supabaseAdmin)
