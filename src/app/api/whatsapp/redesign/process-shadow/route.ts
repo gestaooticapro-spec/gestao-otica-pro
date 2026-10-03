@@ -1,31 +1,12 @@
-import { timingSafeEqual } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { processWhatsAppRedesignShadowTurns } from '@/lib/whatsapp/redesign/shadow-processor'
+import { isWhatsAppRedesignInternalRequestAuthorized } from '@/lib/whatsapp/redesign/internal-auth'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
-function safeEquals(left: string, right: string) {
-  const leftBuffer = Buffer.from(left)
-  const rightBuffer = Buffer.from(right)
-  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer)
-}
-
-function isAuthorized(request: Request) {
-  const authorization = request.headers.get('authorization') ?? ''
-  const providedSecret = authorization.startsWith('Bearer ')
-    ? authorization.slice('Bearer '.length)
-    : ''
-  const allowedSecrets = [
-    process.env.WHATSAPP_INTERNAL_SECRET,
-    process.env.CRON_SECRET,
-  ].filter((value): value is string => Boolean(value))
-
-  return Boolean(providedSecret) && allowedSecrets.some((secret) => safeEquals(providedSecret, secret))
-}
-
 async function run(request: Request) {
-  if (!isAuthorized(request)) {
+  if (!isWhatsAppRedesignInternalRequestAuthorized(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

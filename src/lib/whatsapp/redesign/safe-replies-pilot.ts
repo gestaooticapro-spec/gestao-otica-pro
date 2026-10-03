@@ -6,6 +6,7 @@ import {
   type WhatsAppSystemDecisionDraft,
 } from './contracts'
 import { isExplicitOfficialPixRequest } from './system-decision'
+import { isStoreOneFullRedesignEnabled } from './rollout-policy'
 import {
   isExplicitHumanHandoffRequest,
   isExplicitOrderStatusOrReadinessQuestion,
@@ -15,7 +16,7 @@ import {
 export type PilotSafeReply = {
   action: 'answer_store_hours' | 'answer_store_location' | 'answer_official_pix'
     | 'human_handoff' | 'repeat_handoff' | 'acknowledge_attachment'
-    | 'recognize_continuation'
+    | 'recognize_continuation' | 'conservative_fallback'
   replyInput: WhatsAppRedesignReplyInput
   messageType: 'store_hours' | 'store_location' | 'payment_pix_info'
     | 'human_handoff' | 'attachment_handoff' | 'ai_clarification' | 'ai_greeting'
@@ -30,9 +31,9 @@ export function isStoreOneSafeRepliesPilotEnabled(
   storeId: number,
   settings: WhatsAppAutomationSettings | undefined
 ) {
-  return storeId === 1
+  return isStoreOneFullRedesignEnabled(storeId, settings) || (storeId === 1
     && settings?.ai_redesign?.mode === 'shadow'
-    && settings.ai_redesign.safe_replies_enabled === true
+    && settings.ai_redesign.safe_replies_enabled === true)
 }
 
 export function shouldLookupOrderStatusInStoreOnePilot(input: {
@@ -110,8 +111,15 @@ function selectStoreOnePilotSafeReplyBase(input: {
   turnMessages: Array<{ kind: string; text: string | null }>
   officialPixKey: string | null
   officialPixHolder: string | null
+  fullRouting?: boolean
 }): PilotSafeReplyBase | null {
   const { classification, decision, turnMessages } = input
+
+  if (input.fullRouting && decision.action === 'conservative_fallback'
+    && classification.intent === 'greeting'
+    && classification.confidence >= WHATSAPP_REDESIGN_MIN_CONFIDENCE) {
+    return { action: 'conservative_fallback', messageType: 'ai_greeting' }
+  }
 
   // O classificador nao possui ainda intent Pix. A excecao exige uma pergunta
   // literal e exclusiva pela chave; valores, parcelas e comprovantes seguem no legado.

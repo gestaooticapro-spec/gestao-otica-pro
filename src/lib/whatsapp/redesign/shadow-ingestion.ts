@@ -235,8 +235,9 @@ export async function resolveCachedWhatsAppRedesignMode(
 
   const loadPromise = loader(storeId)
     .then((mode) => {
-      rememberMode(storeId, WhatsAppRedesignModeSchema.parse(mode), now)
-      return mode
+      const scopedMode = mode === 'redesign' && storeId !== 1 ? 'legacy' : mode
+      rememberMode(storeId, WhatsAppRedesignModeSchema.parse(scopedMode), now)
+      return scopedMode
     })
     .finally(() => {
       pendingModeLoads.delete(storeId)

@@ -75,6 +75,7 @@ CollectionAPIPixSicredi.json
 !supabase_migration_*.sql
 !supabase/migrations/*.sql
 !supabase/tests/whatsapp_redesign_stage2_validation.sql
+!supabase/tests/whatsapp_full_redesign_validation.sql
 !supabase/tests/whatsapp_outbound_per_inbound_idempotency.sql
 !supabase/tests/receivable_customer_search_validation.sql
 !src/lib/database/*.sql

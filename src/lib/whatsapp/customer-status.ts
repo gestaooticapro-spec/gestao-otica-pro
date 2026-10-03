@@ -80,6 +80,7 @@ import {
 } from './redesign/shadow-ingestion'
 import { WhatsAppRedesignConversationStore } from './redesign/store'
 import { processWhatsAppRedesignShadowTurns } from './redesign/shadow-processor'
+import { isStoreOneFullRedesignEnabled } from './redesign/rollout-policy'
 import {
   enforceWhatsAppIntentEvidence,
   isExplicitHumanHandoffRequest,
@@ -3117,8 +3118,15 @@ async function resolveCustomerStatusInternal(
   }
 
   const automationSettings = await loadStoreWhatsAppSettings(channel.store_id)
+  const fullRedesignEnabled = isStoreOneFullRedesignEnabled(channel.store_id, automationSettings)
   if (!isWhatsAppAutomationEnabled(automationSettings)) {
     return ignoreInbound(inbound.id)
+  }
+  if (fullRedesignEnabled && !isWhatsAppAiResponderEnabled(automationSettings)) {
+    return ignoreInbound(inbound.id, {
+      stage: 'control_gate', reason: 'ai_responder_disabled',
+      route: 'store_one_redesign', action: 'no_reply',
+    })
   }
 
   const statusPublication = await findWhatsAppStatusPublication(channel.id, input.statusReferenceId)
@@ -3165,6 +3173,18 @@ async function resolveCustomerStatusInternal(
   }
 
   const immediateReminderContext = readPaymentReminderContext(state?.metadata)
+  if (fullRedesignEnabled && statusPublication
+    && (!statusPublication.contextualized_at || !statusPublication.auto_reply_enabled)) {
+    if (!humanControlBlocked) {
+      await setConversationState(channel, normalizedPhone, 'awaiting_human', AWAITING_HUMAN_CONTEXT_MS, {
+        reason: 'status_requires_human', statusPublicationId: statusPublication.id,
+      }, inbound.id)
+    }
+    return ignoreInbound(inbound.id, {
+      stage: 'control_gate', reason: 'status_requires_human',
+      route: 'store_one_redesign', action: 'no_reply',
+    })
+  }
   if (immediateReminderContext
     && state?.state !== 'human_pause'
     && state?.state !== 'waiting_human_after_attachment'
@@ -3211,6 +3231,7 @@ async function resolveCustomerStatusInternal(
   }
 
   const storeOnePilotEnabled = isStoreOneSafeRepliesPilotEnabled(channel.store_id, automationSettings)
+  const redesignRoute = fullRedesignEnabled ? 'store_one_redesign' : 'store_one_safe_reply_pilot'
   const livePostSaleContext = readPostSaleContext(state?.metadata)
   const prePilotPersistentPostSaleMemory = storeOnePilotEnabled && !livePostSaleContext
     ? await loadPersistentPostSaleMemory(channel, normalizedPhone)
@@ -3263,11 +3284,23 @@ async function resolveCustomerStatusInternal(
   let redesignConversationHistory: string[] = []
   const isRepeatedMessageDuringSilentWindow = state?.state === 'silent'
     && isRepeatedSilentInbound(effectiveMessageText, state.metadata)
+  if (fullRedesignEnabled && (humanControlBlocked || isRepeatedMessageDuringSilentWindow)) {
+    return ignoreInbound(inbound.id, {
+      stage: 'control_gate', route: redesignRoute, action: 'no_reply',
+      reason: humanControlBlocked ? 'human_control_active' : 'repeated_message_during_silent_window',
+    })
+  }
+  if (fullRedesignEnabled && useStoreOnePilot && !shadowCapture.captured) {
+    return ignoreInbound(inbound.id, {
+      stage: 'redesign_capture', reason: 'redesign_capture_unavailable',
+      route: redesignRoute, action: 'suppress_reply',
+    })
+  }
   if (storeOnePilotEnabled && useStoreOnePilot
     && shadowCapture.captured && 'turnId' in shadowCapture
     && typeof shadowCapture.turnId === 'string'
     && controlMode !== 'force_human'
-    && controlMode !== 'force_ai'
+    && (fullRedesignEnabled || controlMode !== 'force_ai')
     && !['human_pause', 'waiting_human_after_attachment'].includes(state?.state ?? '')
     && !isRepeatedMessageDuringSilentWindow) {
     let pilotReply: ReturnType<typeof selectStoreOnePilotSafeReply> = null
@@ -3288,6 +3321,7 @@ async function resolveCustomerStatusInternal(
         if (latest.turn.status === 'processed') turnContext = latest
         else if (latest.turn.status !== 'processing') break
       }
+      if (!turnContext) throw new Error('redesign_turn_decision_unavailable')
       if (turnContext) {
         const turnMetadata = turnContext.turn.metadata && typeof turnContext.turn.metadata === 'object'
           && !Array.isArray(turnContext.turn.metadata)
@@ -3310,7 +3344,7 @@ async function resolveCustomerStatusInternal(
           details: {
             action: decision.action,
             intent: classification.intent,
-            route: 'store_one_safe_reply_pilot',
+            route: redesignRoute,
           },
         })
         const currentTurnMessageIds = new Set(turnContext.turnMessages.map((message) => message.id))
@@ -3336,7 +3370,7 @@ async function resolveCustomerStatusInternal(
           return ignoreInbound(inbound.id, {
             stage: 'redesign_decision',
             reason: 'redesign_decided_no_reply',
-            route: 'store_one_safe_reply_pilot',
+            route: redesignRoute,
             intent: classification.intent,
             action: decision.action,
           })
@@ -3354,6 +3388,7 @@ async function resolveCustomerStatusInternal(
             turnMessages: turnContext.turnMessages,
             officialPixKey: storeProfile.pix_key ?? null,
             officialPixHolder: storeProfile.razao_social || storeProfile.name,
+            fullRouting: fullRedesignEnabled,
           })
         }
       }
@@ -3364,7 +3399,7 @@ async function resolveCustomerStatusInternal(
       return ignoreInbound(inbound.id, {
         stage: 'redesign_decision',
         reason: 'redesign_decision_unavailable',
-        route: 'store_one_safe_reply_pilot',
+        route: redesignRoute,
         action: 'suppress_reply',
       })
     }
@@ -3405,7 +3440,7 @@ async function resolveCustomerStatusInternal(
         return ignoreInbound(inbound.id, {
           stage: 'safe_reply_validation',
           reason: renderedReply.reason || 'safe_reply_validation_failed',
-          route: 'store_one_safe_reply_pilot',
+          route: redesignRoute,
           intent: pilotReply.replyInput.intent,
           action: pilotReply.action,
         })
@@ -3429,8 +3464,18 @@ async function resolveCustomerStatusInternal(
           inbound.id
         )
       }
-      return createOutbound(channel, inbound.id, normalizedPhone, renderedReply.text, pilotReply.messageType,
+      const response = await createOutbound(channel, inbound.id, normalizedPhone, renderedReply.text, pilotReply.messageType,
         payload, inbound.id)
+      if (fullRedesignEnabled && response.shouldReply && controlMode === 'force_ai') {
+        await clearCustomerControlMode(channel.id, normalizedPhone)
+      }
+      return response
+    }
+    if (fullRedesignEnabled && !orderLookupPlan) {
+      return ignoreInbound(inbound.id, {
+        stage: 'redesign_decision', reason: 'redesign_action_unavailable',
+        route: redesignRoute, action: 'suppress_reply',
+      })
     }
   }
 
@@ -3805,7 +3850,7 @@ async function resolveCustomerStatusInternal(
     return action()
   }
 
-  if (statusPublication && (!statusPublication.contextualized_at || !statusPublication.auto_reply_enabled)) {
+  if (!fullRedesignEnabled && statusPublication && (!statusPublication.contextualized_at || !statusPublication.auto_reply_enabled)) {
     await setCurrentConversationState('human_pause', HUMAN_HANDOFF_PAUSE_MS, mergeMetadata(baseMetadata, {
       reason: statusPublication.contextualized_at ? 'status_auto_reply_disabled' : 'status_awaiting_context',
       statusPublicationId: statusPublication.id,
@@ -3823,7 +3868,7 @@ async function resolveCustomerStatusInternal(
     return ignoreInbound(inbound.id)
   }
 
-  if (statusPublication) {
+  if (!fullRedesignEnabled && statusPublication) {
     return continueWithoutHoursOverride(async () => {
       if (channel!.store_id !== 1) {
         const fallbackText = 'Que bom que você se interessou por essa publicação! O que você gostaria de saber sobre ela?'
@@ -3893,7 +3938,7 @@ async function resolveCustomerStatusInternal(
     })
   }
 
-  const preAiRoute = continueExperimentalConversationAfterAutomatedHandoff({
+  const preAiRoute = fullRedesignEnabled ? null : continueExperimentalConversationAfterAutomatedHandoff({
     route: decidePreAiRoute({
       option,
       state: effectiveState ?? null,
@@ -4418,6 +4463,15 @@ async function resolveCustomerStatusInternal(
       }
     }
     return withAiDiagnostics(response)
+  }
+
+  // Full routing may delegate to the approved domain actions above, but never
+  // lets an unavailable decision enter the legacy menu or unrestricted tools.
+  if (fullRedesignEnabled) {
+    return withAiDiagnostics(await ignoreInbound(inbound.id, {
+      stage: 'redesign_decision', reason: 'redesign_domain_action_unavailable',
+      route: redesignRoute, action: 'suppress_reply',
+    }))
   }
 
   // Assuntos fora do piloto de OS preservam o agente atual.

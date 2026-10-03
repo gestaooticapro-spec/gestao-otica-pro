@@ -14,6 +14,7 @@ import {
   shouldUseOrderStatusToolAgent,
 } from '../src/lib/whatsapp/redesign/safe-replies-pilot'
 import { buildWhatsAppRedesignReplyPrompt } from '../src/lib/whatsapp/ai'
+import { isStoreOneFullRedesignEnabled } from '../src/lib/whatsapp/redesign/rollout-policy'
 import {
   enforceWhatsAppIntentEvidence,
   isExplicitOrderReadinessQuestion,
@@ -33,6 +34,29 @@ const decision = WhatsAppSystemDecisionSchema.parse({
     mustNotAddFacts: true, mustKeepShort: true, mustIdentifyIara: false,
     mustMentionHumanHandoff: false, forbiddenClaims: [],
   },
+})
+
+test('modo completo exige ativacao e permanece isolado na Loja 1', () => {
+  const settings = { ai_redesign: { mode: 'redesign' as const, safe_replies_enabled: true } }
+  assert.equal(isStoreOneFullRedesignEnabled(1, settings), true)
+  assert.equal(isStoreOneSafeRepliesPilotEnabled(1, settings), true)
+  assert.equal(isStoreOneFullRedesignEnabled(2, settings), false)
+  assert.equal(isStoreOneSafeRepliesPilotEnabled(2, settings), false)
+  assert.equal(isStoreOneFullRedesignEnabled(1, { ai_redesign: { mode: 'redesign' } }), false)
+  assert.equal(isStoreOneFullRedesignEnabled(1, { ai_redesign: { mode: 'shadow', safe_replies_enabled: true } }), false)
+})
+
+test('modo completo resolve saudacao sem depender do roteador legado', () => {
+  const greeting = { ...classification, intent: 'greeting' as const }
+  const greetingDecision = { ...decision, action: 'conservative_fallback' as const }
+  const input = { classification: greeting, decision: greetingDecision,
+    turnMessages: [{ kind: 'text', text: 'Oi' }], officialPixKey: null, officialPixHolder: null }
+  assert.equal(selectStoreOnePilotSafeReply(input), null)
+  const reply = selectStoreOnePilotSafeReply({ ...input, fullRouting: true })
+  assert.equal(reply?.messageType, 'ai_greeting')
+  assert.equal(reply?.action, 'conservative_fallback')
+  assert.equal(selectStoreOnePilotSafeReply({ ...input, fullRouting: true,
+    classification: { ...greeting, confidence: 0.1 } }), null)
 })
 
 test('piloto exige Loja 1, modo sombra e ativacao explicita', () => {

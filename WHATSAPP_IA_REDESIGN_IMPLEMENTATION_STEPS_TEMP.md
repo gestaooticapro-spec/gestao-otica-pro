@@ -345,3 +345,13 @@ resultado agregado, sem telefones, nomes ou conteudo pessoal no roteiro.
   âncora. Fila operacional, proteção de retenção e elegibilidade do pós-venda
   foram alinhadas. Typecheck e testes ainda precisam ser concluídos; deploy e
   validação ao vivo continuam pendentes.
+- 03/10/2026: preparada a ativação integral do roteamento exclusivamente na
+  Loja 1, preservando ações já implantadas, memória e controle humano. O modo
+  completo não segue para o roteador genérico anterior quando a decisão não
+  está disponível. Typecheck e 157 testes passaram; a validação SQL de mudança
+  de assunto, pausa manual, reversão e isolamento passou com rollback. As
+  migrations de trilha inbound e suporte à RPC no modo completo foram aplicadas.
+  A configuração permanece `shadow`: publicação bloqueada por acesso recusado
+  na CLI da Vercel; a tentativa protegida de ativação encontrou HTTP 404 no
+  endpoint de capacidades e não alterou configurações. Ver
+  `docs/whatsapp-redesign-store-one-rollout.md` para publicação e ativação.

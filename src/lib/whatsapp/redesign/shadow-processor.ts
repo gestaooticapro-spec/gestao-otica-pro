@@ -15,6 +15,7 @@ import {
 import { applyStoreAvailabilityToDecision } from './store-availability-policy'
 import { proposeWhatsAppConversationSummary } from './memory-consolidation'
 import { WhatsAppRedesignConversationStore, type WhatsAppRedesignTurnContext } from './store'
+import { canProcessWhatsAppRedesignMode } from './rollout-policy'
 import {
   buildOfficialStoreLocationReply,
   buildWhatsAppShadowDecision,
@@ -68,12 +69,12 @@ function errorMessage(error: unknown) {
   return message.slice(0, 500)
 }
 
-function isStoreCurrentlyInShadowMode(settings: Json | null) {
+function isStoreCurrentlyInDecisionMode(storeId: number, settings: Json | null) {
   const root = jsonRecord(settings)
   const automation = jsonRecord(root.whatsapp_automation as Json | null)
   const redesign = jsonRecord(automation.ai_redesign as Json | null)
   const mode = WhatsAppRedesignModeSchema.safeParse(redesign.mode)
-  return mode.success && mode.data === 'shadow'
+  return mode.success && canProcessWhatsAppRedesignMode(storeId, mode.data)
 }
 
 async function processClaimedTurn(input: {
@@ -85,7 +86,7 @@ async function processClaimedTurn(input: {
   const { context } = input
   const existingMetadata = jsonRecord(context.turn.metadata)
   const storeProfile = await input.store.loadStore(context.conversation.store_id)
-  if (!isStoreCurrentlyInShadowMode(storeProfile.settings)) return 'inactive'
+  if (!isStoreCurrentlyInDecisionMode(context.conversation.store_id, storeProfile.settings)) return 'inactive'
 
   const decisionAt = new Date(context.turn.closes_at)
   if (Number.isNaN(decisionAt.getTime())) throw new Error('fechamento_do_turno_invalido')
@@ -227,7 +228,7 @@ export async function processWhatsAppRedesignShadowTurns(
     let context: WhatsAppRedesignTurnContext | null = null
     try {
       context = await store.loadTurnContext(turnId)
-      if (context.conversation.mode !== 'shadow'
+      if (!canProcessWhatsAppRedesignMode(context.conversation.store_id, context.conversation.mode)
         || (options.storeId !== undefined && context.conversation.store_id !== options.storeId)) {
         const released = await store.releaseClaimedTurn(turnId)
         if (!released) throw new Error('nao_foi_possivel_liberar_turno_fora_do_escopo_sombra')

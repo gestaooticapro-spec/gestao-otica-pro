@@ -1,5 +1,7 @@
 # Alterações pendentes para o próximo deploy
 
+- A Loja 1 pode usar o redesign como roteador completo do WhatsApp, preservando a memória da conversa, os tratamentos já implantados e a pausa de duas horas após a última mensagem manual do lojista. A ativação é exclusiva dessa loja.
+
 - O pagamento da mensalidade exibe o QR Code no celular e informa com clareza quando os dados Pix ainda não estão disponíveis.
 - Os recibos de parcela enviados pelo WhatsApp mostram somente o valor recebido naquela operação, sem incluir pagamentos anteriores da mesma parcela.
 - Os resumos financeiros enviados em imagem ou PDF incluem pagamentos parciais, mostram o saldo de cada parcela, consideram valores transferidos ou renegociados nos totais em aberto e mantêm todos os carnês completos no PDF.

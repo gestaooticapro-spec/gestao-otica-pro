@@ -217,7 +217,7 @@ export class WhatsAppRedesignConversationStore {
     let conversationQuery = (this.client
       .from('whatsapp_conversation_memory') as any)
       .select('id')
-      .eq('mode', 'shadow')
+      .or('mode.eq.shadow,and(mode.eq.redesign,store_id.eq.1)')
     if (storeId) conversationQuery = conversationQuery.eq('store_id', storeId)
     const { data: conversations, error: conversationsError } = await conversationQuery
     if (conversationsError) throw conversationsError
@@ -249,7 +249,7 @@ export class WhatsAppRedesignConversationStore {
     let conversationQuery = (this.client
       .from('whatsapp_conversation_memory') as any)
       .select('id')
-      .eq('mode', 'shadow')
+      .or('mode.eq.shadow,and(mode.eq.redesign,store_id.eq.1)')
     if (storeId) conversationQuery = conversationQuery.eq('store_id', storeId)
     const { data: conversations, error: conversationsError } = await conversationQuery
     if (conversationsError) throw conversationsError

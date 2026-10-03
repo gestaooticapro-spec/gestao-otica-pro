@@ -394,7 +394,7 @@ test('store finaliza turno processado por RPC e registra evento humano por RPC',
   assert.equal(calls[1].args.p_message_id, '00000000-0000-4000-8000-000000000102')
 })
 
-test('store recupera somente turnos shadow em processamento ha mais de dez minutos', async () => {
+test('store recupera turnos shadow e redesign da Loja 1 apos dez minutos', async () => {
   const calls: Array<{ table: string; method: string; args: unknown[] }> = []
   const client = {
     from: (table: string) => {
@@ -402,7 +402,7 @@ test('store recupera somente turnos shadow em processamento ha mais de dez minut
         ? { data: [{ id: 42 }], error: null }
         : { data: [{ id: 'stale-turn' }, { id: 'another-stale-turn' }], error: null }
       const builder: any = {}
-      for (const method of ['select', 'eq', 'in', 'lte']) {
+      for (const method of ['select', 'eq', 'or', 'in', 'lte']) {
         builder[method] = (...args: unknown[]) => {
           calls.push({ table, method, args })
           return builder
@@ -422,7 +422,7 @@ test('store recupera somente turnos shadow em processamento ha mais de dez minut
 
   assert.equal(recovered, 2)
   assert.ok(calls.some((call) => call.table === 'whatsapp_conversation_memory'
-    && call.method === 'eq' && call.args[0] === 'mode' && call.args[1] === 'shadow'))
+    && call.method === 'or' && call.args[0] === 'mode.eq.shadow,and(mode.eq.redesign,store_id.eq.1)'))
   assert.ok(calls.some((call) => call.table === 'whatsapp_conversation_turns'
     && call.method === 'update'
     && (call.args[0] as { status: string }).status === 'ready'))
@@ -1044,7 +1044,8 @@ test('endereco oficial produz link de mapa sem depender da IA', () => {
   assert.match(reply || '', /query=Rua\+Principal/)
 })
 
-test('processador corrige status explícito de óculos classificado como exame de vista sem enviar no shadow', async () => {
+for (const mode of ['shadow', 'redesign'] as const) {
+test(`processador corrige status explicito sem enviar no modo ${mode}`, async () => {
   const turnId = '00000000-0000-4000-8000-000000000101'
   const customerMessage = {
     ...message(1),
@@ -1075,7 +1076,7 @@ test('processador corrige status explícito de óculos classificado como exame d
         store_id: 1,
         channel_id: 1,
         remote_phone: '5511999999999',
-        mode: 'shadow',
+        mode,
         summary: defaultConversationSummary(BASE_TIME),
         last_message_at: BASE_TIME,
         created_at: BASE_TIME,
@@ -1090,7 +1091,7 @@ test('processador corrige status explícito de óculos classificado como exame d
       tenant_id: '00000000-0000-4000-8000-000000000001',
       settings: {
         whatsapp_automation: {
-          ai_redesign: { mode: 'shadow' },
+          ai_redesign: { mode },
         },
         store_hours: {
           timezone: 'America/Sao_Paulo',
@@ -1151,7 +1152,10 @@ test('processador corrige status explícito de óculos classificado como exame d
   assert.equal((processing.summaryProposal as { humanControl: string }).humanControl, 'ai_active')
 })
 
-test('processador libera turno sem classificar quando a loja voltou para legacy', async () => {
+}
+
+for (const [storeId, storeMode, conversationMode] of [[1, 'legacy', 'shadow'], [2, 'redesign', 'redesign']] as const) {
+test(`processador ignora modo ${storeMode} na loja ${storeId}`, async () => {
   const turnId = '00000000-0000-4000-8000-000000000201'
   const customerMessage = {
     ...message(1),
@@ -1183,10 +1187,10 @@ test('processador libera turno sem classificar quando a loja voltou para legacy'
       conversation: {
         id: 1,
         tenant_id: '00000000-0000-4000-8000-000000000001',
-        store_id: 1,
+        store_id: storeId,
         channel_id: 1,
         remote_phone: '5511999999999',
-        mode: 'shadow',
+        mode: conversationMode,
         summary: defaultConversationSummary(BASE_TIME),
         last_message_at: BASE_TIME,
         created_at: BASE_TIME,
@@ -1199,7 +1203,7 @@ test('processador libera turno sem classificar quando a loja voltou para legacy'
       id: 1,
       name: 'Loja 1',
       tenant_id: '00000000-0000-4000-8000-000000000001',
-      settings: { whatsapp_automation: { ai_redesign: { mode: 'legacy' } } },
+      settings: { whatsapp_automation: { ai_redesign: { mode: storeMode } } },
       street: null,
       number: null,
       neighborhood: null,
@@ -1224,6 +1228,8 @@ test('processador libera turno sem classificar quando a loja voltou para legacy'
   assert.equal(releaseCount, 1)
   assert.equal(classifierCalled, false)
 })
+
+}
 
 test('persistencia exige uma chave de origem idempotente para cada mensagem', () => {
   assert.doesNotThrow(() => WhatsAppStoredMessageInputSchema.parse({
