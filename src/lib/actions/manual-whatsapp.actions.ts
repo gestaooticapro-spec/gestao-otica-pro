@@ -73,6 +73,7 @@ export type SendManualWhatsAppMediaInput = {
 export type SendInstallmentReceiptWhatsAppInput = {
   storeId: number
   installmentId: number
+  receiptOperationId?: number
 }
 
 export type SendSalePaymentReceiptWhatsAppInput = {
@@ -896,9 +897,11 @@ export async function sendCustomerPrescriptionSummaryWhatsApp(
 export async function sendInstallmentReceiptWhatsApp(input: SendInstallmentReceiptWhatsAppInput): Promise<SendManualWhatsAppResult> {
   const storeId = Number(input.storeId)
   const installmentId = Number(input.installmentId)
+  const requestedOperationId = input.receiptOperationId == null ? null : Number(input.receiptOperationId)
 
   try {
-    if (!Number.isInteger(storeId) || storeId <= 0 || !Number.isInteger(installmentId) || installmentId <= 0) {
+    if (!Number.isInteger(storeId) || storeId <= 0 || !Number.isInteger(installmentId) || installmentId <= 0
+      || (requestedOperationId !== null && (!Number.isSafeInteger(requestedOperationId) || requestedOperationId <= 0))) {
       return {
         success: false,
         routeUsed: 'external_fallback',
@@ -963,14 +966,19 @@ export async function sendInstallmentReceiptWhatsApp(input: SendInstallmentRecei
       }
     }
 
-    const { data: installmentPayments, error: paymentsError } = await (supabaseAdmin.from('pagamentos') as any)
+    let paymentsQuery = (supabaseAdmin.from('pagamentos') as any)
       .select('id, valor_pago, created_at, data_pagamento, receipt_operation_id')
       .eq('parcela_id', installmentId)
       .eq('store_id', storeId)
       .order('created_at', { ascending: true })
       .order('id', { ascending: true })
+    if (requestedOperationId !== null) paymentsQuery = paymentsQuery.eq('receipt_operation_id', requestedOperationId)
+    const { data: installmentPayments, error: paymentsError } = await paymentsQuery
 
     if (paymentsError) throw paymentsError
+    if (requestedOperationId !== null && !installmentPayments?.length) {
+      throw new Error('O recebimento solicitado nao possui pagamentos ativos nesta parcela.')
+    }
     if (installment.status !== 'Pago' && (!installmentPayments || installmentPayments.length === 0)) {
       return {
         success: false,
@@ -981,16 +989,19 @@ export async function sendInstallmentReceiptWhatsApp(input: SendInstallmentRecei
     }
 
     const latestInstallmentPayment = installmentPayments?.[installmentPayments.length - 1]
-    const latestReceiptOperationId = latestInstallmentPayment?.receipt_operation_id == null
+    const latestReceiptOperationId = requestedOperationId ?? (latestInstallmentPayment?.receipt_operation_id == null
       ? null
-      : Number(latestInstallmentPayment.receipt_operation_id)
+      : Number(latestInstallmentPayment.receipt_operation_id))
     const receiptPayments = latestReceiptOperationId
       ? (installmentPayments || []).filter((payment: any) => Number(payment.receipt_operation_id) === latestReceiptOperationId)
       : installmentPayments || []
-    const receiptAmount = receiptPayments.reduce(
+    const receiptAmount = receiptPayments.length > 0 ? receiptPayments.reduce(
       (total: number, payment: any) => total + Number(payment.valor_pago || 0),
       0
-    )
+    ) : Number(installment.valor_pago || 0)
+    if (receiptAmount <= 0) {
+      throw new Error('Esta parcela nao possui valor recebido para emitir um recibo.')
+    }
     const latestReceiptPayment = receiptPayments[receiptPayments.length - 1]
 
     const remotePhone = customer.fone_movel || customer.phone
@@ -1008,7 +1019,7 @@ export async function sendInstallmentReceiptWhatsApp(input: SendInstallmentRecei
       customerName: customer.full_name,
       installmentNumber: installment.numero_parcela,
       totalInstallments: totalInstallments || 1,
-      amount: receiptAmount > 0 ? Number(receiptAmount.toFixed(2)) : installment.valor_parcela,
+      amount: Number(receiptAmount.toFixed(2)),
       dueDate: installment.data_vencimento,
       paymentDate: latestReceiptPayment?.data_pagamento || latestReceiptPayment?.created_at || installment.data_pagamento || new Date().toISOString(),
       isReprint: Boolean(installment.receipt_printed_at),
@@ -1032,7 +1043,7 @@ export async function sendInstallmentReceiptWhatsApp(input: SendInstallmentRecei
         saleId: financing.venda_id,
         customerId: customer.id,
         receiptOperationId: latestReceiptOperationId,
-        receiptAmount: Number((receiptAmount > 0 ? receiptAmount : Number(installment.valor_parcela || 0)).toFixed(2)),
+        receiptAmount: Number(receiptAmount.toFixed(2)),
         documentType: 'installment_receipt',
       },
     }, supabaseAdmin)

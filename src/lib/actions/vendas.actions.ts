@@ -3327,6 +3327,7 @@ export async function receberParcela(prevState: any, formData: FormData) {
       ? `Pagamento recebido. R$ ${Number(result.transferred_amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} transferidos para a proxima parcela.`
       : 'Pagamento recebido com sucesso!',
     payment_ids: Array.isArray(result?.payment_ids) ? result.payment_ids.map(Number) : [],
+    receipt_operation_id: result?.operation_id ? Number(result.operation_id) : null,
     receipt_installment_ids: Array.isArray(result?.receipt_installment_ids) ? result.receipt_installment_ids.map(Number) : [],
     transferred_amount: Number(result?.transferred_amount || 0),
     destination_installment_id: result?.destination_installment_id ? Number(result.destination_installment_id) : null,

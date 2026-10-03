@@ -128,6 +128,7 @@ export default function ParcelaSearchModal({
     const [selectedClientData, setSelectedClientData] = useState<any>(null)
     const [selectedParcela, setSelectedParcela] = useState<any>(null)
     const [paidParcelaIds, setPaidParcelaIds] = useState<number[]>([])
+    const [paidReceiptOperationId, setPaidReceiptOperationId] = useState<number | null>(null)
 
     const [valorTotalPagoStr, setValorTotalPagoStr] = useState('')
     const [valorJurosStr, setValorJurosStr] = useState('0,00')
@@ -219,6 +220,7 @@ export default function ParcelaSearchModal({
             setNextCursor(null)
             setSearchError('')
             setPaidParcelaIds([])
+            setPaidReceiptOperationId(null)
             setIsSendingReceipt(false)
             setReceiptSent(false)
             setTimeout(() => searchInputRef.current?.focus(), 100)
@@ -430,6 +432,7 @@ export default function ParcelaSearchModal({
                         ? (res as any).receipt_installment_ids.filter((id: unknown): id is number => typeof id === 'number')
                         : [parcelaId]
                     setPaidParcelaIds(receiptInstallmentIds)
+                    setPaidReceiptOperationId(res.receipt_operation_id || null)
                     setStep('success')
                     await onPaymentRecorded?.()
                     // Atualiza os dois consumidores do Radar Operacional:
@@ -468,6 +471,7 @@ export default function ParcelaSearchModal({
                 const result = await sendInstallmentReceiptWhatsApp({
                     storeId,
                     installmentId,
+                    receiptOperationId: paidReceiptOperationId || undefined,
                 })
 
                 if (!result.success) {

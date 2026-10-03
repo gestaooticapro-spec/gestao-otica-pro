@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf'
 import { Database } from '@/lib/database.types'
 import { loadStoreLogoDataUrl } from '@/lib/store-logo.server'
+import { getFinancialSummaryInstallmentStatus, getFinancialSummaryInstallmentTotals, type FinancialSummaryInstallment } from '@/lib/financial-summary-document'
 
 type Pagamento = Database['public']['Tables']['pagamentos']['Row']
 type Venda = Database['public']['Tables']['vendas']['Row']
@@ -217,14 +218,7 @@ export interface CustomerFinancialSummaryPdfData {
     parcelasPagas: number
     parcelasPendentes: number
     valorFinanciado: number
-    parcelas: Array<{
-      numeroParcela: number
-      dataVencimento: string
-      valor: number
-      dataPagamento: string | null
-      valorPago: number
-      status: string
-    }>
+    parcelas: FinancialSummaryInstallment[]
   }>
 }
 
@@ -301,10 +295,6 @@ function buildStoreAddress(store: InstallmentReceiptData['store']) {
   return [firstLine, secondLine].filter(Boolean)
 }
 
-function compactStatusLabel(status: string) {
-  return String(status || '').toLowerCase() === 'pago' ? 'Pago' : 'Pendente'
-}
-
 export async function generateCustomerFinancialSummaryPDF(data: CustomerFinancialSummaryPdfData): Promise<Buffer> {
   const generatedAt = new Date().toLocaleDateString('pt-BR')
   const rowHeight = 4.6
@@ -320,7 +310,7 @@ export async function generateCustomerFinancialSummaryPDF(data: CustomerFinancia
     return total + blockHeight + blockGap
   }, 0)
   const pageHeight = Math.max(85, topPadding + headerAreaHeight + contentHeight + bottomPadding)
-  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [pageHeight, 150] })
+  const doc = new jsPDF({ orientation: pageHeight > 150 ? 'portrait' : 'landscape', unit: 'mm', format: [150, pageHeight] })
   const pageWidth = doc.internal.pageSize.getWidth()
   const logoDataUrl = await loadStoreLogoDataUrl(data.store.logoFile)
   const contentLeft = logoDataUrl ? 28 : 10
@@ -418,25 +408,20 @@ export async function generateCustomerFinancialSummaryPDF(data: CustomerFinancia
     doc.setFontSize(5.5)
     doc.setTextColor(100, 116, 139)
     doc.text('N', 13, y + 17.2)
-    doc.text('VENC.', 21, y + 17.2)
-    doc.text('VALOR', 42, y + 17.2)
-    doc.text('DT PGTO', 63, y + 17.2)
-    doc.text('VLR PAGO', 87, y + 17.2)
-    doc.text('STATUS', 114, y + 17.2)
+    doc.text('VENC.', 20, y + 17.2)
+    doc.text('VALOR', 39, y + 17.2)
+    doc.text('DT PGTO', 59, y + 17.2)
+    doc.text('VLR PAGO', 80, y + 17.2)
+    doc.text('SALDO', 100, y + 17.2)
+    doc.text('STATUS', 120, y + 17.2)
 
     doc.setLineWidth(0.2)
     doc.line(12, y + 18.5, pageWidth - 12, y + 18.5)
 
     let rowY = y + 22
-    let totalPagoVenda = 0
-    let totalPendenteVenda = 0
+    const totals = getFinancialSummaryInstallmentTotals(financiamento.parcelas)
 
     for (const parcela of financiamento.parcelas) {
-      const isPago = String(parcela.status || '').toLowerCase() === 'pago'
-      const valorPago = isPago ? (parcela.valorPago || parcela.valor) : 0
-      totalPagoVenda += valorPago
-      totalPendenteVenda += isPago ? 0 : parcela.valor
-
       doc.setDrawColor(226, 232, 240)
       doc.line(12, rowY + 2.7, pageWidth - 12, rowY + 2.7)
 
@@ -444,11 +429,15 @@ export async function generateCustomerFinancialSummaryPDF(data: CustomerFinancia
       doc.setFontSize(5.4)
       doc.setTextColor(51, 65, 85)
       doc.text(String(parcela.numeroParcela), 13, rowY)
-      doc.text(formatDateBR(parcela.dataVencimento), 21, rowY)
-      doc.text(formatMoneyBR(parcela.valor), 42, rowY)
-      doc.text(parcela.dataPagamento ? formatDateBR(parcela.dataPagamento) : '-', 63, rowY)
-      doc.text(isPago ? formatMoneyBR(valorPago) : '-', 87, rowY)
-      doc.text(compactStatusLabel(parcela.status), 114, rowY)
+      doc.text(formatDateBR(parcela.dataVencimento), 20, rowY)
+      doc.text(formatMoneyBR(parcela.valor), 39, rowY)
+      doc.text(parcela.dataPagamento ? formatDateBR(parcela.dataPagamento) : '-', 59, rowY)
+      doc.text(formatMoneyBR(parcela.valorPago), 80, rowY)
+      doc.text(formatMoneyBR(parcela.valorRestante), 100, rowY)
+      if (parcela.valorTransferido > 0.01) doc.setFontSize(4.6)
+      doc.text(parcela.valorTransferido > 0.01
+        ? `Transf. ${parcela.valorTransferido.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+        : getFinancialSummaryInstallmentStatus(parcela), 120, rowY)
 
       rowY += rowHeight
     }
@@ -458,9 +447,9 @@ export async function generateCustomerFinancialSummaryPDF(data: CustomerFinancia
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(5.6)
     doc.setTextColor(30, 41, 59)
-    doc.text(`Total da venda: ${formatMoneyBR(financiamento.valorFinanciado)}`, 13, rowY + 4.4)
-    doc.text(`Pago: ${formatMoneyBR(totalPagoVenda)}`, 65, rowY + 4.4)
-    doc.text(`Pendente: ${formatMoneyBR(totalPendenteVenda)}`, pageWidth - 13, rowY + 4.4, { align: 'right' })
+    doc.text(`Total do carne: ${formatMoneyBR(financiamento.valorFinanciado)}`, 13, rowY + 4.4)
+    doc.text(`Pago: ${formatMoneyBR(totals.valorPago)}`, 65, rowY + 4.4)
+    doc.text(`Pendente: ${formatMoneyBR(totals.valorRestante)}`, pageWidth - 13, rowY + 4.4, { align: 'right' })
 
     y = rowY + 7
   }

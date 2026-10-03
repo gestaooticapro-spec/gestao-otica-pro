@@ -2,6 +2,7 @@
 
 - O pagamento da mensalidade exibe o QR Code no celular e informa com clareza quando os dados Pix ainda não estão disponíveis.
 - Os recibos de parcela enviados pelo WhatsApp mostram somente o valor recebido naquela operação, sem incluir pagamentos anteriores da mesma parcela.
+- Os resumos financeiros enviados em imagem ou PDF incluem pagamentos parciais, mostram o saldo de cada parcela, consideram valores transferidos ou renegociados nos totais em aberto e mantêm todos os carnês completos no PDF.
 
 - Mensagens de WhatsApp que o webhook não entregar passam a ser recuperadas em cerca de cinco minutos.
 - Na Loja 1, consultar a OS de outra pessoa não troca a identificação associada ao telefone; o vínculo automático exige correspondência única com o telefone cadastrado.
@@ -16,5 +17,6 @@
 
 - O texto de Visagismo explica somente os formatos e as proporcoes das armacoes, sem recomendacoes de cores.
 - Encaminhamentos automáticos do WhatsApp enviam uma confirmação identificada da IAra ao cliente e permanecem pendentes para a equipe, sem ativar pausa humana.
+- Respostas sobre o horário da loja informam o horário perguntado, seja a abertura, o fechamento ou o expediente completo.
 - A Loja 1 pode enviar uma mensagem unica, identificada como teste, para validar o contexto de conversa do lembrete de cobranca da parcela reservada; o disparo confirma telefone, elegibilidade, opt-out e pausa humana sem alterar o registro normal do lembrete.
 - A memória do redesign usa o horário do WhatsApp em cada mensagem agrupada, sem depender do relógio da VPS.

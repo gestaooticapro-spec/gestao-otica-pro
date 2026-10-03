@@ -5,6 +5,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getInstallmentOutstanding } from '@/lib/installment-balance'
+import { toFinancialSummaryInstallment, getFinancialSummaryInstallmentTotals, type FinancialSummaryInstallment } from '@/lib/financial-summary-document'
 
 // =============================================
 // TIPOS
@@ -17,14 +18,7 @@ export interface CustomerSearchResult {
     fone: string | null
 }
 
-export interface ParcelaDetail {
-    numeroParcela: number
-    dataVencimento: string
-    valor: number
-    dataPagamento: string | null
-    valorPago: number
-    status: string
-}
+export type ParcelaDetail = FinancialSummaryInstallment
 
 export interface FinancialSummary {
     totais: {
@@ -198,6 +192,25 @@ export async function getCustomerFinancialSummary(
         }
     }
 
+    const installmentIds = financiamentosAtivos.flatMap((financing: any) =>
+        (financing.financiamento_parcelas || []).map((installment: any) => Number(installment.id))
+    )
+    const latestPaymentDateByInstallment = new Map<number, string>()
+    if (installmentIds.length > 0) {
+        const { data: payments, error: paymentsError } = await (supabaseAdmin.from('pagamentos') as any)
+            .select('parcela_id, data_pagamento')
+            .eq('store_id', storeId)
+            .in('parcela_id', installmentIds)
+        if (paymentsError) throw paymentsError
+        for (const payment of payments || []) {
+            const date = String(payment.data_pagamento || '')
+            const installmentId = Number(payment.parcela_id)
+            if (date && date > (latestPaymentDateByInstallment.get(installmentId) || '')) {
+                latestPaymentDateByInstallment.set(installmentId, date)
+            }
+        }
+    }
+
     let parcelasPagas = 0
     let parcelasPendentes = 0
     let valorPago = 0
@@ -208,14 +221,15 @@ export async function getCustomerFinancialSummary(
     const financiamentosFormatados = financiamentosAtivos.map((f: any) => {
         const parcelas = (f.financiamento_parcelas || [])
             .sort((a: any, b: any) => a.numero_parcela - b.numero_parcela)
-        const pagas = parcelas.filter((p: any) => String(p.status || '').toLowerCase() === 'pago')
-        const pendentes = parcelas.filter((p: any) => String(p.status || '').toLowerCase() !== 'pago')
+        const parcelasDetail = parcelas.map((p: any) => toFinancialSummaryInstallment(p, latestPaymentDateByInstallment.get(Number(p.id))))
+        const totals = getFinancialSummaryInstallmentTotals(parcelasDetail)
+        const pendentes = parcelas.filter((p: any) => getInstallmentOutstanding(p) > 0.01)
 
-        parcelasPagas += pagas.length
-        parcelasPendentes += pendentes.length
-        valorPago += parcelas.reduce((sum: number, p: any) => sum + Number(p.valor_pago || 0), 0)
-        valorRestante += pendentes.reduce((sum: number, p: any) => sum + getInstallmentOutstanding(p), 0)
-        valorTotalFinanciado += f.valor_total_financiado || 0
+        parcelasPagas += totals.parcelasPagas
+        parcelasPendentes += totals.parcelasPendentes
+        valorPago += totals.valorPago
+        valorRestante += totals.valorRestante
+        valorTotalFinanciado += Number(f.valor_total_financiado || 0)
 
         const proximaPendente = pendentes
             .filter((p: any) => p.data_vencimento)
@@ -233,16 +247,6 @@ export async function getCustomerFinancialSummary(
             ? parcelas[0].valor_parcela
             : (f.valor_total_financiado / (f.quantidade_parcelas || 1))
 
-        // Mapeia parcelas individuais para exibição
-        const parcelasDetail: ParcelaDetail[] = parcelas.map((p: any) => ({
-            numeroParcela: p.numero_parcela,
-            dataVencimento: p.data_vencimento,
-            valor: p.valor_parcela || 0,
-            dataPagamento: p.data_pagamento || null,
-            valorPago: p.valor_pago || 0,
-            status: p.status || 'Pendente'
-        }))
-
         return {
             id: f.id,
             vendaId: f.venda_id,
@@ -251,8 +255,8 @@ export async function getCustomerFinancialSummary(
             entrada: 0,
             valorFinanciado: f.valor_total_financiado || 0,
             totalParcelas: f.quantidade_parcelas || 0,
-            parcelasPagas: pagas.length,
-            parcelasPendentes: pendentes.length,
+            parcelasPagas: totals.parcelasPagas,
+            parcelasPendentes: totals.parcelasPendentes,
             valorParcela: valorParcelaMedia,
             parcelas: parcelasDetail
         }
@@ -263,9 +267,9 @@ export async function getCustomerFinancialSummary(
             parcelasPagas,
             parcelasPendentes,
             totalParcelas: parcelasPagas + parcelasPendentes,
-            valorPago,
-            valorRestante,
-            valorTotalFinanciado
+            valorPago: Number(valorPago.toFixed(2)),
+            valorRestante: Number(valorRestante.toFixed(2)),
+            valorTotalFinanciado: Number(valorTotalFinanciado.toFixed(2))
         },
         proximoVencimento,
         financiamentos: financiamentosFormatados

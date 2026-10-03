@@ -184,6 +184,19 @@ function normalizeForComparison(value: string) {
     .toLocaleLowerCase('pt-BR').replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
 }
 
+function requiredScheduleTimesForQuestion(schedule: string, userMessages: Array<{ text: string | null }>) {
+  const times = [...schedule.matchAll(/\b\d{1,2}:\d{2}\b/g)].map((match) => match[0])
+  if (times.length < 2) return times
+
+  const question = normalizeForComparison(userMessages.map((message) => message.text ?? '').join(' '))
+  const asksOpening = /\b(?:abre|abrir|abertura|inicio|comeca|open|opens|opening|start|starts|empieza)\b/u.test(question)
+  const asksClosing = /\b(?:fecha|fechar|fechamento|encerra|encerramento|ate que horas|close|closes|closing|until what time|cierra|cerrar|hasta que hora)\b/u.test(question)
+
+  if (asksOpening && !asksClosing) return [times[0]]
+  if (asksClosing && !asksOpening) return [times[times.length - 1]]
+  return times
+}
+
 export function resolveStoreOnePilotReplyText(
   candidate: PilotSafeReply,
   result: { success: true; data: { reply_text: string } } | { success: false }
@@ -242,7 +255,7 @@ export function resolveStoreOnePilotReplyText(
     ? candidate.replyInput.facts.tomorrowSchedule
     : candidate.replyInput.facts.todaySchedule
   if (candidate.action === 'answer_store_hours' && typeof expectedSchedule === 'string') {
-    const requiredTimes = [...expectedSchedule.matchAll(/\b\d{1,2}:\d{2}\b/g)].map((match) => match[0])
+    const requiredTimes = requiredScheduleTimesForQuestion(expectedSchedule, candidate.replyInput.userMessages)
     if (requiredTimes.some((time) => !replyText.includes(time))) {
       return suppressed('official_hours_omitted')
     }

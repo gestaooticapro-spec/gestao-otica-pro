@@ -1,6 +1,7 @@
 import React from 'react'
 import { ImageResponse } from 'next/og'
 import { loadStoreLogoDataUrl } from '@/lib/store-logo.server'
+import { getFinancialSummaryInstallmentStatus, getFinancialSummaryInstallmentTotals } from '@/lib/financial-summary-document'
 import type {
   CustomerFinancialSummaryPdfData,
   CustomerPrescriptionSummaryPdfData,
@@ -228,15 +229,16 @@ export async function generateCustomerFinancialSummaryImages(data: CustomerFinan
                   <div style={{ fontSize: 34, fontWeight: 700 }}>{formatMoneyBR(data.totals.valorTotalFinanciado)}</div>
                 </div>
                 <div style={{ display: 'flex', flex: 1, background: '#eff6ff', borderRadius: 24, padding: 22, border: '2px solid #bfdbfe', flexDirection: 'column', gap: 10 }}>
-                  <div style={{ fontSize: 18, color: '#1d4ed8' }}>Pago</div>
+                  <div style={{ fontSize: 18, color: '#1d4ed8' }}>Valor pago</div>
                   <div style={{ fontSize: 34, fontWeight: 700, color: '#1e3a8a' }}>
-                    {`${data.totals.parcelasPagas}/${data.totals.totalParcelas} parcelas | ${formatMoneyBR(data.totals.valorPago)}`}
+                    {formatMoneyBR(data.totals.valorPago)}
                   </div>
+                  <div style={{ fontSize: 18, color: '#1e3a8a' }}>{`${data.totals.parcelasPagas} de ${data.totals.totalParcelas} parcelas sem saldo`}</div>
                 </div>
                 <div style={{ display: 'flex', flex: 1, background: '#fff7ed', borderRadius: 24, padding: 22, border: '2px solid #fed7aa', flexDirection: 'column', gap: 10 }}>
                   <div style={{ fontSize: 18, color: '#c2410c' }}>Em aberto</div>
                   <div style={{ fontSize: 34, fontWeight: 700, color: '#9a3412' }}>
-                    {`${data.totals.parcelasPendentes} parcelas | ${formatMoneyBR(data.totals.valorRestante)}`}
+                    {`${data.totals.parcelasPendentes} ${data.totals.parcelasPendentes === 1 ? 'parcela' : 'parcelas'} | ${formatMoneyBR(data.totals.valorRestante)}`}
                   </div>
                   {data.nextDue?.data ? (
                     <div style={{ fontSize: 18, color: '#7c2d12' }}>
@@ -267,14 +269,7 @@ export async function generateCustomerFinancialSummaryImages(data: CustomerFinan
             <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
               {(() => {
                 const financiamento = chunk.financiamento
-              const totalPagoVenda = financiamento.parcelas.reduce((sum, parcela) => {
-                const isPago = String(parcela.status || '').toLowerCase() === 'pago'
-                return sum + (isPago ? (parcela.valorPago || parcela.valor) : 0)
-              }, 0)
-              const totalPendenteVenda = financiamento.parcelas.reduce((sum, parcela) => {
-                const isPago = String(parcela.status || '').toLowerCase() === 'pago'
-                return sum + (isPago ? 0 : parcela.valor)
-              }, 0)
+                const totals = getFinancialSummaryInstallmentTotals(financiamento.parcelas)
 
                 return (
                 <div
@@ -300,25 +295,25 @@ export async function generateCustomerFinancialSummaryImages(data: CustomerFinan
                       ) : null}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-                      <div style={{ fontSize: 18, color: '#64748b' }}>Total da venda</div>
+                      <div style={{ fontSize: 18, color: '#64748b' }}>Total do carnê</div>
                       <div style={{ fontSize: 24, fontWeight: 700 }}>{formatMoneyBR(financiamento.valorFinanciado)}</div>
-                      <div style={{ fontSize: 18, color: '#16a34a' }}>{`Pago: ${formatMoneyBR(totalPagoVenda)}`}</div>
-                      <div style={{ fontSize: 18, color: '#ea580c' }}>{`Pendente: ${formatMoneyBR(totalPendenteVenda)}`}</div>
+                      <div style={{ fontSize: 18, color: '#16a34a' }}>{`Pago: ${formatMoneyBR(totals.valorPago)}`}</div>
+                      <div style={{ fontSize: 18, color: '#ea580c' }}>{`Pendente: ${formatMoneyBR(totals.valorRestante)}`}</div>
                     </div>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', borderRadius: 18, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
                     <div style={{ display: 'flex', background: '#eff6ff', padding: '12px 14px', fontSize: 17, fontWeight: 700, color: '#1e3a8a' }}>
-                      <div style={{ width: 70 }}>N</div>
-                      <div style={{ width: 180 }}>Vencimento</div>
-                      <div style={{ width: 200 }}>Valor</div>
-                      <div style={{ width: 200 }}>Pago em</div>
-                      <div style={{ width: 200 }}>Valor pago</div>
+                      <div style={{ width: 50 }}>N</div>
+                      <div style={{ width: 165 }}>Vencimento</div>
+                      <div style={{ width: 170 }}>Valor</div>
+                      <div style={{ width: 165 }}>Último pgto.</div>
+                      <div style={{ width: 170 }}>Valor pago</div>
+                      <div style={{ width: 170 }}>Saldo</div>
                       <div style={{ flex: 1 }}>Status</div>
                     </div>
                     {chunk.parcelas.map((parcela) => {
-                      const isPago = String(parcela.status || '').toLowerCase() === 'pago'
-                      const valorPago = isPago ? (parcela.valorPago || parcela.valor) : 0
+                      const isPago = parcela.valorRestante <= 0.01
                       return (
                         <div
                           key={`${financiamento.id}-${parcela.numeroParcela}-${parcela.dataVencimento}`}
@@ -331,13 +326,15 @@ export async function generateCustomerFinancialSummaryImages(data: CustomerFinan
                             borderTop: '1px solid #e2e8f0',
                           }}
                         >
-                          <div style={{ width: 70 }}>{String(parcela.numeroParcela)}</div>
-                          <div style={{ width: 180 }}>{formatDateBR(parcela.dataVencimento)}</div>
-                          <div style={{ width: 200 }}>{formatMoneyBR(parcela.valor)}</div>
-                          <div style={{ width: 200 }}>{parcela.dataPagamento ? formatDateBR(parcela.dataPagamento) : '-'}</div>
-                          <div style={{ width: 200 }}>{isPago ? formatMoneyBR(valorPago) : '-'}</div>
-                          <div style={{ flex: 1, fontWeight: 700, color: isPago ? '#15803d' : '#c2410c' }}>
-                            {isPago ? 'Pago' : 'Pendente'}
+                          <div style={{ width: 50 }}>{String(parcela.numeroParcela)}</div>
+                          <div style={{ width: 165 }}>{formatDateBR(parcela.dataVencimento)}</div>
+                          <div style={{ width: 170 }}>{formatMoneyBR(parcela.valor)}</div>
+                          <div style={{ width: 165 }}>{parcela.dataPagamento ? formatDateBR(parcela.dataPagamento) : '-'}</div>
+                          <div style={{ width: 170 }}>{formatMoneyBR(parcela.valorPago)}</div>
+                          <div style={{ width: 170 }}>{formatMoneyBR(parcela.valorRestante)}</div>
+                          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, fontWeight: 700, color: isPago ? '#15803d' : '#c2410c' }}>
+                            {getFinancialSummaryInstallmentStatus(parcela)}
+                            {parcela.valorTransferido > 0.01 ? <div style={{ fontSize: 15, fontWeight: 400 }}>{formatMoneyBR(parcela.valorTransferido)}</div> : null}
                           </div>
                         </div>
                       )

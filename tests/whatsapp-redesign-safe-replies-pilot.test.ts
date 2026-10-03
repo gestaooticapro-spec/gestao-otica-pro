@@ -350,22 +350,36 @@ test('Pix gerado inclui a chave oficial e e suprimido se a resposta falhar na va
   }), null)
 })
 
-test('horario oficial ausente na resposta gerada suprime o envio', () => {
+test('horarios valida somente a parte perguntada e exige o expediente completo quando solicitado', () => {
   const candidate = selectStoreOnePilotSafeReply({
     classification,
     decision: WhatsAppSystemDecisionSchema.parse({
       ...decision,
       facts: { requestedDay: 'tomorrow', tomorrowSchedule: '08:30 às 12:30' },
     }),
-    turnMessages: [{ kind: 'text', text: 'Amanhã abre?' }],
+    turnMessages: [{ kind: 'text', text: 'Amanhã a loja abre que horas?' }],
     officialPixKey: null,
     officialPixHolder: null,
   })!
   assert.equal(resolveStoreOnePilotReplyText(candidate, {
-    success: true, data: { reply_text: 'Amanhã, abrimos das 08:30 às 12:30.' },
+    success: true, data: { reply_text: 'Amanhã a loja abre às 08:30.' },
   }).generatedBy, 'ai')
   assert.equal(resolveStoreOnePilotReplyText(candidate, {
-    success: true, data: { reply_text: 'Sim, abrimos amanhã.' },
+    success: true, data: { reply_text: 'Amanhã a loja abre às 09:00.' },
+  }).reason, 'official_hours_omitted')
+
+  const fullScheduleQuestion = selectStoreOnePilotSafeReply({
+    classification,
+    decision: WhatsAppSystemDecisionSchema.parse({
+      ...decision,
+      facts: { requestedDay: 'tomorrow', tomorrowSchedule: '08:30 às 12:30' },
+    }),
+    turnMessages: [{ kind: 'text', text: 'Qual o horário de funcionamento amanhã?' }],
+    officialPixKey: null,
+    officialPixHolder: null,
+  })!
+  assert.equal(resolveStoreOnePilotReplyText(fullScheduleQuestion, {
+    success: true, data: { reply_text: 'Amanhã a loja abre às 08:30.' },
   }).reason, 'official_hours_omitted')
 })
 
