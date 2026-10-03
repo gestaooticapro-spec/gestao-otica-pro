@@ -12,7 +12,6 @@
 - A parcela reservada para teste da Loja 1 pode receber um lembrete por disparo isolado, após conferência do telefone cadastrado, sem processar nem despachar outras parcelas da fila global; o envio continua sujeito à elegibilidade e ao horário comercial.
 
 - O texto de Visagismo explica somente os formatos e as proporcoes das armacoes, sem recomendacoes de cores.
-- Encaminhamentos automáticos do WhatsApp enviam a confirmação ao cliente e permanecem pendentes para a equipe, sem ativar pausa humana.
+- Encaminhamentos automáticos do WhatsApp enviam uma confirmação identificada da IAra ao cliente e permanecem pendentes para a equipe, sem ativar pausa humana.
 - A Loja 1 pode enviar uma mensagem unica, identificada como teste, para validar o contexto de conversa do lembrete de cobranca da parcela reservada; o disparo confirma telefone, elegibilidade, opt-out e pausa humana sem alterar o registro normal do lembrete.
 - A memória do redesign usa o horário do WhatsApp em cada mensagem agrupada, sem depender do relógio da VPS.
-- Encaminhamentos da IAra continuam respondendo quando a IA usa uma apresentação natural com o nome fora da ordem esperada; a mensagem explicita a identidade da assistente antes de passar pelas demais validações.

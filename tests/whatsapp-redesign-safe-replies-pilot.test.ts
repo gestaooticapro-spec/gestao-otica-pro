@@ -285,8 +285,8 @@ test('geracao contextual preserva a marca e nunca afirma disponibilidade em esto
     success: true,
     data: { reply_text: 'Vou pedir para a equipe verificar as lentes Varilux para você.' },
   })
-  assert.equal(missingIdentity.shouldSend, false)
-  assert.equal(missingIdentity.reason, 'assistant_identity_omitted')
+  assert.equal(missingIdentity.shouldSend, true)
+  assert.equal(missingIdentity.text, 'Sou a IAra, assistente virtual da ótica. Vou pedir para a equipe verificar as lentes Varilux para você.')
   assert.equal(resolveStoreOnePilotReplyText(candidate, {
     success: true,
     data: { reply_text: 'Sou a IAra e vou pedir para a equipe verificar as lentes Varilux para você.' },

@@ -204,9 +204,9 @@ export function resolveStoreOnePilotReplyText(
     const hasExplicitIdentity = /\b(?:eu sou |sou |aqui e |soy |yo soy |i am |i m |this is )(?:a |la )?(?:assistente virtual )?iara\b/u.test(normalizedReply)
     if (!hasExplicitIdentity) {
       const misorderedIntroduction = replyText.match(/^(?:(?:ol[aá]|oi)\s*,?\s*)?iara\s+aqui[!.,;:]?\s*/iu)
-      if (!misorderedIntroduction) return suppressed('assistant_identity_omitted')
-
-      const continuation = replyText.slice(misorderedIntroduction[0].length).trim()
+      const continuation = misorderedIntroduction
+        ? replyText.slice(misorderedIntroduction[0].length).trim()
+        : replyText
       replyText = `Sou a IAra, assistente virtual da ótica.${continuation ? ` ${continuation}` : ''}`
       normalizedReply = normalizeForComparison(replyText)
     }
