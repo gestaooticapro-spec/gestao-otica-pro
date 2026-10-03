@@ -222,6 +222,7 @@ export function buildWhatsAppShadowDecision(
         facts: {
           isStoreOpenNow: input.hoursFacts.is_open_now,
           todaySchedule: input.hoursFacts.today_schedule,
+          todayBreakSchedule: input.hoursFacts.today_break_schedule ?? '',
           nextOpenSchedule: input.hoursFacts.next_open_schedule,
           fullWeeklySchedule: input.hoursFacts.full_weekly_schedule,
         },

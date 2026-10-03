@@ -32,6 +32,7 @@ type RedesignClassifier = (input: Parameters<typeof classifyWhatsAppRedesignConv
   Promise<WhatsAppAiResult<WhatsAppRedesignClassification>>
 
 export type ProcessShadowTurnsOptions = {
+  deadlineAt?: number
   limit?: number
   storeId?: number
   /** Processes this exact captured turn immediately, without waiting for the scheduled worker. */
@@ -219,6 +220,7 @@ export async function processWhatsAppRedesignShadowTurns(
   }
 
   for (const turnId of turnIds) {
+    if (options.deadlineAt !== undefined && Date.now() >= options.deadlineAt) break
     const claimed = await store.claimReadyTurn(turnId)
     if (!claimed) {
       result.skipped += 1

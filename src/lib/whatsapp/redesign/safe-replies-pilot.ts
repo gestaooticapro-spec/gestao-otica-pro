@@ -14,6 +14,7 @@ import {
 } from './intent-guards'
 
 export type PilotSafeReply = {
+  canonicalHoursReply?: string
   action: 'answer_store_hours' | 'answer_store_location' | 'answer_official_pix'
     | 'human_handoff' | 'repeat_handoff' | 'acknowledge_attachment'
     | 'recognize_continuation' | 'conservative_fallback'
@@ -178,6 +179,8 @@ export function selectStoreOnePilotSafeReply(input: Parameters<typeof selectStor
   return {
     action: reply.action,
     messageType: reply.messageType,
+    ...(input.fullRouting && reply.action === 'answer_store_hours'
+      ? { canonicalHoursReply: input.decision.fallbackReply ?? undefined } : {}),
     replyInput: {
       action: reply.action,
       intent: input.classification.intent,
@@ -209,13 +212,33 @@ export function resolveStoreOnePilotReplyText(
   candidate: PilotSafeReply,
   result: { success: true; data: { reply_text: string } } | { success: false }
 ) {
+  const canonicalHours = (reason: string) => {
+    if (candidate.action !== 'answer_store_hours' || !candidate.canonicalHoursReply) return null
+    const facts = candidate.replyInput.facts
+    const tomorrow = facts.requestedDay === 'tomorrow'
+    const schedule = tomorrow ? facts.tomorrowSchedule : facts.todaySchedule
+    if (typeof schedule !== 'string' || !schedule.trim()) return null
+    const language = facts.replyLanguage
+    const label = tomorrow
+      ? language === 'es' ? 'Horario de mañana' : language === 'en' ? "Tomorrow's hours" : 'Horário de amanhã'
+      : facts.isStoreOpenNow === false
+        ? language === 'es' ? 'Horario previsto para hoy (no indica que esté abierta ahora)'
+          : language === 'en' ? "Scheduled hours today (this does not mean we are open now)"
+            : 'Expediente previsto para hoje (não significa que estamos abertos agora)'
+        : language === 'es' ? 'Horario de hoy' : language === 'en' ? "Today's hours" : 'Horário de hoje'
+    const breaks = facts.todayBreakSchedule
+    const breakLabel = language === 'es' ? 'Intervalos' : language === 'en' ? 'Breaks' : 'Intervalos'
+    const text = `${candidate.canonicalHoursReply} ${label}: ${schedule}.${!tomorrow && typeof breaks === 'string' && breaks
+      ? ` ${breakLabel}: ${breaks}.` : ''}`
+    return { shouldSend: true as const, text, generatedBy: 'canonical' as const, reason }
+  }
   const suppressed = (reason: string) => ({
     shouldSend: false as const,
     generatedBy: 'suppressed' as const,
     reason,
   })
   if (!result.success) {
-    return suppressed('provider_failure')
+    return canonicalHours('provider_failure') ?? suppressed('provider_failure')
   }
 
   let replyText = result.data.reply_text.trim()
@@ -265,7 +288,7 @@ export function resolveStoreOnePilotReplyText(
   if (candidate.action === 'answer_store_hours' && typeof expectedSchedule === 'string') {
     const requiredTimes = requiredScheduleTimesForQuestion(expectedSchedule, candidate.replyInput.userMessages)
     if (requiredTimes.some((time) => !replyText.includes(time))) {
-      return suppressed('official_hours_omitted')
+      return canonicalHours('official_hours_omitted') ?? suppressed('official_hours_omitted')
     }
   }
 

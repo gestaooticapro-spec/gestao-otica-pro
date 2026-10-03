@@ -7,6 +7,7 @@ export type StoreHoursFacts = {
     is_exceptional_closure: boolean
     exceptional_closure_reason?: string
     today_schedule: string
+    today_break_schedule?: string
     next_open_schedule: string
     full_weekly_schedule: string
 }
@@ -62,6 +63,11 @@ export function evaluateStoreHours(config: StoreHoursConfig, referenceDateInput:
     const currentTimeMinutes = h * 60 + m
 
     const fullWeeklySchedule = formatWeeklyScheduleWithBreaks(config)
+    const todayBreakSchedule = config.special_closures.some(c => c.date === currentDateStr)
+      || config.special_openings.some(o => o.date === currentDateStr)
+      || !config.weekly_schedule[currentDayOfWeek]?.is_open
+      ? '' : config.break_windows.filter(bw => bw.days.includes(currentDayOfWeek))
+        .map(bw => `${bw.start_time} - ${bw.end_time}`).join(', ')
 
     let isExceptionalClosure = false
     let exceptionalClosureReason = ''
@@ -185,6 +191,7 @@ export function evaluateStoreHours(config: StoreHoursConfig, referenceDateInput:
         is_exceptional_closure: finalIsExceptionalClosure,
         exceptional_closure_reason: isExceptionalClosure ? exceptionalClosureReason : undefined,
         today_schedule: todayScheduleStr,
+        today_break_schedule: todayBreakSchedule,
         next_open_schedule: nextOpenScheduleStr,
         full_weekly_schedule: fullWeeklySchedule
     }

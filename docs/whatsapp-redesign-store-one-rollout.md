@@ -40,6 +40,40 @@ os controles humanos. A migração é compatível com ambos os modos.
 
 ## Validação
 
+### Continuidade após a auditoria de 03/10/2026
+
+No modo completo, um turno `ready`/`processing` sem decisão disponível deixa o
+inbound em `received`, com marcador persistido `payload.redesignDeferred`.
+O scheduler existente de `process-shadow` retoma uma entrada por execução,
+com lease atômico de dois minutos e reavaliação dos controles atuais. Reutiliza
+turnos já processados e a proteção existente de um outbound por inbound.
+O envio da saída pendente usa a reconciliação já existente da VPS.
+
+Em 03/10/2026, a leitura da VPS confirmou cron ativo a cada cinco minutos,
+apontando para `process-shadow` com `storeId=1`, e execuções recentes com
+HTTP 200 (17:55, 18:00, 18:05 e 18:10, horário de Brasília). Essa evidência
+confirma o agendamento, sem comprovar uma retomada de mensagem adiada.
+
+Mensagens substituídas por nova entrada do cliente, pendências com mais de
+30 minutos ou cinco tentativas são encerradas com motivo na trilha. Falhas de
+retomada mantêm a entrada disponível após vencer o lease. O caminho depende
+do scheduler e da reconciliação ativos; não exige mudança no serviço da VPS.
+Entradas antigas já `ignored` não são reabertas por esta correção.
+
+Assuntos confiáveis intercalados durante um acompanhamento entram na decisão
+do redesign; avaliações explícitas e reclamações mantêm suas ações próprias.
+Handoffs desse caminho preservam o contexto pendente.
+
+Reclamações confiáveis e pedidos de atendente entram no handoff do redesign
+antes do bloqueio final, atualizando o acompanhamento para `handoff` e registrando
+a interação sem criar pausa humana. Avaliações explícitas continuam no escritor
+especializado. No texto canônico de horário, o expediente previsto é distinguido
+da disponibilidade atual e inclui os intervalos oficiais do dia quando aplicáveis.
+
+A resposta canônica de horário é permitida somente no modo completo, baseada
+na decisão e agenda oficiais, se o provedor falhar ou omitir os horários
+obrigatórios. Outros motivos de supressão e assuntos mantêm a política atual.
+
 `npm run typecheck` e `npm run test:whatsapp-redesign` cobrem o código.
 `supabase/tests/whatsapp_full_redesign_validation.sql` verifica a RPC em
 transação revertida: mudança de assunto, preservação de pendência, pausa manual

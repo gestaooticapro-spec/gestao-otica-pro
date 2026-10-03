@@ -355,3 +355,10 @@ resultado agregado, sem telefones, nomes ou conteudo pessoal no roteiro.
   na CLI da Vercel; a tentativa protegida de ativação encontrou HTTP 404 no
   endpoint de capacidades e não alterou configurações. Ver
   `docs/whatsapp-redesign-store-one-rollout.md` para publicação e ativação.
+- 03/10/2026: após o usuário confirmar o deploy Ready, o endpoint autenticado
+  de capacidades confirmou a publicação compatível. O script de ativação
+  concluiu a transação e uma leitura independente confirmou a Loja 1 em
+  `redesign`, com respostas seguras habilitadas, canal conectado e pré-requisitos
+  de banco disponíveis. As demais lojas não têm modo `redesign` configurado.
+  Histórico, controles humanos e cadastros foram preservados; nenhuma mensagem
+  de teste foi enviada durante a ativação.

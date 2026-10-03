@@ -1,5 +1,9 @@
 # Alterações pendentes para o próximo deploy
 
+- Na Loja 1, reclamações e pedidos de atendente durante um acompanhamento recebem encaminhamento pelo redesign e preservam o contexto. Respostas oficiais de horário distinguem o expediente previsto da situação atual da loja e informam os intervalos cadastrados.
+
+- Na Loja 1, decisões de WhatsApp ainda em processamento permanecem pendentes para retomada, respeitando mensagens mais recentes e o atendimento humano. Perguntas intercaladas durante um acompanhamento seguem o redesign sem perder a pendência anterior. Se a redação da IA falhar em uma resposta de horário, o cliente recebe o horário oficial confirmado pelo sistema.
+
 - A Loja 1 pode usar o redesign como roteador completo do WhatsApp, preservando a memória da conversa, os tratamentos já implantados e a pausa de duas horas após a última mensagem manual do lojista. A ativação é exclusiva dessa loja.
 
 - O pagamento da mensalidade exibe o QR Code no celular e informa com clareza quando os dados Pix ainda não estão disponíveis.

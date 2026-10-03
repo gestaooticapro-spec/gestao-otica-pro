@@ -31,6 +31,7 @@ const SAFE_DETAIL_KEYS = new Set([
   'storeOnePilotSelected',
   'success',
   'task',
+  'turnId',
   'validation',
 ])
 const SAFE_TRACE_TOKEN = /^[a-zA-Z0-9_.:-]{1,120}$/

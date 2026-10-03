@@ -75,9 +75,11 @@ export function validatePostSaleActionReply(input: {
 }
 
 export function shouldUseStoreOnePilotDuringPostSale(input: {
+  fullRouting?: boolean
   context: PostSaleContext | null
   explicitRating: number | null
   explicitOrderRequest: boolean
+  explicitHumanRequest?: boolean
   classificationSucceeded: boolean
   intent: string | null
   confidence: number
@@ -86,6 +88,18 @@ export function shouldUseStoreOnePilotDuringPostSale(input: {
   if (!input.context?.postSalesId || input.context.stage === 'completed') return true
   if (input.explicitRating) return false
   if (input.explicitOrderRequest) return true
+  if (input.fullRouting) {
+    if (input.explicitHumanRequest) return true
+    if (input.classificationSucceeded && input.confidence >= input.minimumConfidence
+      && (input.intent === 'complaint_or_adaptation' || input.intent === 'human_agent_request')) return true
+    return decidePostSaleTurnDisposition({
+      classificationSucceeded: input.classificationSucceeded,
+      confidence: input.confidence,
+      intent: input.intent,
+      minimumConfidence: input.minimumConfidence,
+      automationCandidate: input.intent !== 'unknown',
+    }) === 'route_other_topic'
+  }
   return input.classificationSucceeded
     && input.intent === 'order_status'
     && input.confidence >= input.minimumConfidence

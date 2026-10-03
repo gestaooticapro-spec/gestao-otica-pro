@@ -107,6 +107,7 @@ import {
   type StoreOneOrderLookupPlan,
 } from './redesign/order-status-live'
 import { recordWhatsAppInboundProcessingEvent } from './inbound-processing-trace'
+import { deferWhatsAppRedesignReply, WhatsAppRedesignDecisionPending } from './redesign/deferred-replies'
 
 const SAME_STATUS_SILENCE_WINDOW_MS = 2 * 60 * 60 * 1000
 const HUMAN_PAUSE_MS = 60 * 60 * 1000
@@ -2962,7 +2963,8 @@ async function logAiResult(
 }
 
 async function resolveCustomerStatusInternal(
-  input: CustomerStatusRequest
+  input: CustomerStatusRequest,
+  recovery?: { deferredInboundId: number },
 ): Promise<CustomerStatusResponse> {
   const channel = await findActiveChannel(input.instanceKey)
   if (!channel) return { shouldReply: false }
@@ -3018,14 +3020,16 @@ async function resolveCustomerStatusInternal(
   let inbound = insertedInbound
   if (inboundError?.code === '23505') {
     const { data: existingInbound, error: existingInboundError } = await (supabase.from('whatsapp_inbound_messages') as any)
-      .select('id, status, created_at')
+      .select('id, status, created_at, payload')
       .eq('channel_id', channel.id)
       .eq('provider_message_id', input.providerMessageId)
       .maybeSingle()
     if (existingInboundError) throw existingInboundError
 
     const oldEnoughToResume = existingInbound?.status === 'received'
-      && new Date(existingInbound.created_at).getTime() < Date.now() - 90_000
+      && (recovery?.deferredInboundId === existingInbound.id
+        || (!toMetadataRecord(existingInbound.payload).redesignDeferred
+          && new Date(existingInbound.created_at).getTime() < Date.now() - 90_000))
     if (!oldEnoughToResume) {
       if (existingInbound) {
         await recordWhatsAppInboundProcessingEvent({
@@ -3270,6 +3274,8 @@ async function resolveCustomerStatusInternal(
     prePilotPostSaleDiagnostic = await logAiResult(channel, inbound.id, 'intent_classification', postSaleTurnClassification)
   }
   const useStoreOnePilot = shouldUseStoreOnePilotDuringPostSale({
+    fullRouting: fullRedesignEnabled,
+    explicitHumanRequest: isExplicitHumanHandoffRequest(effectiveMessageText),
     context: pendingPrePilotPostSaleContext,
     explicitRating: explicitPostSaleRating,
     explicitOrderRequest,
@@ -3306,11 +3312,13 @@ async function resolveCustomerStatusInternal(
     let pilotReply: ReturnType<typeof selectStoreOnePilotSafeReply> = null
     try {
       const redesignStore = new WhatsAppRedesignConversationStore()
-      const processing = await processWhatsAppRedesignShadowTurns({
-        storeId: channel.store_id,
-        turnId: shadowCapture.turnId,
-        store: redesignStore,
-      })
+      const existingTurn = await redesignStore.loadTurnContext(shadowCapture.turnId)
+      const processing = existingTurn.turn.status === 'processed' ? { processed: 1, skipped: 0 }
+        : await processWhatsAppRedesignShadowTurns({
+          storeId: channel.store_id,
+          turnId: shadowCapture.turnId,
+          store: redesignStore,
+        })
       let turnContext = processing.processed === 1
         ? await redesignStore.loadTurnContext(shadowCapture.turnId) : null
       // Se o cron já reivindicou exatamente este turno, reutiliza o resultado
@@ -3321,7 +3329,13 @@ async function resolveCustomerStatusInternal(
         if (latest.turn.status === 'processed') turnContext = latest
         else if (latest.turn.status !== 'processing') break
       }
-      if (!turnContext) throw new Error('redesign_turn_decision_unavailable')
+      if (!turnContext) {
+        const latest = await redesignStore.loadTurnContext(shadowCapture.turnId)
+        if (latest.turn.status === 'processed') turnContext = latest
+        else if (fullRedesignEnabled && ['ready', 'processing'].includes(latest.turn.status)) {
+          throw new WhatsAppRedesignDecisionPending('redesign_decision_pending')
+        } else throw new Error('redesign_turn_decision_unavailable')
+      }
       if (turnContext) {
         const turnMetadata = turnContext.turn.metadata && typeof turnContext.turn.metadata === 'object'
           && !Array.isArray(turnContext.turn.metadata)
@@ -3392,7 +3406,14 @@ async function resolveCustomerStatusInternal(
           })
         }
       }
-    } catch {
+    } catch (error) {
+      if (error instanceof WhatsAppRedesignDecisionPending) {
+        await deferWhatsAppRedesignReply(inbound.id, shadowCapture.turnId, {
+          statusReferenceId: input.statusReferenceId || null,
+          statusInteractionType: input.statusInteractionType || null,
+        })
+        return { shouldReply: false }
+      }
       // Sem uma decisão utilizável, não cai no roteador legado nem envia um
       // texto de contingência potencialmente incompatível com a intenção.
       console.warn('[WhatsApp redesign pilot] Decisao indisponivel; resposta suprimida.')
@@ -3460,12 +3481,27 @@ async function resolveCustomerStatusInternal(
           normalizedPhone,
           'awaiting_human',
           AWAITING_HUMAN_CONTEXT_MS,
-          { ...payload, lastAction: 'human_handoff', reason: 'whatsapp_redesign_decision' },
+          mergeMetadata(state?.metadata, {
+            ...payload, lastAction: 'human_handoff', reason: 'whatsapp_redesign_decision',
+            ...(fullRedesignEnabled && pendingPrePilotPostSaleContext ? {
+              postSaleContext: (['complaint_or_adaptation', 'human_agent_request'].includes(pilotReply.replyInput.intent)
+                ? transitionPostSaleContextAfterTurn(pendingPrePilotPostSaleContext, 'post_sale_handoff')
+                : pendingPrePilotPostSaleContext) as unknown as Json,
+            } : {}),
+          }),
           inbound.id
         )
       }
       const response = await createOutbound(channel, inbound.id, normalizedPhone, renderedReply.text, pilotReply.messageType,
         payload, inbound.id)
+      if (fullRedesignEnabled && response.shouldReply && isHandoff && pendingPrePilotPostSaleContext
+        && ['complaint_or_adaptation', 'human_agent_request'].includes(pilotReply.replyInput.intent)) {
+        await recordPostSaleInteractionIfPossible({
+          channel, postSaleContext: pendingPrePilotPostSaleContext,
+          summary: 'Cliente solicitou atendimento humano no acompanhamento; handoff encaminhado pelo redesign.',
+          dedupe: true,
+        })
+      }
       if (fullRedesignEnabled && response.shouldReply && controlMode === 'force_ai') {
         await clearCustomerControlMode(channel.id, normalizedPhone)
       }
@@ -5982,10 +6018,11 @@ async function resolveCustomerStatusInternal(
 }
 
 export async function resolveCustomerStatus(
-  input: CustomerStatusRequest
+  input: CustomerStatusRequest,
+  recovery?: { deferredInboundId: number },
 ): Promise<CustomerStatusResponse> {
   try {
-    return await resolveCustomerStatusInternal(input)
+    return await resolveCustomerStatusInternal(input, recovery)
   } catch (error) {
     try {
       const channel = await findActiveChannel(input.instanceKey)
