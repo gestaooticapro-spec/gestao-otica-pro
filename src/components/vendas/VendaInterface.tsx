@@ -189,7 +189,7 @@ export default function VendaInterface({
 
                         {modules.installments && activeTab === 'carne' && (
                             <div className="space-y-3">
-                                <FinanciamentoBox financiamento={financiamento} receiptOperations={receiptOperations} pagamentos={pagamentos} vendaId={venda.id} customerId={venda.customer_id} customer={customer} storeId={venda.store_id} employeeId={employeeIdFinanceiro} valorRestante={venda.valor_restante ?? 0} onFinanceAdded={onDataReload} disabled={venda.status === 'Cancelada'} isQuitado={isCarneQuitado} whatsappReceiptEnabled={false} />
+                                <FinanciamentoBox financiamento={financiamento} receiptOperations={receiptOperations} pagamentos={pagamentos} vendaId={venda.id} customerId={venda.customer_id} customer={customer} storeId={venda.store_id} employeeId={employeeIdFinanceiro} valorRestante={venda.valor_restante ?? 0} saleStatus={venda.status} onFinanceAdded={onDataReload} disabled={venda.status === 'Cancelada'} isQuitado={isCarneQuitado} whatsappReceiptEnabled={false} />
                             </div>
                         )}
                     </div>

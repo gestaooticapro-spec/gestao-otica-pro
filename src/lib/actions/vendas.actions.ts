@@ -1833,6 +1833,28 @@ export async function addPagamento(
 
   const supabaseAdmin = createAdminClient();
 
+  const { data: vendaParaPagamento, error: vendaParaPagamentoError } = await (supabaseAdmin.from('vendas') as any)
+    .select('status, valor_restante, financiamento_id')
+    .eq('id', venda_id)
+    .eq('store_id', store_id)
+    .eq('tenant_id', tenant_id)
+    .maybeSingle()
+
+  if (vendaParaPagamentoError || !vendaParaPagamento) {
+    return { success: false, message: 'Venda não encontrada para registrar o pagamento.' }
+  }
+
+  if (vendaParaPagamento.financiamento_id) {
+    const saldoEmCentavos = Math.round(Number(vendaParaPagamento.valor_restante || 0) * 100)
+    const pagamentoEmCentavos = Math.round(pagamentoData.valor_pago * 100)
+    if (vendaParaPagamento.status !== 'Em Aberto' || saldoEmCentavos <= 0) {
+      return { success: false, message: 'Renegocie o carnê de uma venda em aberto para liberar saldo antes de registrar um pagamento direto.' }
+    }
+    if (pagamentoEmCentavos > saldoEmCentavos) {
+      return { success: false, message: 'O pagamento não pode superar o saldo disponível da venda.' }
+    }
+  }
+
   // --- LÃ“GICA DE CRÃ‰DITO (Carteira do Cliente) ---
   if (pagamentoData.forma_pagamento === 'Crédito em Loja') {
     const fdWallet = new FormData()
@@ -1940,6 +1962,8 @@ export async function addPagamento(
     revalidatePath(`/dashboard/loja/${store_id}/vendas`)
     revalidatePath(`/dashboard/loja/${store_id}/vendas/${venda_id}`)
     revalidatePath(`/dashboard/loja/${store_id}/financeiro/comissoes`)
+
+    revalidatePath(`/dashboard/loja/${store_id}/vendas/${venda_id}/experimental`)
 
     return { success: true, message: 'Pagamento registrado!', data: newPagamento as any, timestamp: Date.now() }
   } catch (error: any) {
@@ -3700,7 +3724,11 @@ export async function renegociarFinanciamentoLoja(input: unknown) {
   revalidatePath(`/dashboard/loja/${data.store_id}/reports/parcelamento`)
   revalidatePath(`/dashboard/loja/${data.store_id}`)
 
-  return { success: true, message: 'Carnê renegociado com sucesso.', data: result }
+  const valorDevolvido = Number(result?.amount_returned_to_sale || 0)
+  const message = valorDevolvido > 0
+    ? `Carnê renegociado. R$ ${valorDevolvido.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} voltaram ao saldo da venda. Receba em Novo pagamento.`
+    : 'Carnê renegociado com sucesso.'
+  return { success: true, message, data: result }
 }
 
 // ==============================================================================

@@ -146,6 +146,8 @@ O saldo da venda representa somente o valor que ainda nao foi coberto por pagame
 
 Pagamentos de parcelas nao podem ser somados novamente como pagamentos diretos da venda. Tambem nao se deve criar um Pix direto de venda depois de um carne integral já assinado: isso aumentaria o total comprometido pelo cliente. Se for necessário alterar esse acordo, o fluxo deve ajustar ou substituir o carne de forma auditavel, antes de registrar qualquer novo pagamento.
 
+Na renegociacao de uma venda `Em Aberto`, o saldo parcelado pode ser reduzido para receber uma entrada posterior. A diferenca reduz o valor formalizado no carne e volta a `valor_restante`, liberando `Novo pagamento`. O dinheiro anteriormente recebido nas parcelas e preservado no valor formalizado; somente a parte ainda pendente pode voltar para a venda. A renegociacao registra saldo anterior, saldo novo e diferenca no historico, sem criar um recebimento. Vendas fechadas permitem redistribuir o mesmo saldo entre parcelas, mas nao reduzir o valor. Exemplo: carne de R$ 900,00 renegociado para R$ 700,00 devolve R$ 200,00 ao saldo da venda; o recebimento efetivo desses R$ 200,00 zera novamente o saldo.
+
 ## Versionamento de deploy
 
 A politica obrigatoria para o historico esta em [RELEASE_VERSIONING_POLICY.md](/G:/projetos/gestao-otica-pro/RELEASE_VERSIONING_POLICY.md:1).

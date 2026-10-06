@@ -78,6 +78,7 @@ CollectionAPIPixSicredi.json
 !supabase/tests/whatsapp_full_redesign_validation.sql
 !supabase/tests/whatsapp_outbound_per_inbound_idempotency.sql
 !supabase/tests/receivable_customer_search_validation.sql
+!supabase/tests/open_sale_financing_reduction_validation.sql
 !src/lib/database/*.sql
 
 # System & Local Logs

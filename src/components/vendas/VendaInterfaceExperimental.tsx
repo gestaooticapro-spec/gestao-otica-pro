@@ -1197,6 +1197,7 @@ export default function VendaInterfaceExperimental({
                                     employeeId={employeeIdFinanceiro}
                                     valorRestante={venda.valor_restante ?? 0}
                                     onFinanceAdded={onDataReload}
+                                    saleStatus={venda.status}
                                     disabled={venda.status === 'Cancelada'}
                                     isQuitado={isCarneQuitado}
                                     whatsappReceiptEnabled={isWhatsAppAutomaticEnabled}
@@ -1332,6 +1333,7 @@ export default function VendaInterfaceExperimental({
                     employeeId={employeeIdFinanceiro}
                     valorRestante={venda.valor_restante ?? 0}
                     onFinanceAdded={async () => { await onDataReload(); closeModal(); }}
+                    saleStatus={venda.status}
                     disabled={isVendaFechadaOuCancelada}
                     isQuitado={isQuitado}
                     isModal={true}

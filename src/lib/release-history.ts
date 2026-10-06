@@ -9,6 +9,8 @@ export type Release = {
 // altera o Dashboard ou o modal de histórico.
 export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'O botao das parcelas exibe Receber parcela nas lojas, oferece baixa manual ou Pix nas lojas habilitadas e preserva a consulta de cobrancas Pix existentes.',
+  'A renegociacao de carne em vendas abertas permite reduzir o saldo parcelado e receber a diferenca como entrada, preservando os pagamentos anteriores.',
   'O texto de Visagismo explica somente os formatos e as proporcoes das armacoes, sem recomendacoes de cores.',
   'Mensagens de WhatsApp que o webhook nao entregar passam a ser recuperadas em cerca de cinco minutos.',
   'Lembretes de parcela e pos-venda enviados pelo sistema retomam a conversa apos uma pausa humana anterior, mantem a memoria de assuntos anteriores e reconhecem agradecimentos ligados ao lembrete mais recente sem confundi-los com outras conversas.',
