@@ -42,7 +42,7 @@ type RecordPostSaleInteractionInput = {
 }
 
 export async function recordPostSaleInteraction(input: RecordPostSaleInteractionInput) {
-  const supabase = createAdminClient()
+  const supabase = createAdminClient({ noStore: true })
   const interactionType = input.interactionType || 'WhatsApp Automatico'
 
   if (input.dedupe) {
@@ -72,7 +72,7 @@ export async function recordPostSaleInteraction(input: RecordPostSaleInteraction
 }
 
 export async function ensurePostSaleTracking(input: EnsurePostSaleTrackingInput) {
-  const supabase = createAdminClient()
+  const supabase = createAdminClient({ noStore: true })
   const interactionType = input.interactionType || 'WhatsApp Automatico'
   const nowIso = new Date().toISOString()
 
@@ -129,7 +129,7 @@ export async function ensurePostSaleTracking(input: EnsurePostSaleTrackingInput)
 }
 
 export async function concludePostSaleFromWhatsApp(input: ConcludePostSaleFromWhatsAppInput) {
-  const supabase = createAdminClient()
+  const supabase = createAdminClient({ noStore: true })
   const nowIso = new Date().toISOString()
 
   if (!Number.isInteger(input.rating) || input.rating < 1 || input.rating > 5) {
@@ -176,7 +176,7 @@ export async function concludePostSaleFromWhatsApp(input: ConcludePostSaleFromWh
 }
 
 export async function concludePostSaleAutomatically(input: ConcludePostSaleAutomaticallyInput) {
-  const supabase = createAdminClient()
+  const supabase = createAdminClient({ noStore: true })
   const nowIso = new Date().toISOString()
 
   const { data: target, error: targetError } = await (supabase.from('post_sales') as any)

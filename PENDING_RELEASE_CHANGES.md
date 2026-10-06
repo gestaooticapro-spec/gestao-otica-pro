@@ -1,5 +1,7 @@
 # Alterações pendentes para o próximo deploy
 
+- O pós-venda pelo WhatsApp recupera os contatos recentes ainda não realizados e permite o primeiro contato de acompanhamentos abertos sem interação registrada. Os envios seguem a fila gradual, o horário da loja e as preferências do cliente; atendimentos já iniciados e casos concluídos são preservados.
+
 - Na Loja 1, reclamações e pedidos de atendente durante um acompanhamento recebem encaminhamento pelo redesign e preservam o contexto. Respostas oficiais de horário distinguem o expediente previsto da situação atual da loja e informam os intervalos cadastrados.
 
 - Na Loja 1, decisões de WhatsApp ainda em processamento permanecem pendentes para retomada, respeitando mensagens mais recentes e o atendimento humano. Perguntas intercaladas durante um acompanhamento seguem o redesign sem perder a pendência anterior. Se a redação da IA falhar em uma resposta de horário, o cliente recebe o horário oficial confirmado pelo sistema.

@@ -3,6 +3,10 @@ import { NextResponse } from 'next/server'
 import { runPostSaleFollowupJob } from '@/lib/whatsapp/post-sale-followups'
 
 export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+export const maxDuration = 60
+const jobHeaders = { 'Cache-Control': 'no-store', 'X-Post-Sale-Job-Revision': '20261006120000' }
 
 function safeEquals(left: string, right: string) {
   const leftBuffer = Buffer.from(left)
@@ -26,14 +30,14 @@ function isAuthorized(request: Request) {
 
 export async function GET(request: Request) {
   if (!isAuthorized(request)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: jobHeaders })
   }
 
   try {
-    const result = await runPostSaleFollowupJob()
-    return NextResponse.json(result)
+    const result = await runPostSaleFollowupJob({ dryRun: new URL(request.url).searchParams.get('dryRun') === 'true' })
+    return NextResponse.json(result, { headers: jobHeaders })
   } catch (error) {
     console.error('[WhatsApp] Post-sale follow-up job failed:', error)
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 })
+    return NextResponse.json({ error: 'Internal error' }, { status: 500, headers: jobHeaders })
   }
 }
