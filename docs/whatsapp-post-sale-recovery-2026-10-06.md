@@ -45,11 +45,27 @@ O resultado `sent` significa aceite confirmado pelo provedor. Entrega no aparelh
 
 ## Publicacao
 
-O acesso salvo a Vercel retornou HTTP 403 (`Not authorized`) ao consultar a conta. A integracao GitHub–Vercel foi confirmada pelo status de deploy do commit anterior e sera usada para publicar. A recuperacao real depende da confirmacao da revisao nova na rota publicada. Nenhum numero ou estado de versao de release foi alterado.
+O acesso salvo a Vercel retornou HTTP 403 (`Not authorized`) ao consultar a conta. A publicacao foi realizada pela integracao GitHub–Vercel. O commit `37a1a76` teve deploy concluido e a rota de producao confirmou a revisao `20261006120000c`. Nenhum numero ou estado de versao de release foi alterado.
 
 ## Validacao executada
 
 - `npm run typecheck`: aprovado.
 - `npm run build`: aprovado; exibiu avisos de bases Browserslist desatualizadas, sem impedir o build.
 - Simulacao com dados reais: zero agendamentos, zero tentativas e zero envios; 19 grupos novos e dois followups com falha confirmada recuperaveis.
-- Banco de producao: migracao registrada, RLS ativo nas duas tabelas novas, RPCs indisponiveis a `anon`/`authenticated` e liberadas a `service_role`, trigger de cobertura ativo. Nenhum acompanhamento foi reaberto ou enfileirado durante esta validacao.
+- Banco de producao: migracao registrada, RLS ativo nas duas tabelas novas, RPCs indisponiveis a `anon`/`authenticated` e liberadas a `service_role`, trigger de cobertura ativo. A simulacao nao modificou filas nem acompanhamentos.
+
+## Recuperacao real
+
+- O run iniciado em `2026-10-06T17:51:28Z` concluiu em cerca de trinta segundos e agendou os 19 grupos novos. Eles cobrem vinte OS.
+- Uma tentativa de recuperar falha antiga recebeu HTTP 400 com `exists: false`: o destinatario nao possui WhatsApp. A revisao do outro followup confirmou a mesma falha permanente. Os dois continuam como `failed`, sem novos retries automaticos; exigem revisao do telefone pela equipe.
+- O script usado pelo cron foi executado com o mesmo usuario da agenda. Retornou HTTP 200 e codigo de saida zero, com inicio/fim no log e run concluido no banco em aproximadamente vinte segundos.
+- Os dezenove envios validos foram distribuidos do slot `2026-10-06T18:15:00Z` ate `2026-10-07T19:45:00Z`, respeitando expediente e intervalos de trinta minutos. A elegibilidade sera novamente conferida em cada despacho.
+- O primeiro run interrompido por timeout ficou marcado `abandoned / lease_expired`. A varredura foi corrigida para consultar somente casos ainda abertos, e os runs posteriores concluiram dentro da janela da funcao.
+- Primeiro envio real aceito em `2026-10-06T18:17:00Z` (15h17 em Sao Paulo): followup `sent`, outbound `sent`, identificador do provedor presente, acompanhamento `Em Acompanhamento` e interacao de disparo registrada. O run `c5192a3d-73ac-4c3a-9b8b-d6c6439b986c` concluiu com uma tentativa, um envio e zero falhas. A chamada usou o mesmo script da agenda.
+- A chamada automatica seguinte foi comprovada no journal do cron e no log do script: HTTP 200, run `45127db5-84a9-4d6e-aa81-527cd757473e`, iniciado em `2026-10-06T18:19:14Z` e concluido em aproximadamente treze segundos. Nao houve outro envio na mesma janela. O banco confirmou um unico envio desde 18h15 UTC e dezoito itens ainda agendados.
+- Depois desse envio, restam dezoito mensagens agendadas. O total historico da Loja 1 passou de 177 para 178 followups enviados; os 22 com falha e os dois cancelados permanecem preservados.
+- Conferencia final da migracao: registro presente em `supabase_migrations.schema_migrations` e SHA-256 do SQL armazenado igual ao arquivo local. A rota ativa retornou a revisao `20261006120000c` com `Cache-Control: no-store`; consultas sem credencial continuam recebendo HTTP 401.
+
+## Relogio da VPS
+
+A VPS usa `America/Sao_Paulo`, mas a comparacao com o cabeçalho HTTP de producao indicou atraso de aproximadamente 252 segundos. O NTP estava habilitado sem sincronizacao; reiniciar `systemd-timesyncd` nao confirmou a sincronizacao. O job utiliza o relogio do app e do banco para elegibilidade e cadencia. Os horarios locais do log da VPS devem ser correlacionados pelo run ID e pelo timestamp UTC da auditoria, enquanto o relogio do host exigir ajuste.
