@@ -1540,6 +1540,7 @@ export async function requeuePostSalesForDailyHealth(storeId: number): Promise<M
   if (!runId) throw new Error('O job de pos-venda esta em andamento. Aguarde a conclusao.')
   try {
     const now = new Date()
+    if (await suppressUndeliverablePostSaleRetries(now)) await compactPendingPostSaleSlots(now)
     const requeuedFailures = await requeueSafeRecentFailures(now, storeId)
     const selection = await scheduleFollowups(now, false, storeId)
     const result = { requeuedFailures, scheduledMissingAttempts: selection.scheduled, skipped: Object.values(selection.reasons).reduce((sum, count) => sum + count, 0) }
@@ -1573,10 +1574,11 @@ async function requeueSafeRecentFailures(now: Date, onlyStoreId?: number, dryRun
     if (Number(payload.recoveryAttempts || 0) >= 2 || payload.manualTest) continue
     if (followup.outbound_message_id) {
       const { data: outbound, error: outboundError } = await (supabase.from('whatsapp_outbound_messages') as any)
-        .select('status,sent_at,provider_message_id').eq('id', followup.outbound_message_id).maybeSingle()
+        .select('status,sent_at,provider_message_id,error_message').eq('id', followup.outbound_message_id).maybeSingle()
       if (outboundError) throw outboundError
       // Pending e resultado desconhecido exigem reconciliacao, nunca reenvio.
       if (!outbound || outbound.status !== 'failed' || outbound.sent_at || outbound.provider_message_id) continue
+      if (isUndeliverablePostSaleRecipient(outbound.error_message)) continue
     }
     if (await isPostSaleFollowupOptedOut(followup.store_id, followup.remote_phone) || await hasActiveHumanBlock(followup.channel_id, followup.remote_phone)) continue
     const { data: postSales, error: postSalesError } = await (supabase.from('post_sales') as any)
@@ -1600,6 +1602,48 @@ async function requeueSafeRecentFailures(now: Date, onlyStoreId?: number, dryRun
   return requeued
 }
 
+function isUndeliverablePostSaleRecipient(error: unknown) {
+  return /"exists"\s*:\s*false\b/.test(String(error || ''))
+}
+
+async function suppressUndeliverablePostSaleRetries(now: Date) {
+  const supabase = createAdminClient({ noStore: true })
+  const { data: queued, error } = await (supabase.from('whatsapp_post_sale_followups') as any)
+    .select('id,outbound_message_id').eq('status', 'scheduled').not('outbound_message_id', 'is', null)
+  if (error) throw error
+  let suppressed = 0
+  for (const followup of queued || []) {
+    const { data: outbound, error: outboundError } = await (supabase.from('whatsapp_outbound_messages') as any)
+      .select('status,sent_at,provider_message_id,error_message').eq('id', followup.outbound_message_id).maybeSingle()
+    if (outboundError) throw outboundError
+    if (outbound?.status !== 'failed' || outbound.sent_at || outbound.provider_message_id || !isUndeliverablePostSaleRecipient(outbound.error_message)) continue
+    const { data: updated, error: updateError } = await (supabase.from('whatsapp_post_sale_followups') as any)
+      .update({ status: 'failed', error_message: 'Provedor confirmou que o telefone nao possui WhatsApp; revisar cadastro antes de novo contato.', updated_at: now.toISOString() })
+      .eq('id', followup.id).eq('status', 'scheduled').select('id').maybeSingle()
+    if (updateError) throw updateError
+    if (updated) suppressed += 1
+  }
+  return suppressed
+}
+
+async function compactPendingPostSaleSlots(now: Date) {
+  const supabase = createAdminClient({ noStore: true })
+  for (const channel of await loadActiveChannels()) {
+    if (!followupSettingsFromChannel(channel)) continue
+    const { data: pending, error } = await (supabase.from('whatsapp_post_sale_followups') as any)
+      .select('id').eq('channel_id', channel.id).eq('status', 'scheduled')
+      .order('scheduled_for').order('id')
+    if (error) throw error
+    const firstSlot = nextPostSaleBusinessSlotForSettings(now, channel.stores?.settings)
+    for (const [offset, followup] of (pending || []).entries()) {
+      const { error: updateError } = await (supabase.from('whatsapp_post_sale_followups') as any)
+        .update({ scheduled_for: addPostSaleSlots(firstSlot, offset, channel.stores?.settings).toISOString(), updated_at: now.toISOString() })
+        .eq('id', followup.id).eq('status', 'scheduled')
+      if (updateError) throw updateError
+    }
+  }
+}
+
 export type PostSaleFollowupJobResult = {
   ok: true
   scheduled: number
@@ -1608,7 +1652,7 @@ export type PostSaleFollowupJobResult = {
   dryRun?: boolean
   skippedConcurrentRun?: boolean
   selection?: { examined: number; eligibleGroups: number; reasons: Record<string, number> }
-  recovery?: { eligibleFailures?: number; requeuedFailures: number }
+  recovery?: { eligibleFailures?: number; requeuedFailures: number; undeliverableRetriesSuppressed?: number }
   dispatch: {
     attempted: number
     sent: number
@@ -1643,6 +1687,8 @@ export async function runPostSaleFollowupJob(options: { dryRun?: boolean } = {})
   try {
     await recoverStaleSendingFollowups(now)
     await recoverFailedSentFollowups(now)
+    const undeliverableRetriesSuppressed = await suppressUndeliverablePostSaleRetries(now)
+    if (undeliverableRetriesSuppressed) await compactPendingPostSaleSlots(now)
     const requeuedFailures = await requeueSafeRecentFailures(now)
     const deadlineClosures = await closeExpiredPostSaleFollowups(now)
     const scheduleResult = await scheduleFollowups(now)
@@ -1656,7 +1702,7 @@ export async function runPostSaleFollowupJob(options: { dryRun?: boolean } = {})
       deadlineClosures,
       runId,
       selection: { examined: scheduleResult.examined, eligibleGroups: scheduleResult.eligibleGroups, reasons: scheduleResult.reasons },
-      recovery: { requeuedFailures },
+      recovery: { requeuedFailures, undeliverableRetriesSuppressed },
     }
     const { error: auditError } = await (supabase.from('whatsapp_post_sale_job_runs') as any)
       .update({ status: 'completed', finished_at: new Date().toISOString(), result }).eq('id', runId)

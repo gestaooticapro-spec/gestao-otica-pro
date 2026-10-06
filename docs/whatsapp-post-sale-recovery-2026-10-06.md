@@ -2,16 +2,17 @@
 
 ## Evidencia coletada em 06/10/2026
 
-- O cron estava ativo, mas as execucoes recentes retornavam zero agendamentos e zero tentativas.
-- A consulta direta com o formato usado pelo job encontrava OS elegiveis. Nao foi comprovado se a divergencia vinha do deploy ou do cache de leitura.
+- O cron estava ativo. A leitura inicial das ultimas respostas JSON mostrava zero agendamentos e zero tentativas, mas elas eram anteriores aos erros mais recentes.
+- A consulta direta com o formato usado pelo job encontrava OS elegiveis. A investigacao posterior confirmou HTTP 401 no fim do log: havia dois espacos depois de `Bearer` no cabeçalho do cron, enquanto a rota removia somente um. A chamada administrativa, que normalizava os espacos, era aceita. Cache e deploy desatualizado nao foram comprovados como causa dessa falha de autenticacao.
 - A janela recente analisada continha 50 OS maduras: 12 concluidas, 17 em acompanhamento e 21 sem acompanhamento. Todos os 29 acompanhamentos existentes ja estavam cobertos por followups. Tres acompanhamentos nao tinham interacao registrada; isso sozinho nao autoriza repetir um envio.
 - A simulacao do novo planejador encontrou 19 grupos elegiveis, sem criar filas ou enviar mensagens. Um candidato foi descartado por telefone ausente ou invalido. Os numeros sao um retrato da consulta, nao uma garantia de entregas futuras.
 - Os tres acompanhamentos sem interacao estao associados a envios `failed`, com outbound tambem `failed` e sem `sent_at` ou identificador do provedor. A simulacao identificou dois followups recentes aptos a recuperacao; a contagem de followups pode diferir da quantidade de OS agrupadas.
 
 ## Comportamento implementado
 
-- Leituras operacionais usam `cache: no-store`; a rota e dinamica e identifica a revisao operacional `20261006120000b`.
+- Leituras operacionais usam `cache: no-store`; a rota e dinamica e identifica a revisao operacional `20261006120000c`.
 - Cada execucao registra inicio, fim, resultado e contagens em `whatsapp_post_sale_job_runs`. Erros registram somente o codigo, sem dados do cliente. Uma execucao concorrente e recusada enquanto a anterior possui lease de dez minutos.
+- A autenticacao aceita os espacos do esquema Bearer e conserva a comparacao segura do segredo. O cron passa por um script local na VPS, com a credencial em arquivo restrito; cada chamada registra inicio, fim, status HTTP e codigo de saida, sem gravar a credencial.
 - Uma reserva persistente permite somente uma tentativa normal por janela de trinta minutos, alinhada aos slots `:15` e `:45`. O teste isolado ja existente conserva sua excecao explicita. Falhas e bloqueios tambem podem consumir o slot; nao ha rajada de substituicoes.
 - Primeiro contato exige venda elegivel, OS entregue, espera configurada, telefone valido, canal conectado, modulo habilitado, ausencia de opt-out e atendimento humano ativo.
 - `Em Acompanhamento` sem interacoes nao bloqueia por si so. Qualquer interacao registrada e tratada conservadoramente como contato anterior. `Concluido` nunca reabre.
@@ -21,6 +22,7 @@
 - Falhas recentes so podem voltar a fila quando nao existe evidencia de envio aceito e o outbound esta confirmado como `failed`, ou nao chegou a ser criado. Outbounds pendentes, resultados desconhecidos e envios com identificador do provedor nao sao repetidos. A recuperacao e limitada a duas tentativas adicionais e revalida os gates no despacho.
 - A acao da Central Diaria usa as mesmas regras do planejador, sem ignorar interacoes ou reagendar resultados ambiguos.
 - O encerramento por prazo consulta somente followups que ainda cobrem acompanhamentos abertos. Casos ja concluidos nao sao percorridos a cada execucao.
+- A resposta `exists: false` do provedor e uma falha permanente de destinatario: esse telefone nao possui WhatsApp. Ela impede recuperacao automatica, mesmo com outbound `failed`. Retries pendentes com essa evidencia saem da fila e os slots restantes sao redistribuidos em intervalos de trinta minutos, mantendo todos os gates no despacho.
 
 ## Operacao e validacao
 

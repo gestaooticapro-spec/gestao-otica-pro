@@ -6,7 +6,7 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 export const maxDuration = 60
-const jobHeaders = { 'Cache-Control': 'no-store', 'X-Post-Sale-Job-Revision': '20261006120000b' }
+const jobHeaders = { 'Cache-Control': 'no-store', 'X-Post-Sale-Job-Revision': '20261006120000c' }
 
 function safeEquals(left: string, right: string) {
   const leftBuffer = Buffer.from(left)
@@ -16,9 +16,7 @@ function safeEquals(left: string, right: string) {
 
 function isAuthorized(request: Request) {
   const authorization = request.headers.get('authorization') ?? ''
-  const providedSecret = authorization.startsWith('Bearer ')
-    ? authorization.slice('Bearer '.length)
-    : ''
+  const providedSecret = authorization.match(/^Bearer\s+(.+)$/i)?.[1].trim() ?? ''
 
   const allowedSecrets = [
     process.env.WHATSAPP_INTERNAL_SECRET,

@@ -8,7 +8,7 @@ import { runPostSaleFollowupJob } from '../src/lib/whatsapp/post-sale-followups'
 dotenv.config({ path: '.env.local', quiet: true })
 const mode = process.argv[2] || 'status'
 const migrationVersion = '20261006120000'
-const jobRevision = '20261006120000b'
+const jobRevision = '20261006120000c'
 const migrationFile = `supabase/migrations/${migrationVersion}_whatsapp_post_sale_job_audit.sql`
 
 async function main() {
@@ -23,17 +23,21 @@ async function main() {
       const target = runbook.match(/^ssh\s+(root@[a-zA-Z0-9.:-]+)\s*$/m)?.[1]
       if (!target) throw new Error('cron_host_missing')
       const remote = `python3 - <<'PY'
-import subprocess,re,json,urllib.request,urllib.error
+import subprocess,re,json,urllib.request,urllib.error,shlex
 cron=subprocess.check_output(['crontab','-l'],text=True)
 line=next(x for x in cron.splitlines() if 'post-sale-followups' in x and not x.lstrip().startswith('#'))
 m=re.search(r'Authorization:\\s*Bearer\\s+([^\\s\\"\\x27]+)',line)
-if not m: raise SystemExit('cron_auth_not_inline')
+if m: secret=m.group(1)
+else:
+ env=open('/root/.config/whatsapp-post-sale-followups/cron.env').read().strip()
+ if not env.startswith('WA_POST_SALE_CRON_SECRET='):raise SystemExit('cron_secret_missing')
+ secret=shlex.split(env.split('=',1)[1])[0]
 url='https://gestao-otica-pro.vercel.app/api/whatsapp/post-sale-followups'
 try: urllib.request.urlopen(url,timeout=20)
 except urllib.error.HTTPError as e:
  if e.code!=401 or e.headers.get('X-Post-Sale-Job-Revision')!='${jobRevision}':raise SystemExit('updated_job_not_deployed')
 else: raise SystemExit('unexpected_unauthenticated_response')
-request=urllib.request.Request(url+'${mode === 'preview-production' ? '?dryRun=true' : ''}',headers={'Authorization':'Bearer '+m.group(1),'Cache-Control':'no-cache'})
+request=urllib.request.Request(url+'${mode === 'preview-production' ? '?dryRun=true' : ''}',headers={'Authorization':'Bearer '+secret,'Cache-Control':'no-cache'})
 try:
  with urllib.request.urlopen(request,timeout=60) as r: print(json.dumps({'status':r.status,'result':json.load(r)}))
 except urllib.error.HTTPError as e: print(json.dumps({'status':e.code,'error':'production_request_failed'}));raise SystemExit(1)
