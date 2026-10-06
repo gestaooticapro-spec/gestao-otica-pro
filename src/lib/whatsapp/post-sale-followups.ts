@@ -417,12 +417,24 @@ async function isPostSaleFollowupOptedOut(storeId: number, phone: string) {
 async function closeExpiredPostSaleFollowups(now: Date) {
   const supabase = createAdminClient({ noStore: true })
   const deadlineIso = new Date(now.getTime() - POST_SALE_CONTEXT_MS).toISOString()
+  // Filtrar antes de percorrer o historico: centenas de casos ja concluidos
+  // nao devem consumir o tempo da execucao nem impedir novos agendamentos.
+  const activeOrderIds: number[] = []
+  for (let offset = 0; ; offset += 500) {
+    const { data: active, error: activeError } = await (supabase.from('post_sales') as any)
+      .select('service_order_id').eq('status', 'Em Acompanhamento').order('id').range(offset, offset + 499)
+    if (activeError) throw activeError
+    activeOrderIds.push(...(active || []).map((p: { service_order_id: number }) => p.service_order_id))
+    if (!active || active.length < 500) break
+  }
+  if (!activeOrderIds.length) return { closedWith3: 0, closedWith4: 0, keptHuman: 0 }
   const { data: followups, error } = await (supabase.from('whatsapp_post_sale_followups') as any)
-    .select('id, tenant_id, store_id, channel_id, remote_phone, post_sales_id, covered_service_order_ids, sent_at')
+    .select('id, tenant_id, store_id, channel_id, service_order_id, remote_phone, post_sales_id, covered_service_order_ids, sent_at')
     .eq('status', 'sent')
     .not('post_sales_id', 'is', null)
     .not('sent_at', 'is', null)
     .lte('sent_at', deadlineIso)
+    .overlaps('covered_service_order_ids', activeOrderIds)
 
   if (error) throw error
 
@@ -433,25 +445,24 @@ async function closeExpiredPostSaleFollowups(now: Date) {
   for (const followup of (followups ?? []) as Array<Pick<FollowupRow, 'id' | 'tenant_id' | 'store_id' | 'channel_id' | 'service_order_id' | 'covered_service_order_ids' | 'remote_phone' | 'post_sales_id' | 'sent_at'>>) {
     const serviceOrderIds = coveredServiceOrderIds(followup)
 
-    if (await hasActiveHumanBlock(followup.channel_id, followup.remote_phone)) {
-      keptHuman += 1
-      continue
-    }
-
     const { data: postSales, error: postSalesError } = await (supabase.from('post_sales') as any)
       .select('id, status, service_order_id')
       .eq('tenant_id', followup.tenant_id)
       .eq('store_id', followup.store_id)
       .in('service_order_id', serviceOrderIds)
     if (postSalesError) throw postSalesError
+    const activePostSales = (postSales || []).filter((postSale: { status: string }) => postSale.status === 'Em Acompanhamento')
+    if (activePostSales.length === 0) continue
+    if (await hasActiveHumanBlock(followup.channel_id, followup.remote_phone)) {
+      keptHuman += 1
+      continue
+    }
     const postSalesIds = (postSales || []).map((postSale: { id: number }) => postSale.id)
     if (postSalesIds.length === 0) continue
     const { data: interactions, error: interactionsError } = await (supabase.from('post_sales_interactions') as any)
       .select('resumo')
       .in('post_sales_id', postSalesIds)
     if (interactionsError) throw interactionsError
-    const activePostSales = (postSales || []).filter((postSale: { status: string }) => postSale.status === 'Em Acompanhamento')
-    if (activePostSales.length === 0) continue
 
     const outcome = decidePostSaleDeadlineOutcome((interactions ?? []).map((interaction: { resumo?: string | null }) => interaction.resumo))
     if (outcome === 'keep_human') {
@@ -1622,7 +1633,13 @@ export async function runPostSaleFollowupJob(options: { dryRun?: boolean } = {})
   }
   const { data: runId, error: leaseError } = await (supabase as any).rpc('begin_whatsapp_post_sale_job')
   if (leaseError) throw leaseError
-  if (!runId) return { ...emptyResult, skippedConcurrentRun: true }
+  if (!runId) {
+    const result = { ...emptyResult, skippedConcurrentRun: true }
+    const { data: skipped, error: auditError } = await (supabase.from('whatsapp_post_sale_job_runs') as any)
+      .insert({ status: 'completed', finished_at: now.toISOString(), result }).select('id').single()
+    if (auditError) throw auditError
+    return { ...result, runId: skipped.id }
+  }
   try {
     await recoverStaleSendingFollowups(now)
     await recoverFailedSentFollowups(now)

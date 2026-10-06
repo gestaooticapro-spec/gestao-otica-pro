@@ -6,7 +6,7 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 export const maxDuration = 60
-const jobHeaders = { 'Cache-Control': 'no-store', 'X-Post-Sale-Job-Revision': '20261006120000' }
+const jobHeaders = { 'Cache-Control': 'no-store', 'X-Post-Sale-Job-Revision': '20261006120000b' }
 
 function safeEquals(left: string, right: string) {
   const leftBuffer = Buffer.from(left)

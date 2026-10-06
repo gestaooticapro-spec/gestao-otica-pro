@@ -10,7 +10,7 @@
 
 ## Comportamento implementado
 
-- Leituras operacionais usam `cache: no-store`; a rota e dinamica e identifica a revisao operacional `20261006120000`.
+- Leituras operacionais usam `cache: no-store`; a rota e dinamica e identifica a revisao operacional `20261006120000b`.
 - Cada execucao registra inicio, fim, resultado e contagens em `whatsapp_post_sale_job_runs`. Erros registram somente o codigo, sem dados do cliente. Uma execucao concorrente e recusada enquanto a anterior possui lease de dez minutos.
 - Uma reserva persistente permite somente uma tentativa normal por janela de trinta minutos, alinhada aos slots `:15` e `:45`. O teste isolado ja existente conserva sua excecao explicita. Falhas e bloqueios tambem podem consumir o slot; nao ha rajada de substituicoes.
 - Primeiro contato exige venda elegivel, OS entregue, espera configurada, telefone valido, canal conectado, modulo habilitado, ausencia de opt-out e atendimento humano ativo.
@@ -20,6 +20,7 @@
 - Os novos grupos ocupam slots apos a fila existente. Cada envio revalida todas as OS cobertas. Pausa humana adia o envio; opt-out, conclusao ou contato anterior cancelam o primeiro contato.
 - Falhas recentes so podem voltar a fila quando nao existe evidencia de envio aceito e o outbound esta confirmado como `failed`, ou nao chegou a ser criado. Outbounds pendentes, resultados desconhecidos e envios com identificador do provedor nao sao repetidos. A recuperacao e limitada a duas tentativas adicionais e revalida os gates no despacho.
 - A acao da Central Diaria usa as mesmas regras do planejador, sem ignorar interacoes ou reagendar resultados ambiguos.
+- O encerramento por prazo consulta somente followups que ainda cobrem acompanhamentos abertos. Casos ja concluidos nao sao percorridos a cada execucao.
 
 ## Operacao e validacao
 
@@ -35,6 +36,8 @@ npx tsx scripts/manage-whatsapp-post-sale-job.ts status
 `apply-migration` aplica somente a migracao desta correcao, em transacao, e registra sua versao no historico de migracoes. A migracao foi aplicada em producao em 06/10/2026.
 
 Depois do deploy, `preview-production` consulta a selecao da rota publicada e `run-production` executa o job real. Ambos verificam primeiro, sem autenticacao, se a revisao nova esta publicada; a rota antiga nao recebe uma chamada de simulacao que poderia provocar envios.
+
+Se as credenciais locais de producao estiverem desatualizadas, acrescente `--cron-host`. Essa opcao usa SSH configurado no runbook local e a credencial vigente do cron, sem copia-la ou imprimi-la.
 
 O resultado `sent` significa aceite confirmado pelo provedor. Entrega no aparelho exige evidencia adicional.
 
