@@ -34,6 +34,8 @@ export function planStoreOneOrderLookup(input: {
 
   const explicitNumber = extractExplicitOrderNumber(input.messageText)
   const explicitStatus = isExplicitOrderStatusOrReadinessQuestion(input.messageText)
+  if (decision.action === 'recognize_continuation' && decision.facts.teamOutreachContinuation
+    && !explicitNumber && !explicitStatus) return null
   const pendingIdentifier = input.awaitingIdentifier && !explicitStatus
     && (classification.intent === 'order_status' || classification.intent === 'unknown')
   const canonicalOrderDecision = decision.action === 'lookup_order_status'

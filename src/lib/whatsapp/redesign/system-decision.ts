@@ -1,3 +1,4 @@
+import { resolveTeamOutreachContinuation } from './team-outreach-continuation'
 import type { StoreHoursFacts } from '../store-hours-logic'
 import {
   isExplicitHumanHandoffRequest,
@@ -254,6 +255,27 @@ export function buildWhatsAppShadowDecision(
           hasOfficialStoreLocation: true,
           officialStoreLocation: input.storeLocationReply,
         },
+        humanHandoffTiming: null,
+        humanization: humanization(false),
+      }),
+    }
+  }
+
+  const continuation = input.storeId === 1
+    && classification.confidence >= WHATSAPP_REDESIGN_MIN_CONFIDENCE
+    && ['greeting', 'order_status', 'unknown'].includes(classification.intent)
+    && !classification.entities.orderNumber && !classification.entities.cpf
+    ? resolveTeamOutreachContinuation({ memory: input.memory, currentText: currentTurnText, now: input.now })
+    : null
+  if (continuation) {
+    return {
+      reason: `team_outreach_${continuation}`,
+      draft: WhatsAppSystemDecisionDraftSchema.parse({
+        action: 'recognize_continuation',
+        fallbackReply: continuation === 'pickup_acknowledgment'
+          ? 'Combinado! Obrigado por avisar.'
+          : 'Oi! A equipe te avisou sobre a retirada dos óculos. Quer falar sobre isso?',
+        facts: { teamOutreachContinuation: continuation, teamNotifiedPickup: true },
         humanHandoffTiming: null,
         humanization: humanization(false),
       }),

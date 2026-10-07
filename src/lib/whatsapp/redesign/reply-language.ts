@@ -193,6 +193,11 @@ export function localizeWhatsAppRedesignDecision(
   } else if (decision.action === 'answer_official_pix') {
     reply = language === 'es' ? 'Enviar la clave Pix oficial registrada para la tienda.'
       : 'Send the store’s official registered Pix key.'
+  } else if (decision.facts.teamOutreachContinuation) {
+    reply = decision.facts.teamOutreachContinuation === 'pickup_acknowledgment'
+      ? language === 'es' ? '¡De acuerdo! Gracias por avisar.' : 'Sounds good! Thanks for letting us know.'
+      : language === 'es' ? '¡Hola! El equipo te avisó sobre la recogida de las gafas. ¿Quieres hablar de eso?'
+        : 'Hi! The team contacted you about picking up your glasses. Would you like to discuss that?'
   } else if (decision.action === 'conservative_fallback') {
     reply = language === 'es' ? '¡Hola! ¿En qué puedo ayudarte?'
       : 'Hello! How can I help you?'

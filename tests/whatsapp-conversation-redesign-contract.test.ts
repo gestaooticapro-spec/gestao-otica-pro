@@ -1,3 +1,4 @@
+import { planStoreOneOrderLookup } from '../src/lib/whatsapp/redesign/order-status-live'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
@@ -1465,4 +1466,94 @@ test('falha do modo sombra nunca interrompe o fluxo legado', async () => {
 
   assert.deepEqual(result, { success: false })
   assert.equal(errors.length, 1)
+})
+
+function teamPickupDecision(text: string, overrides: Partial<Parameters<typeof buildWhatsAppShadowDecision>[0]> = {}) {
+  const now = '2026-10-07T18:09:00.000Z'
+  return buildWhatsAppShadowDecision({
+    storeId: 1,
+    classification: WhatsAppRedesignClassificationSchema.parse({
+      intent: text.startsWith('Oi') ? 'greeting' : 'order_status', confidence: 0.98,
+      topicRelation: 'continue_topic', requestsHuman: false, mentionsAttachment: false, entities: { customerName: null, patientName: null, cpf: null, orderNumber: null },
+    }),
+    memory: { summary: defaultConversationSummary(now), messages: [{
+      id: 'notice', providerMessageId: 'confirmed-notice', role: 'human', kind: 'text',
+      text: 'Olá Sonia. Teu óculos está pronto', occurredAt: '2026-10-07T12:21:52.000Z',
+    }] },
+    now, currentTurnTexts: [text], hoursFacts: null, storeLocationReply: null,
+    hasCurrentTurnAttachment: false, ...overrides,
+  })
+}
+
+test('apos a pausa, saudacao retoma aviso humano e confirmacao nao consulta OS', () => {
+  const greeting = teamPickupDecision('Oi\nOi')
+  assert.equal(greeting.draft.action, 'recognize_continuation')
+  assert.equal(greeting.draft.facts.teamOutreachContinuation, 'greeting')
+  for (const text of ['Já vou buscar\nObg', 'Amanhã vou retirar', 'Bom dia! Vou buscar meus óculos. Obrigada']) {
+    const result = teamPickupDecision(text)
+    assert.equal(result.draft.action, 'recognize_continuation', text)
+    assert.equal(result.draft.facts.teamOutreachContinuation, 'pickup_acknowledgment', text)
+    for (const awaitingIdentifier of [false, true]) {
+      assert.equal(planStoreOneOrderLookup({ storeId: 1, enabled: true, awaitingIdentifier,
+        classification: WhatsAppRedesignClassificationSchema.parse({ intent: 'order_status',
+          confidence: 0.98, topicRelation: 'continue_topic', requestsHuman: false,
+          mentionsAttachment: false, entities: { customerName: null, patientName: null, cpf: null, orderNumber: null } }),
+        decision: result.draft, messageText: text }), null)
+    }
+    assert.equal(shouldUseOrderStatusToolAgent({ enabled: true,
+      classification: WhatsAppRedesignClassificationSchema.parse({ intent: 'order_status',
+        confidence: 0.98, topicRelation: 'continue_topic', requestsHuman: false,
+        mentionsAttachment: false, entities: { customerName: null, patientName: null, cpf: null, orderNumber: null } }), decision: result.draft, messageText: text }), false)
+  }
+})
+
+test('continuidade nao atravessa pausa humana nem substitui pergunta de status, horario ou pedido humano', () => {
+  const now = '2026-10-07T18:09:00.000Z'
+  const summary = registerHumanActivity(defaultConversationSummary(now), now)
+  assert.equal(teamPickupDecision('Já vou buscar', { memory: { summary, messages: [] } }).draft.action, 'no_reply')
+  for (const text of ['Meu óculos está pronto?', 'Posso buscar?', 'Vou buscar, que horas fecha?',
+    'Vou buscar? Obrigado', 'Já vou buscar mas preciso falar com um atendente']) {
+    assert.notEqual(teamPickupDecision(text).draft.action, 'recognize_continuation', text)
+  }
+  assert.notEqual(teamPickupDecision('Oi', { storeId: 2 }).draft.action, 'recognize_continuation')
+  assert.notEqual(teamPickupDecision('Oi', { now: '2026-10-10T18:09:00.000Z' }).draft.action, 'recognize_continuation')
+  assert.notEqual(teamPickupDecision('Oi', { memory: { summary: defaultConversationSummary(now), messages: [] } }).draft.action, 'recognize_continuation')
+})
+
+test('mudanca de assunto, aviso negativo ou novo contato invalidam associacao de retirada', () => {
+  const now = '2026-10-07T18:09:00.000Z'
+  const notice: WhatsAppConversationMessage = { id: 'notice', providerMessageId: null,
+    role: 'human', kind: 'text', text: 'Teu óculos está pronto', occurredAt: '2026-10-07T12:21:52.000Z' }
+  for (const messages of [
+    [{ ...notice, text: 'Teu óculos ainda n?o está pronto' }],
+    [{ ...notice, text: 'Quando teu óculos estiver pronto, avisamos' }],
+    [notice, { ...notice, id: 'new', occurredAt: '2026-10-07T13:00:00.000Z', text: 'Sobre a parcela de hoje' }],
+    [notice, { ...notice, id: 'customer', role: 'customer' as const,
+      occurredAt: '2026-10-07T13:00:00.000Z', text: 'Quero orçamento de outra armação' }],
+  ]) {
+    assert.notEqual(teamPickupDecision('Já vou buscar', { memory: {
+      summary: defaultConversationSummary(now), messages,
+    } }).draft.action, 'recognize_continuation')
+  }
+})
+
+test('confirmacao apos saudacao da IA preserva o aviso humano original', () => {
+  const now = '2026-10-07T18:09:43.000Z'
+  const messages: WhatsAppConversationMessage[] = [
+    { id: 'team', providerMessageId: null, role: 'human', kind: 'text',
+      text: 'Teu oculos esta pronto', occurredAt: '2026-10-07T12:21:52.000Z' },
+    { id: 'hi', providerMessageId: null, role: 'customer', kind: 'text',
+      text: 'Oi\nOi', occurredAt: '2026-10-07T18:08:42.000Z' },
+    { id: 'ai', providerMessageId: null, role: 'assistant', kind: 'text',
+      text: 'Oi! A equipe avisou sobre a retirada dos seus oculos. Quer falar sobre isso?',
+      occurredAt: '2026-10-07T18:09:25.000Z' },
+    { id: 'pickup', providerMessageId: null, role: 'customer', kind: 'text',
+      text: 'Ja vou buscar\nObg', occurredAt: '2026-10-07T18:09:21.000Z' },
+  ]
+  for (const greeting of [messages[2].text!, 'Oi! Como posso te ajudar hoje?']) {
+    messages[2].text = greeting
+    assert.equal(teamPickupDecision('Ja vou buscar\nObg', { now,
+      memory: { summary: defaultConversationSummary(now), messages } }).draft.facts.teamOutreachContinuation,
+      'pickup_acknowledgment')
+  }
 })

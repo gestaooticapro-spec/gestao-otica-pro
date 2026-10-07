@@ -9,6 +9,7 @@ export type Release = {
 // altera o Dashboard ou o modal de histórico.
 export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'Na Loja 1, saudacoes apos um aviso recente da equipe retomam a retirada; confirmacoes como ja vou buscar recebem um agradecimento sem consultar novamente o pedido.',
   'Na Loja 1, arquivos adicionais nao repetem a apresentacao da IAra nem o aviso de encaminhamento quando a equipe ja foi acionada; a fila de envio tambem e conferida antes de criar outra resposta.',
   'Funcionarios desativados deixam de aparecer nas selecoes de Atendimento, PDV Express e Cobranca; editar o cadastro preserva o status inativo.',
   'O WhatsApp retoma acompanhamentos confirmados de pos-venda, distingue cumprimento e ajuste simples de reclamacao e reconhece confirmacoes de pagamento futuro sem registrar baixa. Novas tentativas atualizam o tempo desde a entrega; o painel mostra falhas de envio e explica as pausas em portugues.',

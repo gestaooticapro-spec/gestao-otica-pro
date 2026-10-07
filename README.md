@@ -121,6 +121,12 @@ o fluxo tambem consulta a ultima saida real da conversa (pendente, enviando ou
 enviada), para cobrir atraso na memoria. Essa protecao respeita IA proxima,
 nao transforma uma falha anterior em envio confirmado e vale por ate 48 horas.
 
+Apos o fim da pausa humana, a Loja 1 retoma avisos de retirada da equipe
+presentes no historico das ultimas 48 horas. Cumprimentos preservam o assunto;
+confirmacoes de que o cliente vai buscar recebem apenas um reconhecimento, sem
+nova consulta de OS ou promessa de agendamento. Outro assunto ou aviso posterior
+invalida essa associacao; perguntas de status e pedidos humanos mantem prioridade.
+
 ### Limpeza do WhatsApp operacional
 
 A limpeza possui uma rotina diaria autenticada no app principal, com agenda

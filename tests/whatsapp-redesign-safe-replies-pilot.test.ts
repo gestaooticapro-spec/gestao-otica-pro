@@ -420,3 +420,27 @@ test('pergunta sobre oculos pronto e roteada para OS, nao para horario', () => {
     route: 'store_hours', intent: 'store_hours', messageText: 'Meu óculos está bonito.',
   }), 'fallback')
 })
+
+test('redacao preserva aviso da equipe e reconhece retirada sem inventar status', () => {
+  for (const kind of ['greeting', 'pickup_acknowledgment']) {
+    const candidate = selectStoreOnePilotSafeReply({ classification, decision: {
+      ...decision, action: 'recognize_continuation', fallbackReply: 'Resposta contextual aprovada.',
+      facts: { teamOutreachContinuation: kind },
+    }, turnMessages: [{ kind: 'text', text: kind === 'greeting' ? 'Oi' : 'Já vou buscar' }],
+    officialPixKey: null, officialPixHolder: null, fullRouting: true })!
+    const incorrect = resolveStoreOnePilotReplyText(candidate, { success: true,
+      data: { reply_text: 'Oi! Como posso te ajudar hoje?' } })
+    assert.equal(incorrect.shouldSend, true)
+    assert.equal(incorrect.generatedBy, 'canonical')
+    assert.equal('text' in incorrect && incorrect.text, 'Resposta contextual aprovada.')
+    const invented = resolveStoreOnePilotReplyText(candidate, { success: true,
+      data: { reply_text: 'Combinado! Seus óculos estão prontos, vou reservar para você.' } })
+    assert.equal(invented.generatedBy, 'canonical')
+    const correct = resolveStoreOnePilotReplyText(candidate, { success: true, data: {
+      reply_text: kind === 'greeting' ? 'Oi! A equipe avisou sobre a retirada dos seus óculos. Quer falar sobre isso?'
+        : 'Combinado! Obrigado por avisar.',
+    } })
+    assert.equal(correct.shouldSend, true)
+    assert.equal(correct.generatedBy, 'ai')
+  }
+})

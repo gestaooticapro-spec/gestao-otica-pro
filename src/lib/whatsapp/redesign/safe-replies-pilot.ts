@@ -14,6 +14,7 @@ import {
 } from './intent-guards'
 
 export type PilotSafeReply = {
+  canonicalContinuationReply?: string
   canonicalHoursReply?: string
   action: 'answer_store_hours' | 'answer_store_location' | 'answer_official_pix'
     | 'human_handoff' | 'repeat_handoff' | 'acknowledge_attachment'
@@ -82,6 +83,7 @@ export function shouldUseOrderStatusToolAgent(input: {
     && !explicitHumanRequest
     && !input.classification.mentionsAttachment
     && input.decision.action !== 'no_reply'
+    && !input.decision.facts.teamOutreachContinuation
 }
 
 export function shouldForceStoreOnePhoneOrderStatusLookup(input: {
@@ -181,6 +183,8 @@ export function selectStoreOnePilotSafeReply(input: Parameters<typeof selectStor
     messageType: reply.messageType,
     ...(input.fullRouting && reply.action === 'answer_store_hours'
       ? { canonicalHoursReply: input.decision.fallbackReply ?? undefined } : {}),
+    ...(input.decision.facts.teamOutreachContinuation
+      ? { canonicalContinuationReply: input.decision.fallbackReply ?? undefined } : {}),
     replyInput: {
       action: reply.action,
       intent: input.classification.intent,
@@ -243,6 +247,19 @@ export function resolveStoreOnePilotReplyText(
 
   let replyText = result.data.reply_text.trim()
   let normalizedReply = normalizeForComparison(replyText)
+  const continuation = candidate.replyInput.facts.teamOutreachContinuation
+  if (continuation) {
+    const unsafe = /\b(?:pront\w*|agend\w*|reserv\w*|pag\w*|baix\w*|pode (?:vir|retirar|buscar)|como posso|atendente|encaminh\w*)\b/u.test(normalizedReply)
+    const missingContext = continuation === 'greeting'
+      ? !/\b(?:equipe|avis\w*)\b/u.test(normalizedReply) || !/\b(?:retirada|retirar|buscar)\b/u.test(normalizedReply)
+      : replyText.includes('?') || !/\b(?:combinado|obrigad\w*|agradec\w*|avis\w*|thanks|gracias)\b/u.test(normalizedReply)
+    if (unsafe || missingContext) {
+      return candidate.canonicalContinuationReply
+        ? { shouldSend: true as const, text: candidate.canonicalContinuationReply,
+          generatedBy: 'canonical' as const, reason: 'team_outreach_continuation_preserved' }
+        : suppressed('team_outreach_context_omitted')
+    }
+  }
   const productMention = candidate.replyInput.facts.productMention
   if (candidate.replyInput.facts.frameAdjustment === true
     && (/\b(?:reclamacao|adaptacao ruim|sinto muito|lamentamos|prioridade|urgente)\b/u.test(normalizedReply)

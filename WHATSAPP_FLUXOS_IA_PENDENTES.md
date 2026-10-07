@@ -250,6 +250,25 @@ Validação local: TypeScript e 75 testes passaram, incluindo reprodução dos
 horários e IDs deste caso. Nenhum envio, cancelamento ou exclusão foi feito
 no banco durante a investigação. A correção ainda depende de publicação.
 
+## WA-09 - Retorno tardio ao aviso de retirada da equipe
+
+Em 07/10/2026 (horario de Brasilia), a equipe avisou as 09:21 que os oculos
+estavam prontos. A pausa de duas horas terminou as 11:21. As 15:09, o cliente
+respondeu com um cumprimento, recebeu uma abertura generica e completou com
+"Ja vou buscar / Obg". A segunda mensagem foi interpretada como consulta de OS;
+a busca nao localizou o cliente e a resposta foi bloqueada.
+
+O aviso humano estava no historico enviado a IA. A falha estava na decisao de
+saudacao e na confusao entre confirmar retirada e perguntar pelo status.
+
+Correcao preparada: na Loja 1, retomar aviso humano positivo presente no historico
+de ate 48 horas, sem afirmar status atual; reconhecer a confirmacao de retirada
+sem consultar pedidos. Outra conversa, aviso posterior, pedido humano ou pergunta
+operacional impedem essa associacao. A redacao recebe fatos de continuidade e a
+validacao evita abertura generica ou promessa de status, reserva e agendamento.
+Pausa humana ativa continua respeitada. Pendente de publicacao; nenhum envio ou
+alteracao de dados de clientes foi feito para esta correcao.
+
 ## Ordem sugerida para as próximas correções
 
 1. **WA-04 e WA-07:** evitar texto antigo em recuperação e tornar falhas de envio visíveis. A consulta ao banco já sustenta esses problemas.

@@ -838,6 +838,8 @@ export function buildWhatsAppRedesignReplyPrompt(input: WhatsAppRedesignReplyInp
     'Para anexos, confirme o recebimento de forma breve e diga que um atendente vai revisar; nao interprete o conteudo clinico, financeiro ou comercial.',
     'Se facts.postSaleGreeting for true, cumprimente e retome a pergunta de adaptacao dos oculos desse acompanhamento, sem assumir que Tudo bom significa adaptacao positiva. Se facts.postSaleStage for awaiting_rating, apenas indique que a avaliacao continua pendente, sem registrar nota.',
     'Se facts.frameAdjustment for true, reconheca que a adaptacao esta boa e que o cliente quer um ajuste de armacao; diga que a equipe vai ajudar com esse ajuste. Nao apresente como reclamacao, adaptacao ruim ou urgencia; nao invente horario, agendamento nem prioridade.',
+    'Se facts.teamOutreachContinuation for greeting, cumprimente e retome explicitamente o aviso anterior da equipe sobre retirada, atribuindo o aviso a equipe; pergunte se o cliente quer falar sobre isso. Nao abra um atendimento generico nem confirme que os oculos continuam prontos.',
+    'Se facts.teamOutreachContinuation for pickup_acknowledgment, apenas agradeca ou reconheca que o cliente avisou que vai buscar. Nao faca perguntas, nao consulte nem confirme status, nao agende, reserve ou encaminhe para equipe.',
     'Mantenha a resposta breve, humana e sem menu de opcoes.',
     '',
     'SCHEMA:',
