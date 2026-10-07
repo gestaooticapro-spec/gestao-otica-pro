@@ -1183,7 +1183,7 @@ function TeamManagement({ storeId }: { storeId: number }) {
 
     const loadData = async () => {
         setLoadingList(true);
-        const data = await getEmployees(storeId);
+        const data = await getEmployees(storeId, { includeInactive: true });
         setEmployees(data);
         setLoadingList(false);
     };

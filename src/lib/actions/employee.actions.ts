@@ -17,7 +17,6 @@ const EmployeeSchema = z.object({
   full_name: z.string().min(2, 'Nome deve ter pelo menos 2 letras.'),
   pin: z.string().min(4, 'O PIN deve ter pelo menos 4 números.'),
   role: z.enum(['vendedor', 'gerente', 'tecnico']).optional().default('vendedor'),
-  is_active: z.boolean().optional(),
   comm_rate_guaranteed: z.coerce.number().min(0).optional(),
   comm_rate_store_credit: z.coerce.number().min(0).optional(),
   comm_rate_store_total: z.coerce.number().min(0).optional(),
@@ -82,7 +81,6 @@ export async function saveEmployee(
       full_name: formData.get('full_name'),
       pin: formData.get('pin'),
       role: formData.get('role'),
-      is_active: true,
       comm_rate_guaranteed: formData.get('comm_rate_guaranteed'),
       comm_rate_store_credit: formData.get('comm_rate_store_credit'),
       comm_rate_store_total: formData.get('comm_rate_store_total'),
@@ -132,15 +130,16 @@ export async function saveEmployee(
 
       if (error) throw error
     } else {
+      const insertPayload = { ...payload, is_active: true }
       const { error } = await (supabaseAdmin.from('employees') as any)
-        .insert(payload)
+        .insert(insertPayload)
 
       if (error) {
         if (!isEmployeesPrimaryKeyConflict(error)) throw error
 
         const nextId = await getNextEmployeeId(supabaseAdmin)
         const { error: retryError } = await (supabaseAdmin.from('employees') as any)
-          .insert({ ...payload, id: nextId })
+          .insert({ ...insertPayload, id: nextId })
 
         if (retryError) throw retryError
       }
@@ -158,11 +157,14 @@ export async function saveEmployee(
 
 // 2. LISTAR FUNCIONÁRIOS
 // 2. LISTAR FUNCIONÁRIOS (ATUALIZADO COM COLUNAS EXPLÍCITAS)
-export async function getEmployees(storeId: number): Promise<Employee[]> {
+export async function getEmployees(
+  storeId: number,
+  options: { includeInactive?: boolean } = {}
+): Promise<Employee[]> {
   const supabaseAdmin = createAdminClient()
 
   // Cast 'as any' na chamada
-  const { data, error } = await (supabaseAdmin.from('employees') as any)
+  let query = (supabaseAdmin.from('employees') as any)
     .select(`
       id, 
       store_id, 
@@ -180,6 +182,12 @@ export async function getEmployees(storeId: number): Promise<Employee[]> {
     `)
     .eq('store_id', storeId)
     .order('full_name')
+
+  if (!options.includeInactive) {
+    query = query.eq('is_active', true)
+  }
+
+  const { data, error } = await query
 
   if (error) {
     console.error('Erro ao buscar funcionários:', error)
