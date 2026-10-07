@@ -103,6 +103,26 @@ Documentacao especifica desse servico:
 Observacao:
 detalhes operacionais sensiveis da VPS, acessos e cron devem ficar em documentacao local nao versionada.
 
+### Limpeza do WhatsApp operacional
+
+A limpeza possui uma rotina diaria autenticada no app principal, com agenda
+versionada no `vercel.json`. Ela entra em vigor depois do deploy;
+nenhuma limpeza e executada ao abrir o painel.
+O painel de Manutencao permite consultar a previa e executar uma rodada manual.
+
+Cada rodada, por loja com canal cadastrado, remove ate 250 registros de cada tipo:
+logs de IA com mais de 30 dias; mensagens recebidas finalizadas e mensagens
+enviadas/concluidas com mais de 15 dias; estados ja expirados sem atualizacao
+ha mais de 7 dias. Estados humanos, conversas sob controle humano (incluindo
+o novo fluxo e formatos equivalentes de telefone) e mensagens com processamento
+ou envio pendente sao preservados. Falhas de envio tambem preservam a conversa
+para permitir recuperacao. A memoria, mensagens e turnos do redesign nao entram
+nesta limpeza. O restante dos candidatos fica para as proximas rodadas.
+
+A execucao retorna contagens por loja, sem textos ou telefones, e sinaliza falhas
+com HTTP 500 para acompanhamento pelo scheduler. A previa usa a mesma politica
+da execucao manual e automatica. Nenhuma mensagem de WhatsApp e enviada pela rotina.
+
 ## Banco e migracoes
 
 As mudancas de banco ficam em `supabase/migrations`.

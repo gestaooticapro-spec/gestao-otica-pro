@@ -63,7 +63,7 @@ function controlModeLabel(mode: WhatsAppCustomerControlMode) {
 }
 
 function controlModeTitle(mode: WhatsAppCustomerControlMode) {
-  if (mode === 'force_ai') return 'IA atende a próxima mensagem real e depois volta para automático.'
+  if (mode === 'force_ai') return 'Libera a pausa humana para a próxima mensagem real entrar pela IA e depois volta para automático.'
   if (mode === 'force_human') return 'Atendimento humano persistente até alguém voltar para automático.'
   return 'Motor automático segue as regras normais.'
 }
@@ -157,7 +157,7 @@ function ThreadStateBadge({ thread }: { thread: WhatsAppOperatorThreadListItem }
   )
 }
 
-function MessageBubble({ message }: { message: WhatsAppOperatorThreadMessage }) {
+function MessageBubble({ message, showTechnical }: { message: WhatsAppOperatorThreadMessage; showTechnical: boolean }) {
   const isInbound = message.direction === 'inbound'
   const actorLabel = message.actor === 'operator' ? 'Operador' : message.actor === 'system' ? 'Sistema' : 'Cliente'
 
@@ -174,7 +174,7 @@ function MessageBubble({ message }: { message: WhatsAppOperatorThreadMessage }) 
       >
         <div className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-wider">
           <span className="text-white/80">{actorLabel}</span>
-          {message.messageType ? <span className="text-white/40">{message.messageType}</span> : null}
+          {showTechnical && message.messageType ? <span className="text-white/40">{message.messageType}</span> : null}
           <span className="text-white/40">{formatDateTime(message.createdAt)}</span>
         </div>
 
@@ -184,15 +184,15 @@ function MessageBubble({ message }: { message: WhatsAppOperatorThreadMessage }) 
           <div className="mt-3 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-[11px] text-amber-100">
             <p className="font-black uppercase tracking-wider text-amber-300">Resposta automática não enviada</p>
             <p className="mt-1">{suppressionReasonLabel(message.processingDiagnostic.reason)}.</p>
-            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-amber-100/70">
+            {showTechnical ? <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-amber-100/70">
               {message.processingDiagnostic.intent ? <span>intenção: {readableDecisionValue(message.processingDiagnostic.intent)}</span> : null}
               {message.processingDiagnostic.action ? <span>ação: {readableDecisionValue(message.processingDiagnostic.action)}</span> : null}
               {message.processingDiagnostic.route ? <span>etapa: {readableDecisionValue(message.processingDiagnostic.route)}</span> : null}
-            </div>
+            </div> : null}
           </div>
         ) : null}
 
-        {message.technicalLog ? (
+        {showTechnical && message.technicalLog ? (
           <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3 text-[11px] text-slate-300">
             <div className="flex flex-wrap gap-3">
               <span>intent: {message.technicalLog.intent || '-'}</span>
@@ -422,6 +422,8 @@ export default function WhatsAppOperatorModal({
 }) {
   const { openParcelaModal } = useModals()
   const [query, setQuery] = useState('')
+  const [auxiliaryPanel, setAuxiliaryPanel] = useState<'technical' | 'maintenance' | null>(null)
+  const [conversationFilter, setConversationFilter] = useState<'all' | 'pending' | 'human'>('all')
   const [threads, setThreads] = useState<WhatsAppOperatorThreadListItem[]>([])
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null)
   const [selectedDetail, setSelectedDetail] = useState<WhatsAppOperatorThreadDetail | null>(null)
@@ -487,6 +489,7 @@ export default function WhatsAppOperatorModal({
         storeId,
         remotePhone,
         limit: 80,
+        includeTechnical: auxiliaryPanel === 'technical',
       })
 
       if (!result.success || !result.data) {
@@ -561,12 +564,15 @@ export default function WhatsAppOperatorModal({
     setSelectedPhone(initialPhone)
     setComposerText('')
     setComposerMode('real')
+    setAuxiliaryPanel(null)
+    setConversationFilter('all')
     setSendError(null)
     setSendSuccess(null)
     setControlMessage(null)
     setRetentionError(null)
     setRetentionMessage(null)
-  }, [isOpen, initialPhone])
+    setRetentionPreview(null)
+  }, [isOpen, initialPhone, storeId])
 
   useEffect(() => {
     if (!isOpen) return
@@ -588,7 +594,7 @@ export default function WhatsAppOperatorModal({
     setSendError(null)
     setSendSuccess(null)
     setControlMessage(null)
-  }, [isOpen, selectedPhone])
+  }, [isOpen, selectedPhone, storeId, auxiliaryPanel === 'technical'])
 
   const selectedThread = useMemo(() => {
     const detailThread = selectedDetail?.thread.remotePhone === selectedPhone ? selectedDetail.thread : null
@@ -605,7 +611,9 @@ export default function WhatsAppOperatorModal({
 
     return thread
   }, [threads, selectedPhone, selectedDetail])
-  const simulationEntries = selectedThread ? (simulationByPhone[selectedThread.remotePhone] || []) : []
+  const visibleThreads = threads.filter((thread) => conversationFilter === 'all'
+    || (conversationFilter === 'pending' ? thread.hasPendingHandoff : thread.overrideMode === 'force_human'))
+  const simulationEntries = auxiliaryPanel === 'technical' && selectedThread ? (simulationByPhone[selectedThread.remotePhone] || []) : []
   const messageRenderKey = useMemo(() => {
     const parts = [
       selectedPhone || '',
@@ -796,15 +804,28 @@ export default function WhatsAppOperatorModal({
             <div>
               <h2 className="text-lg font-black text-white">WhatsApp Operacional</h2>
               <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">
-                Histórico real, pendências e contexto técnico
+                Conversas e atendimento da loja
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button type="button" onClick={() => {
+              setAuxiliaryPanel(auxiliaryPanel === 'maintenance' ? null : 'maintenance')
+              setComposerMode('real')
+              if (auxiliaryPanel !== 'maintenance') loadRetentionPreview()
+            }} aria-pressed={auxiliaryPanel === 'maintenance'} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-slate-300 hover:bg-white/10">
+              Manutenção
+            </button>
+            <button type="button" onClick={() => {
+              setAuxiliaryPanel(auxiliaryPanel === 'technical' ? null : 'technical')
+              setComposerMode('real')
+            }} aria-pressed={auxiliaryPanel === 'technical'} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-slate-300 hover:bg-white/10">
+              Detalhes técnicos
+            </button>
             <button
               type="button"
-              onClick={() => loadThreads(query)}
+              onClick={() => { loadThreads(query); if (selectedPhone) loadThreadDetail(selectedPhone) }}
               className="inline-flex h-10 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 text-xs font-black uppercase tracking-wider text-slate-300 transition hover:bg-white/10"
             >
               <RefreshCw className={`h-4 w-4 ${isPending ? 'animate-spin' : ''}`} />
@@ -820,17 +841,26 @@ export default function WhatsAppOperatorModal({
           </div>
         </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[340px_minmax(0,1fr)_360px]">
-          <aside className="flex min-h-0 flex-col border-b border-white/10 xl:border-b-0 xl:border-r">
+        <div className={`grid min-h-0 flex-1 grid-cols-1 overflow-y-auto md:overflow-hidden ${auxiliaryPanel ? 'md:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)_340px]' : 'md:grid-cols-[300px_minmax(0,1fr)]'}`}>
+          <aside className="flex min-h-0 max-h-[35vh] flex-col border-b border-white/10 md:max-h-none md:border-b-0 md:border-r">
             <div className="shrink-0 border-b border-white/10 p-4">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                 <input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
+                  aria-label="Buscar conversas por nome ou telefone"
                   placeholder="Buscar por nome ou telefone"
                   className="h-11 w-full rounded-xl border border-white/10 bg-black/20 pl-10 pr-4 text-sm font-bold text-slate-200 outline-none transition focus:border-emerald-400/40 focus:ring-2 focus:ring-emerald-400/10"
                 />
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {(['all', 'pending', 'human'] as const).map((filter) => (
+                  <button key={filter} type="button" onClick={() => setConversationFilter(filter)} aria-pressed={conversationFilter === filter}
+                    className={`rounded-lg px-2.5 py-1.5 text-xs font-bold ${conversationFilter === filter ? 'bg-emerald-500/20 text-emerald-200' : 'bg-white/5 text-slate-400 hover:bg-white/10'}`}>
+                    {filter === 'all' ? 'Todas' : filter === 'pending' ? 'Pendentes' : 'Em humano'}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -842,7 +872,7 @@ export default function WhatsAppOperatorModal({
                   </div>
                 ) : null}
 
-                {threads.map((thread) => (
+                {visibleThreads.map((thread) => (
                   <button
                     key={thread.remotePhone}
                     type="button"
@@ -877,9 +907,9 @@ export default function WhatsAppOperatorModal({
                   </button>
                 ))}
 
-                {!isPending && threads.length === 0 && !loadError ? (
+                {!isPending && visibleThreads.length === 0 && !loadError ? (
                   <div className="rounded-2xl border border-white/10 bg-black/20 p-5 text-sm text-slate-400">
-                    Nenhuma thread encontrada para esta busca.
+                    Nenhuma conversa encontrada para esta busca e filtro.
                   </div>
                 ) : null}
 
@@ -895,7 +925,7 @@ export default function WhatsAppOperatorModal({
             </div>
           </aside>
 
-          <main className="flex min-h-0 flex-col border-b border-white/10 xl:border-b-0 xl:border-r">
+          <main className="flex min-h-[55vh] flex-col border-b border-white/10 md:min-h-0 xl:border-b-0">
             <div className="shrink-0 border-b border-white/10 p-4">
               {selectedThread ? (
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -934,7 +964,7 @@ export default function WhatsAppOperatorModal({
                     </div>
                     {selectedThread.overrideMode === 'force_ai' ? (
                       <p className="mt-2 text-[11px] font-semibold text-cyan-200/80">
-                        IA armada para a próxima mensagem real. Depois disso, volta para automático.
+                        Pausa humana liberada para a próxima mensagem real entrar pela IA. Depois disso, volta para automático.
                       </p>
                     ) : selectedThread.overrideMode === 'force_human' ? (
                       <p className="mt-2 text-[11px] font-semibold text-amber-200/80">
@@ -944,12 +974,12 @@ export default function WhatsAppOperatorModal({
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                    <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">
-                      {selectedThread.latestIntent || 'sem intent'}
+                    {auxiliaryPanel === 'technical' ? <><span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">
+                      {selectedThread.latestIntent || 'sem intenção'}
                     </span>
                     <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">
-                      {selectedThread.latestOutboundType || 'sem outbound'}
-                    </span>
+                      {selectedThread.latestOutboundType || 'sem saída'}
+                    </span></> : null}
                     {selectedThread.hasRecentAttachment ? (
                       <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-1 text-cyan-200">
                         anexo recente
@@ -961,6 +991,19 @@ export default function WhatsAppOperatorModal({
                 <p className="text-sm text-slate-400">Selecione uma conversa na lateral.</p>
               )}
 
+              {selectedThread?.internalNote ? (
+                <div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-100">
+                  <span className="font-bold">Atenção da equipe: </span>{selectedThread.internalNote}
+                </div>
+              ) : null}
+              {selectedDetail?.technicalSummary.paymentInstallmentHint ? (
+                <button type="button" onClick={() => {
+                  const hint = selectedDetail.technicalSummary.paymentInstallmentHint!
+                  openParcelaModal(hint.searchQuery || hint.customerName || undefined)
+                }} className="mt-3 inline-flex items-center gap-2 rounded-xl bg-orange-500/10 px-3 py-2 text-xs font-bold text-orange-200">
+                  <Wallet className="h-4 w-4" />Ver parcelas do cliente
+                </button>
+              ) : null}
               {controlMessage ? (
                 <div className="mt-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200">
                   {controlMessage}
@@ -982,7 +1025,7 @@ export default function WhatsAppOperatorModal({
                 <div className="rounded-2xl border border-white/10 bg-black/20 p-5 text-sm text-slate-400">
                   <div className="flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Carregando thread...
+                    Carregando conversa...
                   </div>
                 </div>
               ) : null}
@@ -992,7 +1035,7 @@ export default function WhatsAppOperatorModal({
                   {selectedDetail.messages.length > 0 ? (
                     <>
                       {selectedDetail.messages.map((message) => (
-                        <MessageBubble key={message.id} message={message} />
+                        <MessageBubble key={message.id} message={message} showTechnical={auxiliaryPanel === 'technical'} />
                       ))}
                       {simulationEntries.map((entry) => (
                         <SimulationBubble key={entry.id} entry={entry} />
@@ -1025,9 +1068,9 @@ export default function WhatsAppOperatorModal({
                         : 'border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
                     }`}
                   >
-                    Real
+                    {auxiliaryPanel === 'technical' ? 'Real' : 'Mensagem ao cliente'}
                   </button>
-                  <button
+                  {auxiliaryPanel === 'technical' ? <button
                     type="button"
                     onClick={() => setComposerMode('simulation')}
                     className={`rounded-xl px-3 py-2 text-[11px] font-black uppercase tracking-wider transition ${
@@ -1037,10 +1080,10 @@ export default function WhatsAppOperatorModal({
                     }`}
                   >
                     Simulação
-                  </button>
+                  </button> : null}
                 </div>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                  {composerMode === 'real' ? 'Envia ao cliente e pausa IA' : 'Entrará na Fase 4'}
+                  {composerMode === 'real' ? 'Envia ao cliente e pausa IA' : 'Teste sem envio ao cliente'}
                 </p>
               </div>
 
@@ -1066,8 +1109,8 @@ export default function WhatsAppOperatorModal({
                     selectedThread
                       ? composerMode === 'real'
                         ? 'Digite a mensagem que será enviada ao cliente real...'
-                        : 'A simulação entra na próxima fase.'
-                      : 'Selecione uma thread para responder.'
+                        : 'Digite a mensagem do cliente para testar sem enviar WhatsApp.'
+                      : 'Selecione uma conversa para responder.'
                   }
                   disabled={!selectedThread || isSending}
                   rows={3}
@@ -1081,14 +1124,14 @@ export default function WhatsAppOperatorModal({
                   className="inline-flex min-w-[160px] items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-4 text-sm font-black uppercase tracking-wider text-emerald-950 transition hover:bg-emerald-400 disabled:opacity-50"
                 >
                   {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />}
-                  Enviar
+                  {composerMode === 'simulation' ? 'Simular' : 'Enviar'}
                 </button>
               </div>
             </div>
           </main>
 
-          <aside className="custom-scrollbar min-h-0 overflow-y-auto p-4 pr-3">
-            <div className="mb-4 flex items-center gap-2">
+          {auxiliaryPanel ? <aside className="custom-scrollbar min-h-0 overflow-y-auto border-l border-white/10 p-4 pr-3 md:col-span-2 md:max-h-[35vh] xl:col-span-1 xl:max-h-none">
+            {auxiliaryPanel === 'technical' ? <><div className="mb-4 flex items-center gap-2">
               <Bot className="h-4 w-4 text-cyan-300" />
               <h4 className="text-sm font-black text-white">Painel Técnico</h4>
             </div>
@@ -1121,13 +1164,13 @@ export default function WhatsAppOperatorModal({
             <TechnicalPanel
               summary={selectedDetail?.technicalSummary || null}
               onOpenInstallments={(installmentQuery) => openParcelaModal(installmentQuery || undefined)}
-            />
+            /></> : null}
 
-            <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+            {auxiliaryPanel === 'maintenance' ? <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <Database className="h-4 w-4 text-slate-300" />
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Retenção</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Limpeza do histórico antigo</p>
                 </div>
                 <button
                   type="button"
@@ -1154,31 +1197,25 @@ export default function WhatsAppOperatorModal({
 
               {!retentionError && retentionPreview ? (
                 <div className="mt-3 space-y-3">
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="rounded-xl border border-white/5 bg-white/[0.03] p-3">
-                      <p className="text-slate-500">logs IA</p>
-                      <p className="mt-1 text-lg font-black text-white">{retentionPreview.candidates.aiLogs}</p>
-                    </div>
-                    <div className="rounded-xl border border-white/5 bg-white/[0.03] p-3">
-                      <p className="text-slate-500">estados</p>
-                      <p className="mt-1 text-lg font-black text-white">{retentionPreview.candidates.expiredStates}</p>
-                    </div>
-                    <div className="rounded-xl border border-white/5 bg-white/[0.03] p-3">
-                      <p className="text-slate-500">inbound</p>
-                      <p className="mt-1 text-lg font-black text-white">{retentionPreview.candidates.inboundMessages}</p>
-                    </div>
-                    <div className="rounded-xl border border-white/5 bg-white/[0.03] p-3">
-                      <p className="text-slate-500">outbound</p>
-                      <p className="mt-1 text-lg font-black text-white">{retentionPreview.candidates.outboundMessages}</p>
-                    </div>
+                  <p className="text-sm leading-relaxed text-slate-300">
+                    Agendamento diário: 3h (Brasília).
+                    Remove logs de IA com mais de {retentionPreview.policy.aiLogsDays} dias, mensagens com mais de {retentionPreview.policy.messagesDays} dias
+                    e estados expirados sem atualização há mais de {retentionPreview.policy.expiredStatesDays} dias.
+                  </p>
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-slate-200">
+                    <p className="font-bold">{retentionPreview.candidates.total.toLocaleString('pt-BR')} registros antigos elegíveis</p>
+                    <p className="mt-1 text-xs text-slate-400">Até 250 de cada tipo por rodada. O restante fica para as próximas execuções.</p>
+                    <p className="mt-2 text-xs text-emerald-200">{retentionPreview.protectedThreads.totalUnique} conversas com atendimento humano protegido. Mensagens pendentes e memória do novo atendimento são preservadas.</p>
                   </div>
-
-                  <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-3 text-xs text-cyan-50">
-                    <div className="font-bold">Prévia: {retentionPreview.candidates.total} registro(s) candidato(s)</div>
-                    <div className="mt-1 text-cyan-100/75">
-                      Protegidos: {retentionPreview.protectedThreads.totalUnique} thread(s), incluindo humano persistente e handoff ativo.
-                    </div>
-                  </div>
+                  <details className="text-xs text-slate-400">
+                    <summary className="cursor-pointer font-bold">Ver quantidades por tipo</summary>
+                    <dl className="mt-2 grid grid-cols-2 gap-2">
+                      <dt>Logs de IA</dt><dd>{retentionPreview.candidates.aiLogs}</dd>
+                      <dt>Estados expirados</dt><dd>{retentionPreview.candidates.expiredStates}</dd>
+                      <dt>Mensagens recebidas</dt><dd>{retentionPreview.candidates.inboundMessages}</dd>
+                      <dt>Mensagens enviadas</dt><dd>{retentionPreview.candidates.outboundMessages}</dd>
+                    </dl>
+                  </details>
 
                   <button
                     type="button"
@@ -1193,9 +1230,9 @@ export default function WhatsAppOperatorModal({
               ) : !retentionError ? (
                 <p className="mt-3 text-sm text-slate-400">Clique em atualizar para consultar a prévia.</p>
               ) : null}
-            </div>
+            </div> : null}
 
-            {simulationEntries.length > 0 ? (
+            {auxiliaryPanel === 'technical' && simulationEntries.length > 0 ? (
               <div className="mt-4 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4">
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-300/80">Última simulação</p>
                 <div className="mt-3 space-y-2 text-sm text-amber-50">
@@ -1205,7 +1242,7 @@ export default function WhatsAppOperatorModal({
                 </div>
               </div>
             ) : null}
-          </aside>
+          </aside> : null}
         </div>
       </div>
     </div>

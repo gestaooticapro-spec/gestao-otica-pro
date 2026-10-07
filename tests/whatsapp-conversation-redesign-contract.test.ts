@@ -45,6 +45,7 @@ import {
   replayWhatsAppConversationSummary,
 } from '../src/lib/whatsapp/redesign/memory-consolidation'
 import { WhatsAppRedesignConversationStore } from '../src/lib/whatsapp/redesign/store'
+import { releaseHumanPauseForNextAi } from '../src/lib/whatsapp/redesign/operator-control'
 import { shouldUseOrderStatusToolAgent } from '../src/lib/whatsapp/redesign/safe-replies-pilot'
 import {
   classifyWhatsAppShadowOutcome,
@@ -352,6 +353,55 @@ test('nova resposta humana depois da liberacao inicia outra janela de duas horas
   assert.equal(resumedByHuman.humanControl, 'human_active')
   assert.equal(resumedByHuman.humanActiveUntil, '2026-09-18T14:31:00.000Z')
   assert.equal(releaseExpiredHumanControl(resumedByHuman, '2026-09-18T14:31:00.000Z').humanControl, 'human_released')
+})
+
+test('IA proxima registra liberacao e permite decisao do redesign durante a pausa anterior', async () => {
+  const clickAt = '2026-09-18T12:05:00.000Z'
+  const turnAt = '2026-09-18T12:06:00.000Z'
+  const active = registerHumanActivity(defaultConversationSummary(BASE_TIME), BASE_TIME)
+  assert.equal(resolveReplyAuthority(active, turnAt).authority, 'human_blocked')
+  let event: Parameters<typeof applyConfirmedControlEvent>[0]['event'] = null
+  const store = new WhatsAppRedesignConversationStore({
+    rpc: async (name: string, args: Record<string, any>) => {
+      assert.equal(name, 'record_whatsapp_conversation_control_event')
+      assert.equal(args.p_conversation_id, 41)
+      assert.equal(args.p_actor, 'operator-id')
+      assert.equal(args.p_reason, 'operator_force_ai_next')
+      event = { action: args.p_action, occurredAt: args.p_occurred_at, reason: args.p_reason }
+      return { data: applyConfirmedControlEvent({ summary: active, event, asOf: clickAt }), error: null }
+    },
+  } as any)
+  store.getOrCreateConversation = async () => ({ id: 41 } as any)
+  await releaseHumanPauseForNextAi({
+    identity: { tenantId: '00000000-0000-4000-8000-000000000001', storeId: 1, channelId: 1, remotePhone: '5567991234567', mode: 'redesign' },
+    occurredAt: clickAt, eventKey: 'operator:force_ai:test', actor: 'operator-id',
+  }, store)
+  // Reconstruct the old human activity as loadTurnContext does, then apply
+  // the persisted operator event. Clearing only the legacy state would fail.
+  const reconstructed = reconcileConfirmedHumanActivity({
+    summary: defaultConversationSummary(BASE_TIME), humanMessageAt: BASE_TIME, asOf: turnAt,
+  })
+  const released = applyConfirmedControlEvent({ summary: reconstructed, event, asOf: turnAt })
+  assert.equal(resolveReplyAuthority(released, turnAt).authority, 'ai_allowed')
+  const decision = buildWhatsAppShadowDecision({
+    storeId: 1,
+    classification: { intent: 'order_status', confidence: 0.99, topicRelation: 'change_topic', requestsHuman: false, mentionsAttachment: false,
+      entities: { customerName: null, patientName: null, cpf: null, orderNumber: null } },
+    memory: { summary: released, messages: [] }, now: turnAt,
+    hoursFacts: null, storeLocationReply: null, hasCurrentTurnAttachment: false,
+    currentTurnTexts: ['Meus óculos estão prontos?'],
+  })
+  assert.equal(decision.draft.action, 'lookup_order_status')
+})
+
+test('falha ao registrar liberacao da IA proxima nao e ignorada', async () => {
+  await assert.rejects(releaseHumanPauseForNextAi({
+    identity: { tenantId: '00000000-0000-4000-8000-000000000001', storeId: 1, channelId: 1, remotePhone: '5567991234567', mode: 'redesign' },
+    occurredAt: BASE_TIME, eventKey: 'operator:force_ai:test', actor: 'operator-id',
+  }, {
+    getOrCreateConversation: async () => ({ id: 41 } as any),
+    recordControlEvent: async () => { throw new Error('release_failed') },
+  }), /release_failed/)
 })
 
 test('handoff confirmado gera pendencia sem iniciar bloqueio humano', () => {

@@ -5,8 +5,11 @@
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import type { Json } from '@/lib/database.types'
-import { digitsOnly, findUniqueCustomerPhoneMatch, phonesMatch, phonesMatchLast8, toEvolutionNumber } from '@/lib/whatsapp/phone'
+import { digitsOnly, findUniqueCustomerPhoneMatch, getPhoneVariants, phonesMatch, phonesMatchLast8, toEvolutionNumber } from '@/lib/whatsapp/phone'
+import { releaseHumanPauseForNextAi } from '@/lib/whatsapp/redesign/operator-control'
+import { resolveCachedWhatsAppRedesignMode } from '@/lib/whatsapp/redesign/shadow-ingestion'
 import { isOperatorPauseActive } from '@/lib/whatsapp/human-control-policy'
+import { cleanupWhatsAppRetention, previewWhatsAppRetention } from '@/lib/whatsapp/retention'
 import { WHATSAPP_REDESIGN_HUMAN_ACTIVE_MS } from '@/lib/whatsapp/redesign/contracts'
 import {
   findPendingHandoffResolution,
@@ -20,10 +23,6 @@ const ALLOWED_ROLES = ['admin', 'manager', 'store_operator', 'vendedor', 'tecnic
 const DEFAULT_THREAD_LIST_LIMIT = 40
 const DEFAULT_THREAD_DETAIL_LIMIT = 80
 const DEFAULT_RECENT_SCAN_LIMIT = 400
-const WHATSAPP_RETENTION_AI_LOG_DAYS = 30
-const WHATSAPP_RETENTION_MESSAGE_DAYS = 90
-const WHATSAPP_RETENTION_EXPIRED_STATE_DAYS = 7
-const WHATSAPP_RETENTION_DELETE_BATCH_LIMIT = 250
 export type WhatsAppCustomerControlMode = 'auto' | 'force_ai' | 'force_human'
 export type { CustomerStatusSimulationResponse }
 
@@ -329,132 +328,6 @@ function readInboundProcessingDiagnostic(payload: Json | null) {
     intent: asString(raw.intent),
     action: asString(raw.action),
     recordedAt: asString(raw.recordedAt),
-  }
-}
-
-function daysAgoIso(days: number) {
-  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
-}
-
-function postgrestTextInList(values: string[]) {
-  return `(${values.map((value) => `"${value.replace(/"/g, '\\"')}"`).join(',')})`
-}
-
-async function countQuery(query: any) {
-  const { count, error } = await query
-  if (error) throw error
-  return Number(count || 0)
-}
-
-async function selectIds(query: any): Promise<Array<number | string>> {
-  const { data, error } = await query
-  if (error) throw error
-  return (data || []).map((row: any) => row.id).filter((id: unknown) => typeof id === 'number' || typeof id === 'string')
-}
-
-async function deleteByIds(supabaseAdmin: ReturnType<typeof createAdminClient>, tableName: string, ids: Array<number | string>) {
-  if (ids.length === 0) return 0
-  const { error } = await (supabaseAdmin.from(tableName) as any)
-    .delete()
-    .in('id', ids)
-
-  if (error) throw error
-  return ids.length
-}
-
-async function buildWhatsAppRetentionScope(supabaseAdmin: ReturnType<typeof createAdminClient>, storeId: number) {
-  const nowIso = new Date().toISOString()
-  const aiLogsBefore = daysAgoIso(WHATSAPP_RETENTION_AI_LOG_DAYS)
-  const messagesBefore = daysAgoIso(WHATSAPP_RETENTION_MESSAGE_DAYS)
-  const expiredStatesBefore = daysAgoIso(WHATSAPP_RETENTION_EXPIRED_STATE_DAYS)
-
-  const [{ data: forceHumanRows, error: forceHumanError }, { data: candidateStateRows, error: activeHandoffError }] = await Promise.all([
-    (supabaseAdmin.from('whatsapp_customer_control') as any)
-      .select('remote_phone')
-      .eq('store_id', storeId)
-      .eq('mode', 'force_human'),
-    (supabaseAdmin.from('whatsapp_conversation_states') as any)
-      .select('remote_phone, state, metadata, updated_at, expires_at, handoff_pending')
-      .eq('store_id', storeId)
-      .in('state', ['awaiting_human', 'human_pause', 'waiting_human_after_attachment']),
-  ])
-
-  if (forceHumanError) throw forceHumanError
-  if (activeHandoffError) throw activeHandoffError
-
-  const forceHumanPhones = new Set<string>((forceHumanRows || []).map((row: any) => normalizeRemotePhone(String(row.remote_phone || ''))).filter(Boolean))
-  const activeHandoffRows = ((candidateStateRows || []) as Array<Record<string, any>>).filter((row) => {
-    const pendingHandoff = row.handoff_pending === true
-      && typeof row.expires_at === 'string'
-      && Date.parse(row.expires_at) > Date.parse(nowIso)
-    const operatorPause = isOperatorPauseActive({
-      state: String(row.state || ''),
-      metadata: row.metadata,
-      updatedAt: String(row.updated_at || ''),
-      nowMs: Date.parse(nowIso),
-      pauseMs: WHATSAPP_REDESIGN_HUMAN_ACTIVE_MS,
-    })
-    return pendingHandoff || operatorPause
-  })
-  const activeHandoffPhones = new Set<string>(activeHandoffRows.map((row) => normalizeRemotePhone(String(row.remote_phone || ''))).filter(Boolean))
-  const protectedPhones = [...new Set([...forceHumanPhones, ...activeHandoffPhones])]
-
-  return {
-    nowIso,
-    aiLogsBefore,
-    messagesBefore,
-    expiredStatesBefore,
-    forceHumanPhones,
-    activeHandoffPhones,
-    protectedPhones,
-  }
-}
-
-type WhatsAppRetentionQueryMode = 'count' | 'ids'
-
-function createRetentionQuery(supabaseAdmin: ReturnType<typeof createAdminClient>, tableName: string, mode: WhatsAppRetentionQueryMode) {
-  if (mode === 'count') {
-    return (supabaseAdmin.from(tableName) as any).select('id', { count: 'exact', head: true })
-  }
-
-  return (supabaseAdmin.from(tableName) as any).select('id')
-}
-
-function buildWhatsAppRetentionQueries(
-  supabaseAdmin: ReturnType<typeof createAdminClient>,
-  storeId: number,
-  scope: Awaited<ReturnType<typeof buildWhatsAppRetentionScope>>,
-  mode: WhatsAppRetentionQueryMode
-) {
-  const aiLogs = createRetentionQuery(supabaseAdmin, 'whatsapp_ai_logs', mode)
-    .eq('store_id', storeId)
-    .lt('created_at', scope.aiLogsBefore)
-
-  const expiredStates = createRetentionQuery(supabaseAdmin, 'whatsapp_conversation_states', mode)
-    .eq('store_id', storeId)
-    .lt('expires_at', scope.nowIso)
-    .lt('updated_at', scope.expiredStatesBefore)
-    .not('state', 'in', '("awaiting_human","human_pause","waiting_human_after_attachment")')
-
-  let inboundMessages = createRetentionQuery(supabaseAdmin, 'whatsapp_inbound_messages', mode)
-    .eq('store_id', storeId)
-    .lt('created_at', scope.messagesBefore)
-
-  let outboundMessages = createRetentionQuery(supabaseAdmin, 'whatsapp_outbound_messages', mode)
-    .eq('store_id', storeId)
-    .lt('created_at', scope.messagesBefore)
-
-  if (scope.protectedPhones.length > 0) {
-    const protectedList = postgrestTextInList(scope.protectedPhones)
-    inboundMessages = inboundMessages.not('remote_phone', 'in', protectedList)
-    outboundMessages = outboundMessages.not('remote_phone', 'in', protectedList)
-  }
-
-  return {
-    aiLogs,
-    expiredStates,
-    inboundMessages,
-    outboundMessages,
   }
 }
 
@@ -1162,6 +1035,7 @@ export async function getWhatsAppOperatorThreadDetail(input: {
   storeId: number
   remotePhone: string
   limit?: number
+  includeTechnical?: boolean
 }): Promise<WhatsAppOperatorThreadDetailResult> {
   try {
     const storeId = Number(input.storeId)
@@ -1228,7 +1102,7 @@ export async function getWhatsAppOperatorThreadDetail(input: {
     const inboundIds = filteredInboundRows.map((row) => row.id)
     let aiLogs: AiLogRow[] = []
 
-    if (inboundIds.length > 0) {
+    if (input.includeTechnical !== false && inboundIds.length > 0) {
       const { data: aiLogRows, error: aiLogsError } = await (supabaseAdmin.from('whatsapp_ai_logs') as any)
         .select('id, inbound_message_id, provider, model_name, latency_ms, intent, confidence, is_success, error_message, raw_request, raw_response, created_at')
         .in('inbound_message_id', inboundIds)
@@ -1261,7 +1135,7 @@ export async function getWhatsAppOperatorThreadDetail(input: {
           createdAt: row.created_at,
           providerMessageId: row.provider_message_id,
           inboundMessageId: row.id,
-          payload: row.payload,
+          payload: input.includeTechnical === false ? null : row.payload,
           errorMessage: null,
           processingDiagnostic: readInboundProcessingDiagnostic(row.payload),
           technicalLog: technicalLog ? {
@@ -1290,7 +1164,7 @@ export async function getWhatsAppOperatorThreadDetail(input: {
         createdAt: row.created_at,
         providerMessageId: row.provider_message_id,
         inboundMessageId: row.inbound_message_id,
-        payload: row.payload,
+        payload: input.includeTechnical === false ? null : row.payload,
         errorMessage: row.error_message,
         processingDiagnostic: null,
         technicalLog: null,
@@ -1364,7 +1238,7 @@ export async function getWhatsAppOperatorThreadDetail(input: {
           matchedStateRow?.state ?? null,
           stateMetadata
         ),
-        aiSessionHistory: parseAiSessionHistory(stateMetadata.aiSessionMessages),
+        aiSessionHistory: input.includeTechnical === false ? [] : parseAiSessionHistory(stateMetadata.aiSessionMessages),
         aiSessionUpdatedAt: asString(stateMetadata.aiSessionUpdatedAt),
         aiSessionEndedAt: asString(stateMetadata.aiSessionEndedAt),
         latestAiLog: latestAiLog ? {
@@ -1381,7 +1255,7 @@ export async function getWhatsAppOperatorThreadDetail(input: {
           } : null,
           extractedReceipt: (stateMetadata.ai_extracted_receipt as Json | undefined) ?? null,
           paymentInstallmentHint: parsePaymentInstallmentHint(stateMetadata.paymentInstallmentHint),
-          metadata: matchedStateRow?.metadata ?? null,
+          metadata: input.includeTechnical === false ? null : matchedStateRow?.metadata ?? null,
         },
       },
     }
@@ -1577,7 +1451,7 @@ export async function setWhatsAppCustomerControl(input: {
       const { error: stateClearError } = await (supabaseAdmin.from('whatsapp_conversation_states') as any)
         .delete()
         .eq('channel_id', channel.id)
-        .eq('remote_phone', remotePhone)
+        .in('remote_phone', [...getPhoneVariants(remotePhone)])
 
       if (stateClearError) throw stateClearError
     }
@@ -1600,11 +1474,26 @@ export async function setWhatsAppCustomerControl(input: {
       return { success: false, message: 'O modo foi salvo, mas nao foi possivel confirmar a conversa correta. Tente atualizar a central.' }
     }
 
+    if (mode === 'force_ai') {
+      await releaseHumanPauseForNextAi({
+        identity: {
+          tenantId: channel.tenant_id,
+          storeId,
+          channelId: channel.id,
+          remotePhone,
+          mode: await resolveCachedWhatsAppRedesignMode(storeId),
+        },
+        occurredAt: new Date().toISOString(),
+        eventKey: `operator:force_ai:${crypto.randomUUID()}`,
+        actor: user.id,
+      })
+    }
+
     return {
       success: true,
       message: mode === 'force_human'
         ? 'Cliente fixado em atendimento humano.'
-        : 'Cliente marcado para a proxima chamada entrar pela IA.',
+        : 'Pausa humana liberada. A proxima mensagem do cliente entrara pelo fluxo da IA.',
       mode,
     }
   } catch (error) {
@@ -1626,40 +1515,7 @@ export async function getWhatsAppRetentionPreview(input: {
     }
 
     const { supabaseAdmin } = await getViewContext(storeId)
-    const scope = await buildWhatsAppRetentionScope(supabaseAdmin, storeId)
-    const queries = buildWhatsAppRetentionQueries(supabaseAdmin, storeId, scope, 'count')
-
-    const [aiLogs, expiredStates, inboundMessages, outboundMessages] = await Promise.all([
-      countQuery(queries.aiLogs),
-      countQuery(queries.expiredStates),
-      countQuery(queries.inboundMessages),
-      countQuery(queries.outboundMessages),
-    ])
-
-    const data: WhatsAppRetentionPreview = {
-      policy: {
-        aiLogsDays: WHATSAPP_RETENTION_AI_LOG_DAYS,
-        messagesDays: WHATSAPP_RETENTION_MESSAGE_DAYS,
-        expiredStatesDays: WHATSAPP_RETENTION_EXPIRED_STATE_DAYS,
-      },
-      cutoffs: {
-        aiLogsBefore: scope.aiLogsBefore,
-        messagesBefore: scope.messagesBefore,
-        expiredStatesBefore: scope.expiredStatesBefore,
-      },
-      protectedThreads: {
-        forceHuman: scope.forceHumanPhones.size,
-        activeHandoff: scope.activeHandoffPhones.size,
-        totalUnique: scope.protectedPhones.length,
-      },
-      candidates: {
-        aiLogs,
-        expiredStates,
-        inboundMessages,
-        outboundMessages,
-        total: aiLogs + expiredStates + inboundMessages + outboundMessages,
-      },
-    }
+    const data = await previewWhatsAppRetention(supabaseAdmin, storeId)
 
     return {
       success: true,
@@ -1691,21 +1547,8 @@ export async function runWhatsAppRetentionCleanup(input: {
     }
 
     const { supabaseAdmin } = await getViewContext(storeId)
-    const scope = await buildWhatsAppRetentionScope(supabaseAdmin, storeId)
-    const queries = buildWhatsAppRetentionQueries(supabaseAdmin, storeId, scope, 'ids')
-
-    const [aiLogIds, expiredStateIds, outboundIds, inboundIds] = await Promise.all([
-      selectIds(queries.aiLogs.order('created_at', { ascending: true }).limit(WHATSAPP_RETENTION_DELETE_BATCH_LIMIT)),
-      selectIds(queries.expiredStates.order('updated_at', { ascending: true }).limit(WHATSAPP_RETENTION_DELETE_BATCH_LIMIT)),
-      selectIds(queries.outboundMessages.order('created_at', { ascending: true }).limit(WHATSAPP_RETENTION_DELETE_BATCH_LIMIT)),
-      selectIds(queries.inboundMessages.order('created_at', { ascending: true }).limit(WHATSAPP_RETENTION_DELETE_BATCH_LIMIT)),
-    ])
-
-    const aiLogs = await deleteByIds(supabaseAdmin, 'whatsapp_ai_logs', aiLogIds)
-    const expiredStates = await deleteByIds(supabaseAdmin, 'whatsapp_conversation_states', expiredStateIds)
-    const outboundMessages = await deleteByIds(supabaseAdmin, 'whatsapp_outbound_messages', outboundIds)
-    const inboundMessages = await deleteByIds(supabaseAdmin, 'whatsapp_inbound_messages', inboundIds)
-    const total = aiLogs + expiredStates + inboundMessages + outboundMessages
+    const deleted = await cleanupWhatsAppRetention(supabaseAdmin, storeId)
+    const { total } = deleted
 
     const nextPreview = await getWhatsAppRetentionPreview({ storeId })
 
@@ -1714,13 +1557,7 @@ export async function runWhatsAppRetentionCleanup(input: {
       message: total > 0
         ? `Faxina executada: ${total} registro(s) removido(s).`
         : 'Nenhum registro elegivel para remover nesta rodada.',
-      deleted: {
-        aiLogs,
-        expiredStates,
-        inboundMessages,
-        outboundMessages,
-        total,
-      },
+      deleted,
       preview: nextPreview.data,
     }
   } catch (error) {

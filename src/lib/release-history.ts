@@ -9,6 +9,8 @@ export type Release = {
 // altera o Dashboard ou o modal de histórico.
 export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'A opcao IA proxima do WhatsApp libera a pausa humana anterior no novo atendimento, permitindo que a proxima mensagem do cliente entre pelo fluxo da IA.',
+  'O WhatsApp operacional prioriza conversas e atendimento, com filtros de pendencias e atendimento humano; manutencao e detalhes tecnicos ficam sob demanda. A limpeza passa a ter rotina diaria para mensagens concluidas com mais de 15 dias, preservando atendimento humano, mensagens pendentes e a memoria do novo fluxo.',
   'O botao das parcelas exibe Receber parcela nas lojas, oferece baixa manual ou Pix nas lojas habilitadas e preserva a consulta de cobrancas Pix existentes.',
   'A renegociacao de carne em vendas abertas permite reduzir o saldo parcelado e receber a diferenca como entrada, preservando os pagamentos anteriores.',
   'O texto de Visagismo explica somente os formatos e as proporcoes das armacoes, sem recomendacoes de cores.',
