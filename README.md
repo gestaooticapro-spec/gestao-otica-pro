@@ -115,6 +115,12 @@ revalida o grupo de OSs e recalcula os dias desde a entrega. Contatos com mais d
 30 dias sao cancelados para revisao. O painel distingue tentativa de envio de
 mensagem enviada e apresenta os motivos de pausa em portugues.
 
+Na Loja 1, um arquivo adicional durante o encaminhamento pendente nao repete
+a apresentacao nem o aviso de chamar a equipe. Antes de criar essa resposta,
+o fluxo tambem consulta a ultima saida real da conversa (pendente, enviando ou
+enviada), para cobrir atraso na memoria. Essa protecao respeita IA proxima,
+nao transforma uma falha anterior em envio confirmado e vale por ate 48 horas.
+
 ### Limpeza do WhatsApp operacional
 
 A limpeza possui uma rotina diaria autenticada no app principal, com agenda

@@ -38,6 +38,7 @@ Nenhuma credencial, telefone ou documento pessoal foi incluído. Os identificado
 | WA-05 | Pós-venda / saudação | Resposta genérica abandona o assunto de adaptação | Resposta do SISTEMA visível no caso da Pamela |
 | WA-06 | Pós-venda / avaliação positiva | Resposta bloqueada por exigência de encaminhamento humano | Diagnóstico visível no caso da Pamela |
 | WA-07 | Painel / status de envio | Saídas com falha aparecem como mensagens comuns, sugerindo contato efetivo | Confirmado no banco para as três saídas do print do Thiago |
+| WA-08 | Anexos consecutivos | Duas imagens recebem dois avisos de encaminhamento | Confirmado no banco em 07/10; correção local validada, pendente de publicação |
 
 ## WA-01 — ajuste simples tratado como adaptação ruim
 
@@ -227,6 +228,27 @@ O caso do Thiago comprova que três bolhas comuns do print correspondem a saída
 - Reservar confirmação de entrega/leitura para evidência específica do provedor; `sent` não comprova leitura.
 - Permitir que a equipe entenda uma falha sem precisar abrir todos os detalhes técnicos.
 - Usar as saídas 15269, 18875 e 18983 como referência de investigação para validar a apresentação de falhas.
+
+## WA-08 — encaminhamento repetido em imagens consecutivas
+
+Consulta somente de leitura em 07/10/2026, Loja 1. As entradas 12242 e 12243
+foram recebidas às 14:31:05 e 14:31:25, respectivamente. As saídas 19348 e
+19349 foram confirmadas como enviadas às 14:31:24 e 14:31:41, com identificadores
+distintos do provedor. Ambos os textos apresentam a IAra e informam que a equipe
+vai revisar a imagem. Não foi uma duplicação de envio da mesma entrada: cada
+imagem disparou um novo encaminhamento.
+
+A decisão persistida do segundo turno ainda usava memória com `humanControl`
+em `ai_active`, sem encaminhamento pendente, apesar do primeiro aviso enviado.
+Foi preparada uma proteção na decisão quando o encaminhamento já está pendente
+e outra antes de criar a saída, consultando a última mensagem real da conversa
+(pendente, enviando ou enviada). Arquivos adicionais não repetem esse aviso;
+IA próxima, primeiro arquivo e falha anterior continuam permitidos. O painel
+explica que o arquivo foi recebido e que a equipe já foi acionada.
+
+Validação local: TypeScript e 75 testes passaram, incluindo reprodução dos
+horários e IDs deste caso. Nenhum envio, cancelamento ou exclusão foi feito
+no banco durante a investigação. A correção ainda depende de publicação.
 
 ## Ordem sugerida para as próximas correções
 

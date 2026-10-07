@@ -82,6 +82,7 @@ function suppressionReasonLabel(reason: string) {
     handoff_omitted: 'a resposta não informou que um atendente continuará o atendimento',
     human_pause_active: 'a conversa estava em pausa humana quando a mensagem chegou',
     human_control_active: 'o atendimento está com a equipe. A IA está pausada para não interromper a conversa',
+    attachment_handoff_already_notified: 'o arquivo foi recebido. A equipe já foi acionada e a IA evitou repetir o aviso',
     human_control_blocks_ai: 'o atendimento está com a equipe. A IA está pausada para não interromper a conversa',
     unclear_intent_preserved_pending_post_sale: 'não ficou claro o que o cliente quis dizer. O acompanhamento continua pendente',
     post_sale_question_omitted: 'a resposta não retomou a pergunta sobre adaptação. O acompanhamento continua pendente',

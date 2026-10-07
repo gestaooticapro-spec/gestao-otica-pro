@@ -145,6 +145,17 @@ export function buildWhatsAppShadowDecision(
 
   const hasAttachment = classification.mentionsAttachment || input.hasCurrentTurnAttachment
   if (hasAttachment) {
+    if (input.memory.summary.humanControl === 'human_pending'
+      || input.memory.summary.pendingAction === 'awaiting_human') {
+      return {
+        reason: 'attachment_handoff_already_notified',
+        draft: WhatsAppSystemDecisionDraftSchema.parse({
+          action: 'no_reply', fallbackReply: null,
+          facts: { decisionReason: 'attachment_handoff_already_notified' },
+          humanHandoffTiming: null, humanization: humanization(false),
+        }),
+      }
+    }
     return {
       reason: 'attachment_requires_human_review',
       draft: handoffDraft(

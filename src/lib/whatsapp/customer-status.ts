@@ -110,6 +110,7 @@ import {
 } from './redesign/order-status-live'
 import { recordWhatsAppInboundProcessingEvent } from './inbound-processing-trace'
 import { deferWhatsAppRedesignReply, WhatsAppRedesignDecisionPending } from './redesign/deferred-replies'
+import { shouldSuppressAttachmentHandoff } from './redesign/attachment-handoff-policy'
 
 const SAME_STATUS_SILENCE_WINDOW_MS = 2 * 60 * 60 * 1000
 const HUMAN_PAUSE_MS = 60 * 60 * 1000
@@ -2418,6 +2419,27 @@ async function createOutbound(
     })
   }
 
+  const attachmentCanonical = extractWhatsAppCanonicalReply(payload)
+  if (channel.store_id === 1 && attachmentCanonical?.intent === 'attachment'
+    && ['human_handoff', 'repeat_handoff', 'acknowledge_attachment'].includes(attachmentCanonical.action)) {
+    // The turn snapshot can precede confirmation of the previous reply. Check
+    // the live queue as well, including a handoff that is still being sent.
+    const { data: latestOutbound, error: latestError } = await (supabase.from('whatsapp_outbound_messages') as any)
+      .select('message_type,status,created_at,inbound_message_id,payload')
+      .eq('channel_id', channel.id)
+      .in('remote_phone', [...getPhoneVariants(phone)])
+      .in('status', ['pending', 'sending', 'sent'])
+      .order('created_at', { ascending: false }).limit(1).maybeSingle()
+    if (latestError) throw latestError
+    if (shouldSuppressAttachmentHandoff({ latestOutbound, inboundId: inboundMessageId,
+      forceAi: (await loadCustomerControlMode(channel.id, phone)) === 'force_ai', now: new Date().toISOString() })) {
+      return ignoreInbound(inboundMessageId, {
+        stage: 'outbound_guard', reason: 'attachment_handoff_already_notified',
+        route: 'create_outbound', action: 'no_reply', intent: 'attachment',
+      })
+    }
+  }
+
   // Webhooks repetidos podem voltar a processar um inbound antigo ainda marcado
   // como recebido. Reutilizar qualquer outbound já criado evita uma segunda
   // resposta; o índice único abaixo fecha também a corrida entre consultas.
@@ -3414,7 +3436,8 @@ async function resolveCustomerStatusInternal(
         if (decision.action === 'no_reply' && !orderLookupPlan) {
           return ignoreInbound(inbound.id, {
             stage: 'redesign_decision',
-            reason: 'redesign_decided_no_reply',
+            reason: decision.facts.decisionReason === 'attachment_handoff_already_notified'
+              ? 'attachment_handoff_already_notified' : 'redesign_decided_no_reply',
             route: redesignRoute,
             intent: classification.intent,
             action: decision.action,
