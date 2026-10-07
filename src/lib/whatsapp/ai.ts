@@ -543,6 +543,8 @@ function buildPostSaleRatingResolutionPrompt(input: WhatsAppPostSaleRatingResolu
   ].join('\n')
 }
 
+const WHATSAPP_NATURAL_STORE_REFERENCE = 'O cliente ja esta conversando com a loja neste WhatsApp. Nao inclua o nome completo da otica em saudacoes, apresentacoes, agradecimentos, assinaturas ou respostas comuns, mesmo que apareca em storeName, nos fatos ou no historico. Quando precisar se referir a loja, prefira "aqui", "com a gente" ou "na otica", no idioma do cliente. Use o nome oficial somente se o cliente perguntar explicitamente qual e a loja ou se ele fizer parte de um dado oficial necessario, como o favorecido do Pix; preserve esse dado exatamente. A identificacao obrigatoria como IAra, assistente virtual da otica, continua valendo.'
+
 export function buildWhatsAppHumanizationPrompt(input: WhatsAppReplyHumanizationInput) {
   const isIdentifierRequest = input.intent === 'order_status'
     && (input.action === 'request_identifier'
@@ -557,6 +559,7 @@ export function buildWhatsAppHumanizationPrompt(input: WhatsAppReplyHumanization
 
   return [
     'Voce reescreve mensagens de WhatsApp para uma otica.',
+    WHATSAPP_NATURAL_STORE_REFERENCE,
     'Responda SOMENTE em JSON valido, sem markdown, sem explicacoes extras.',
     'Nao altere fatos, nao invente informacoes, nao mude a decisao do sistema.',
     'Se a entrada fornecer a MENSAGEM DO CLIENTE original, formule a sua resposta baseada EXATAMENTE nos fatos e na resposta canonica fornecidos para matar a duvida do cliente.',
@@ -672,6 +675,7 @@ function buildToolAgentPlanPrompt(input: WhatsAppToolAgentInput) {
 export function buildToolAgentReplyPrompt(input: WhatsAppToolAgentInput, toolResults: unknown[]) {
   return [
     'Voce e a IA de atendimento de uma otica. Responda SOMENTE em JSON valido.',
+    WHATSAPP_NATURAL_STORE_REFERENCE,
     'Responda no idioma predominante da mensagem atual do cliente. Use o historico somente se a mensagem atual for curta ou ambigua; se nao houver idioma claro, use portugues do Brasil. Seja natural e objetivo.',
     'Use exclusivamente os fatos fornecidos pelos resultados das ferramentas para afirmar o estado atual de pedidos e parcelas. Se o historico registrar uma informacao da equipe, voce pode cita-la como "a equipe informou", sem transforma-la em confirmacao atual.',
     'Para OS, nao estime quando ficara pronta ou podera ser retirada: hoje, amanha, prazos e probabilidades so podem ser citados se constarem explicitamente no statusText da consulta atual. Se nao houver previsao, informe apenas a etapa confirmada. O cliente ja esta falando com a otica neste WhatsApp: nao recomende que entre em contato conosco; se necessario, diga que pode perguntar novamente por aqui mais tarde.',
@@ -789,6 +793,7 @@ async function runWithOpenAIOnly(task: WhatsAppAiTask, prompt: string, modelOver
 export function buildWhatsAppPostSaleActionReplyPrompt(input: WhatsAppPostSaleActionReplyInput) {
   return [
     'Voce redige a proxima mensagem de uma conversa de pos-venda de uma otica.',
+    WHATSAPP_NATURAL_STORE_REFERENCE,
     'Responda somente com um objeto JSON contendo reply_text como string.',
     'Use o idioma da mensagem atual. Escreva de forma natural, breve e relacionada ao que o cliente acabou de dizer.',
     'A acao foi decidida pelo sistema. Nao altere a acao nem invente fatos, pedidos, prazos ou informacoes de outras pessoas.',
@@ -815,6 +820,7 @@ export function buildWhatsAppRedesignReplyPrompt(input: WhatsAppRedesignReplyInp
 
   return [
     'Voce escreve respostas originais e naturais para o WhatsApp de uma otica.',
+    WHATSAPP_NATURAL_STORE_REFERENCE,
     'Responda SOMENTE em JSON valido, sem markdown ou explicacoes extras.',
     'Esta e a etapa normal de redacao do redesign: escreva uma resposta nova e contextual, nao copie templates nem frases padrao.',
     'Use somente os fatos estruturados fornecidos. Nao invente nem altere horarios, endereco, chave Pix, estoque, pagamentos, status, prazos ou promessas.',
@@ -857,6 +863,7 @@ function buildFallbackReplyPrompt(input: WhatsAppFallbackReplyInput) {
 
   return [
     'Voce responde mensagens de WhatsApp para uma otica.',
+    WHATSAPP_NATURAL_STORE_REFERENCE,
     'Responda SOMENTE em JSON valido, sem markdown, sem explicacoes extras.',
     'A mensagem caiu no fallback porque o sistema nao identificou uma intencao operacional segura.',
     'Responda de forma natural, curta e util. Nao invente informacoes da loja, pedido, estoque, preco, prazo, pagamento ou dados do cliente.',

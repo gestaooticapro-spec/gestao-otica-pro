@@ -2,6 +2,9 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   buildWhatsAppPostSaleActionReplyPrompt,
+  buildWhatsAppRedesignReplyPrompt,
+  buildWhatsAppHumanizationPrompt,
+  buildToolAgentReplyPrompt,
   openAiTextFormatForTask,
   WhatsAppIntentClassificationSchema,
 } from '../src/lib/whatsapp/ai'
@@ -57,4 +60,35 @@ test('redacao de pos-venda recebe acao e fatos confirmados sem exemplo generico'
     action: 'confirm_rating', rating: 5, messageText: 'Nota 5', storeName: 'Otica',
   })
   assert.match(confirmation, /nota 5 foi registrada/)
+})
+
+test('redatores omitem o nome comercial nas respostas comuns sem perder identidade ou fatos oficiais', () => {
+  const storeName = 'Otica Prisma Guaira'
+  const prompts = [
+    buildWhatsAppRedesignReplyPrompt({
+      action: 'answer_official_pix', intent: 'installment_status', storeName,
+      userMessages: [{ kind: 'text', text: 'Qual a chave Pix?' }],
+      conversationHistory: ['assistente: Como posso ajudar aqui na Otica Prisma Guaira?'],
+      facts: { officialPixKey: 'financeiro@example.com', officialPixHolder: storeName },
+    }),
+    buildToolAgentReplyPrompt({ messageText: 'Minha OS esta pronta?', storeName }, []),
+    buildWhatsAppHumanizationPrompt({
+      intent: 'order_status', action: 'human_handoff', storeName,
+      canonicalReply: 'Sou a IAra, assistente virtual da otica. A equipe vai verificar sua OS.',
+    }),
+    buildWhatsAppPostSaleActionReplyPrompt({ action: 'confirm_rating', rating: 5, messageText: 'Nota 5', storeName }),
+  ]
+  for (const prompt of prompts) {
+    assert.match(prompt, /Nao inclua o nome completo da otica/)
+    assert.match(prompt, /mesmo que apareca em storeName, nos fatos ou no historico/)
+    assert.match(prompt, /no idioma do cliente/)
+    assert.match(prompt, /cliente perguntar explicitamente qual e a loja/)
+    assert.match(prompt, /favorecido do Pix; preserve esse dado exatamente/)
+    assert.match(prompt, /identificacao obrigatoria como IAra/)
+    assert.ok(prompt.includes(storeName))
+  }
+  assert.ok(prompts[0].includes('financeiro@example.com'))
+  assert.match(prompts[0], /inclua a chave Pix oficial exatamente como fornecida/)
+  assert.match(prompts[2], /a equipe continuara a verificacao/)
+  assert.match(prompts[3], /nota 5 foi registrada/)
 })
