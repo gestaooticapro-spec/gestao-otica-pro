@@ -1,6 +1,11 @@
 import type { Json } from '@/lib/database.types'
 
 export const DEFAULT_POST_SALE_FOLLOWUP_DAYS = 7
+
+export function currentPostSaleDeliveryAge(deliveredAt: string, now: Date) {
+  const age = Math.floor((now.getTime() - Date.parse(deliveredAt)) / 86400000)
+  return Number.isFinite(age) && age >= 0 && age <= 30 ? Math.max(1, age) : null
+}
 export const DEFAULT_POST_SALE_FOLLOWUP_TEMPLATE = [
   'Olá, {nome}! Aqui é da ótica.',
   '',
@@ -33,6 +38,28 @@ export type PostSaleContext = {
 }
 
 export type PostSaleTurnDisposition = 'handle_post_sale' | 'route_other_topic' | 'suppress_preserving_context'
+
+export function resolvePostSaleContextualSignal(input: {
+  context: PostSaleContext | null
+  signal?: 'greeting' | 'frame_adjustment' | null
+  confidence: number
+  minimumConfidence: number
+  explicitHumanRequest: boolean
+  explicitOrderRequest: boolean
+}) {
+  if (!input.context?.postSalesId || !['awaiting_feedback', 'awaiting_rating'].includes(input.context.stage ?? '')
+    || input.confidence < input.minimumConfidence || input.explicitHumanRequest || input.explicitOrderRequest) return null
+  return input.signal ?? null
+}
+
+export function uniqueOpenConfirmedFollowup<T extends { service_order_id: number; covered_service_order_ids?: number[] | null }>(
+  followups: T[], openOrderIds: number[]
+) {
+  const active = followups.filter(followup =>
+    (followup.covered_service_order_ids?.length ? followup.covered_service_order_ids : [followup.service_order_id])
+      .some(id => openOrderIds.includes(id)))
+  return active.length === 1 ? active[0] : null
+}
 
 export function postSaleRatingPromptText() {
   return 'Que bom saber disso. Se puder, me responda com uma nota de 1 a 5 para avaliarmos o atendimento da nossa equipe.'

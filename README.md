@@ -103,6 +103,18 @@ Documentacao especifica desse servico:
 Observacao:
 detalhes operacionais sensiveis da VPS, acessos e cron devem ficar em documentacao local nao versionada.
 
+### Continuidade do pos-venda no WhatsApp
+
+O atendimento da Loja 1 recupera pos-vendas ainda abertos por ate 30 dias,
+somente quando existe um contato automatico confirmado e um unico acompanhamento
+identificavel. Cumprimentos retomam a pergunta pendente sem registrar adaptacao
+positiva; boa adaptacao com ajuste simples de armacao tem encaminhamento proprio,
+sem alerta de reclamacao visual. Pedidos explicitos de atendente e pausas humanas
+continuam respeitados. Antes de disparar ou repetir o primeiro contato, a rotina
+revalida o grupo de OSs e recalcula os dias desde a entrega. Contatos com mais de
+30 dias sao cancelados para revisao. O painel distingue tentativa de envio de
+mensagem enviada e apresenta os motivos de pausa em portugues.
+
 ### Limpeza do WhatsApp operacional
 
 A limpeza possui uma rotina diaria autenticada no app principal, com agenda

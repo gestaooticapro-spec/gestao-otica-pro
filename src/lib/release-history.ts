@@ -9,6 +9,8 @@ export type Release = {
 // altera o Dashboard ou o modal de histórico.
 export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'O WhatsApp retoma acompanhamentos confirmados de pos-venda, distingue cumprimento e ajuste simples de reclamacao e reconhece confirmacoes de pagamento futuro sem registrar baixa. Novas tentativas atualizam o tempo desde a entrega; o painel mostra falhas de envio e explica as pausas em portugues.',
+  'O tablet exibe o motivo quando as medidas nao podem ser gravadas na OS e avisa sobre falhas de conexao, preservando a foto e os ajustes na tela para nova tentativa.',
   'As respostas da IA no WhatsApp evitam repetir o nome completo da otica, mantendo a identificacao da IAra e os dados oficiais necessarios ao atendimento.',
   'A opcao IA proxima do WhatsApp libera a pausa humana anterior no novo atendimento, permitindo que a proxima mensagem do cliente entre pelo fluxo da IA.',
   'O WhatsApp operacional prioriza conversas e atendimento, com filtros de pendencias e atendimento humano; manutencao e detalhes tecnicos ficam sob demanda. A limpeza passa a ter rotina diaria para mensagens concluidas com mais de 15 dias, preservando atendimento humano, mensagens pendentes e a memoria do novo fluxo.',

@@ -244,6 +244,16 @@ export function resolveStoreOnePilotReplyText(
   let replyText = result.data.reply_text.trim()
   let normalizedReply = normalizeForComparison(replyText)
   const productMention = candidate.replyInput.facts.productMention
+  if (candidate.replyInput.facts.frameAdjustment === true
+    && (/\b(?:reclamacao|adaptacao ruim|sinto muito|lamentamos|prioridade|urgente)\b/u.test(normalizedReply)
+      || !/\b(?:ajust\w*|apert\w*|armaca\w*|frame|fit|adjust\w*)\b/u.test(normalizedReply))) {
+    return suppressed('adjustment_misrepresented')
+  }
+  if (candidate.replyInput.facts.postSaleGreeting === true
+    && candidate.replyInput.facts.postSaleStage === 'awaiting_feedback'
+    && (!/\b(?:adaptacao|adaptacion|adaptation|adjusting)\b/u.test(normalizedReply) || !replyText.includes('?'))) {
+    return suppressed('post_sale_question_omitted')
+  }
   if (candidate.replyInput.facts.mustIdentifyIara === true) {
     const hasExplicitIdentity = /\b(?:eu sou |sou |aqui e |soy |yo soy |i am |i m |this is )(?:a |la )?(?:assistente virtual )?iara\b/u.test(normalizedReply)
     if (!hasExplicitIdentity) {

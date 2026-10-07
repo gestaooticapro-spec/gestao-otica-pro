@@ -4,6 +4,18 @@ Registro iniciado em **06/10/2026**, a partir dos prints fornecidos pelo usuári
 
 Objetivo: guardar os casos para correção posterior, com evidência, comportamento esperado e critérios de validação. Este documento não representa correções implementadas.
 
+### Atualização de implementação — 07/10/2026
+
+As evidências históricas abaixo continuam preservadas. Foram preparadas correções locais para publicação:
+
+- WA-01: classificação complementar de ajuste simples e encaminhamento com nota interna proporcional, sem registrar automaticamente adaptação ruim.
+- WA-02 e WA-03: reconhecimento das confirmações dos prints quando o lembrete de parcela é a última interação relevante; perguntas, comprovantes e retirada explícita seguem outros caminhos.
+- WA-04: reconstrução do texto no disparo, com dias atuais e revalidação de OSs/beneficiário. Contatos fora de 30 dias são cancelados. Mantida a proteção já existente para rejeição `exists: false`.
+- WA-05 e WA-06: recuperação de acompanhamento aberto com contato confirmado até 30 dias e associação única; cumprimento retoma a pergunta sem marcar satisfação. A avaliação positiva seguinte usa a etapa de pós-venda, sem exigir encaminhamento humano.
+- WA-07: status de envio visível no histórico normal. Pausas e bloqueios recebem justificativa em português; o código original fica nos detalhes técnicos.
+
+A validação usa testes locais de contexto, decisões e respostas simuladas. Ainda é necessário acompanhar as conversas após a publicação; não houve envio real nem alteração de registros históricos para validar estes casos. Se houver vários acompanhamentos possíveis, a retomada automática não escolhe um deles. As causas históricas exatas de José, Carlos e Pamela continuam dependendo dos registros originais.
+
 ## Como ler as evidências
 
 - **CLIENTE:** mensagem recebida do cliente.

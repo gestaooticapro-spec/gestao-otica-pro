@@ -4,6 +4,9 @@ import {
   canBypassPostSaleBusinessHoursForTest,
   canReuseStoreOnePostSaleTestFollowup,
   decidePostSaleTurnDisposition,
+  currentPostSaleDeliveryAge,
+  uniqueOpenConfirmedFollowup,
+  resolvePostSaleContextualSignal,
   extractPostSaleRatingForStage,
   getPostSaleForcedToolCall,
   isStoreOnePostSaleTestProtocol,
@@ -13,8 +16,61 @@ import {
   type PostSaleContext,
 } from '../src/lib/whatsapp/post-sale-followup'
 import { WhatsAppPostSaleRatingResolutionSchema } from '../src/lib/whatsapp/ai'
+import { resolveStoreOnePilotReplyText, type PilotSafeReply } from '../src/lib/whatsapp/redesign/safe-replies-pilot'
 
 const MIN_CONFIDENCE = 0.72
+
+test('retoma saudacao sem registrar adaptacao e continua a avaliacao positiva seguinte', () => {
+  const context: PostSaleContext = { postSalesId: 34, serviceOrderId: 56, stage: 'awaiting_feedback' }
+  const input = { context, confidence: 0.95, minimumConfidence: MIN_CONFIDENCE,
+    explicitHumanRequest: false, explicitOrderRequest: false }
+  assert.equal(resolvePostSaleContextualSignal({ ...input, signal: 'greeting' }), 'greeting')
+  assert.equal(getPostSaleForcedToolCall({ context, disposition: 'handle_post_sale', intent: 'unknown', explicitRating: null }), null)
+  assert.deepEqual(transitionPostSaleContextAfterTurn(context, 'preserve'), context)
+  assert.deepEqual(getPostSaleForcedToolCall({ context, disposition: 'handle_post_sale', intent: 'post_sale_positive', explicitRating: null }), { name: 'request_post_sale_rating' })
+  assert.equal(resolvePostSaleContextualSignal({ ...input, signal: 'frame_adjustment' }), 'frame_adjustment')
+  for (const override of [{ explicitHumanRequest: true }, { explicitOrderRequest: true }, { confidence: 0.2 },
+    { context: { ...context, stage: 'handoff' as const } }, { context: { ...context, stage: 'completed' as const } }]) {
+    assert.equal(resolvePostSaleContextualSignal({ ...input, signal: 'frame_adjustment', ...override }), null)
+  }
+})
+
+test('retomada exige um unico acompanhamento confirmado sem misturar novas OSs ou grupos', () => {
+  const oldGroup = { service_order_id: 866, covered_service_order_ids: [866, 865] }
+  const newGroup = { service_order_id: 1079, covered_service_order_ids: [1079] }
+  assert.equal(uniqueOpenConfirmedFollowup([oldGroup], [865, 866, 1079]), oldGroup)
+  assert.equal(uniqueOpenConfirmedFollowup([oldGroup, newGroup], [865, 866, 1079]), null)
+  assert.equal(uniqueOpenConfirmedFollowup([], [865]), null)
+  assert.equal(uniqueOpenConfirmedFollowup([oldGroup], [1079]), null)
+})
+
+test('tempo de retirada e recalculado no envio e contatos fora da janela nao sao recuperados', () => {
+  assert.equal(currentPostSaleDeliveryAge('2026-09-15T15:16:00Z', new Date('2026-10-06T17:51:56Z')), 21)
+  assert.equal(currentPostSaleDeliveryAge('2026-09-15T15:16:00Z', new Date('2026-09-22T15:16:00Z')), 7)
+  assert.equal(currentPostSaleDeliveryAge('2026-09-15T15:16:00Z', new Date('2026-10-20T15:16:00Z')), null)
+  assert.equal(currentPostSaleDeliveryAge('invalid', new Date()), null)
+})
+
+test('saudacao contextual nao exige equipe e ajuste simples preserva encaminhamento sem reclamacao', () => {
+  const greeting: PilotSafeReply = {
+    action: 'conservative_fallback', messageType: 'ai_greeting',
+    replyInput: { action: 'conservative_fallback', intent: 'complaint_or_adaptation',
+      userMessages: [{ kind: 'text', text: 'Ola, tudo bom? Tudo bom gracas a Deus' }],
+      facts: { postSaleGreeting: true, postSaleStage: 'awaiting_feedback' } },
+  }
+  const text = 'Olá! Tudo bem por aqui. Como está a adaptação aos seus óculos?'
+  assert.equal(resolveStoreOnePilotReplyText(greeting, { success: true, data: { reply_text: text } }).shouldSend, true)
+  assert.equal(resolveStoreOnePilotReplyText(greeting, { success: true, data: { reply_text: 'Olá! Como posso ajudar?' } }).shouldSend, false)
+  const adjustment: PilotSafeReply = { ...greeting, action: 'human_handoff', messageType: 'human_handoff',
+    replyInput: { ...greeting.replyInput, action: 'human_handoff',
+      userMessages: [{ kind: 'text', text: 'Esta bom, so vou levar pra apertar mais um pouco' }],
+      facts: { frameAdjustment: true, mustIdentifyIara: true, mustMentionHumanHandoff: true } } }
+  assert.equal(resolveStoreOnePilotReplyText(adjustment, { success: true, data: { reply_text:
+    'Sou a IAra, assistente virtual da ótica. Que bom que está se adaptando bem! Vou chamar a equipe para ajudar com o ajuste da armação.' } }).shouldSend, true)
+  assert.equal(resolveStoreOnePilotReplyText(adjustment, { success: true, data: { reply_text: 'Que bom que está tudo bem!' } }).shouldSend, false)
+  assert.equal(resolveStoreOnePilotReplyText(adjustment, { success: true, data: { reply_text:
+    'Sou a IAra. Sinto muito pela adaptação ruim. Vou chamar a equipe com prioridade para ajustar a armação.' } }).shouldSend, false)
+})
 
 test('gatilho manual aceita somente o protocolo ficticio autorizado da Loja 1', () => {
   assert.equal(isStoreOnePostSaleTestProtocol('1043'), true)

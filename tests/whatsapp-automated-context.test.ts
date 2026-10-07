@@ -8,6 +8,18 @@ import { WhatsAppRedesignConversationStore } from '../src/lib/whatsapp/redesign/
 
 const sentAtIso = '2026-10-01T14:22:29.000Z'
 
+test('confirma compromisso apos lembrete sem confundir retirada, baixa ou pergunta financeira', () => {
+  const context = { reminderOutboundId: 10, latestOutboundId: 10, latestOutboundType: 'installment_due_reminder', hasInterveningInbound: false }
+  for (const message of ['Vou providenciar', 'Pode deixar', 'Amanhã vou passar aí.ok 👋', 'Obrigado pelo aviso']) {
+    assert.equal(shouldAcknowledgeLatestPaymentReminder({ ...context, message }), true, message)
+    assert.equal(shouldAcknowledgeLatestPaymentReminder({ ...context, message, hasInterveningInbound: true }), false)
+    assert.equal(shouldAcknowledgeLatestPaymentReminder({ ...context, message, latestOutboundType: 'post_sale_followup' }), false)
+  }
+  for (const message of ['Já paguei, segue o comprovante', 'Amanhã vou passar aí buscar meus óculos', 'Qual o valor?', 'Pode mandar o Pix?']) {
+    assert.equal(shouldAcknowledgeLatestPaymentReminder({ ...context, message }), false)
+  }
+})
+
 test('o lembrete substitui a pausa nas variantes do telefone e preserva o pós-venda', () => {
   const phoneWithoutNinthDigit = '551199999999'
   const phoneWithNinthDigit = '5511999999999'

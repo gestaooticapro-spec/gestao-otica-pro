@@ -803,6 +803,9 @@ export default function FrameMeasurementTool({
 
       setLinkedOS(found.os)
       return found.os
+    } catch {
+      setOsLookupError('Nao foi possivel consultar a OS. Verifique a conexao e tente novamente.')
+      return null
     } finally {
       setSaving(false)
     }
@@ -873,8 +876,10 @@ export default function FrameMeasurementTool({
       if (result.ok) {
         setSaved(true)
       } else {
-        alert(`Erro ao salvar: ${result.error}`)
+        setOsLookupError(`Erro ao salvar: ${result.error ?? 'Nao foi possivel gravar as medidas. Tente novamente.'}`)
       }
+    } catch {
+      setOsLookupError('Nao foi possivel confirmar o salvamento. Verifique a conexao e tente novamente. A foto e os ajustes foram mantidos nesta tela.')
     } finally {
       setSaving(false)
     }
@@ -1211,6 +1216,9 @@ export default function FrameMeasurementTool({
               )}
 
               {/* Ações */}
+              {step === 'done' && !saved && osLookupError && (
+                <p role="alert" className="text-sm text-rose-400 px-4 py-2">{osLookupError}</p>
+              )}
               <div className="px-4 pb-3 pt-1 flex flex-wrap gap-2">
                 {step === 'measure' && !activeGroup && (
                   <>

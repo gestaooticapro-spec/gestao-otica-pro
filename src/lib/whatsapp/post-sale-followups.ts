@@ -11,6 +11,7 @@ import { WHATSAPP_REDESIGN_HUMAN_ACTIVE_MS } from '@/lib/whatsapp/redesign/contr
 import { evaluateStoreHours } from '@/lib/whatsapp/store-hours-logic'
 import {
   buildPostSaleFollowupMessage,
+  currentPostSaleDeliveryAge,
   buildPostSaleFollowupSettings,
   canBypassPostSaleBusinessHoursForTest,
   canReuseStoreOnePostSaleTestFollowup,
@@ -1108,12 +1109,15 @@ async function dispatchScheduledFollowups(
       if (!isScopedStoreOneTest) {
         const coveredIds = followup.covered_service_order_ids?.length ? followup.covered_service_order_ids : [followup.service_order_id]
         const { data: currentOrders, error: ordersError } = await (supabase.from('service_orders') as any)
-          .select('id,dt_entregue_em,vendas(status),post_sales(id,status)')
+          .select('id,customer_id,dependente_id,dt_entregue_em,dependentes(full_name),vendas(status),post_sales(id,status)')
           .eq('store_id', followup.store_id).eq('tenant_id', followup.tenant_id).in('id', coveredIds)
         if (ordersError) throw ordersError
         let blocked = currentOrders?.length !== coveredIds.length
         for (const order of currentOrders || []) {
           if (!order.dt_entregue_em || ['Cancelada', 'Devolvida'].includes(order.vendas?.status)) blocked = true
+          if (Number(order.customer_id) !== Number(followup.customer_id)
+            || order.dependente_id !== currentOrders[0].dependente_id
+            || String(order.dt_entregue_em).slice(0, 10) !== String(currentOrders[0].dt_entregue_em).slice(0, 10)) blocked = true
           for (const postSale of order.post_sales || []) {
             if (postSale.status === 'Concluido' || await postSaleHasContact(postSale.id)) blocked = true
           }
@@ -1123,6 +1127,10 @@ async function dispatchScheduledFollowups(
           await markCancelled(followup.id, 'Elegibilidade das OS agrupadas mudou antes do primeiro contato.')
           continue
         }
+        followup.delivered_at = String(currentOrders[0].dt_entregue_em)
+        followup.payload = { ...payload, groupedBeneficiary: currentOrders[0].dependente_id
+          ? { type: 'dependent', id: currentOrders[0].dependente_id, name: currentOrders[0].dependentes?.full_name ?? null }
+          : { type: 'customer', id: followup.customer_id } }
       }
 
       const instanceKey = followup.whatsapp_store_channels?.instance_key
@@ -1131,6 +1139,40 @@ async function dispatchScheduledFollowups(
         await markFailed(followup.id, 'Canal WhatsApp sem instance_key.')
         continue
       }
+
+      // Refresh at dispatch, including delays and retries, before creating an outbound.
+      const currentAge = currentPostSaleDeliveryAge(followup.delivered_at, now)
+      if (currentAge === null && !isScopedStoreOneTest) {
+        await markCancelled(followup.id, 'Contato fora da janela de 30 dias apos a entrega; revisar acompanhamento.')
+        continue
+      }
+      const refreshedPayload = followup.payload as Record<string, Json> | null
+      const beneficiary = refreshedPayload?.groupedBeneficiary && typeof refreshedPayload.groupedBeneficiary === 'object'
+        && !Array.isArray(refreshedPayload.groupedBeneficiary) ? refreshedPayload.groupedBeneficiary as Record<string, Json> : null
+      if (beneficiary?.type === 'dependent' && (typeof beneficiary.name !== 'string' || !beneficiary.name.trim())) {
+        await markCancelled(followup.id, 'Beneficiario do pedido sem nome; revisar acompanhamento.')
+        continue
+      }
+      const { data: customer, error: customerError } = await (supabase.from('customers') as any)
+        .select('full_name').eq('id', followup.customer_id).eq('store_id', followup.store_id).maybeSingle()
+      if (customerError) throw customerError
+      if (!customer?.full_name) {
+        await markCancelled(followup.id, 'Cadastro do cliente indisponivel; revisar acompanhamento.')
+        continue
+      }
+      const dispatchSettings = buildPostSaleFollowupSettings(
+        (followup.stores?.settings as StoreSettings | null)?.whatsapp_automation?.post_sale_followup)
+      const daysSinceDelivery = currentAge ?? Number(payload?.daysSinceDelivery || DEFAULT_POST_SALE_FOLLOWUP_DAYS)
+      followup.message_text = buildPostSaleFollowupMessage({
+        template: dispatchSettings.template, customerName: customer.full_name,
+        dependentName: beneficiary?.type === 'dependent' && typeof beneficiary.name === 'string' ? beneficiary.name : null,
+        daysSinceDelivery, groupedServiceOrderCount: followup.covered_service_order_ids?.length || 1,
+      })
+      followup.payload = { ...refreshedPayload, daysSinceDelivery }
+      const { error: refreshError } = await (supabase.from('whatsapp_post_sale_followups') as any)
+        .update({ message_text: followup.message_text, payload: followup.payload, updated_at: now.toISOString() })
+        .eq('id', followup.id).eq('status', 'sending')
+      if (refreshError) throw refreshError
 
       // Tracking (garante post_sales) só após validar gates. A interacao de
       // "Disparo" so e registrada apos o envio efetivo (ver abaixo).

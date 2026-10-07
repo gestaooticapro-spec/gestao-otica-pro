@@ -53,6 +53,8 @@ import {
 import { findOpenInstallmentsByPhone } from '@/lib/actions/consultas.actions'
 import {
   decidePostSaleTurnDisposition,
+  resolvePostSaleContextualSignal,
+  uniqueOpenConfirmedFollowup,
   extractPostSaleRatingForStage,
   getPostSaleForcedToolCall,
   postSaleRatingPromptText,
@@ -121,7 +123,7 @@ const AFTER_STATUS_SILENCE_MS = 60 * 60 * 1000
 const ATTACHMENT_HANDOFF_MS = 2 * 60 * 60 * 1000
 const AI_AUTOMATION_MIN_CONFIDENCE = 0.78
 const WHATSAPP_AI_FINAL_WRITER_ENABLED = process.env.WHATSAPP_AI_FINAL_WRITER_ENABLED !== 'false'
-const POST_SALE_PERSISTENT_MEMORY_MS = 7 * 24 * 60 * 60 * 1000
+const POST_SALE_PERSISTENT_MEMORY_MS = 30 * 24 * 60 * 60 * 1000
 
 const AI_SESSION_HISTORY_MAX = 8
 const AI_SESSION_TEXT_MAX = 280
@@ -864,6 +866,7 @@ function isPaymentReminderAcknowledgement(message: string | null | undefined) {
 
   const textWithoutReactionEmoji = normalized
     .replace(/[\u2764\u2665\uFE0F\u{1F44D}\u{1F44F}\u{1F64F}\u{1F60A}\u{1F60D}\u{1F970}]/gu, '')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 
@@ -880,11 +883,17 @@ function isPaymentReminderAcknowledgement(message: string | null | undefined) {
     'valeu',
     'beleza',
     'combinado',
+    'vou providenciar',
+    'pode deixar',
+    'obrigado pelo aviso',
+    'obrigada pelo aviso',
+    'amanha vou passar ai',
+    'amanha vou passar ai ok',
   ].includes(textWithoutReactionEmoji)
 }
 
 function paymentReminderAcknowledgementText() {
-  return 'De nada! Estamos à disposição para ajudar.'
+  return 'Combinado! Obrigado pelo retorno. Qualquer dúvida, estamos por aqui.'
 }
 
 export function shouldAcknowledgeLatestPaymentReminder(input: {
@@ -1519,7 +1528,23 @@ async function loadPersistentPostSaleMemory(channel: ChannelRow, phone: string):
         - new Date(left.postSale.updated_at || left.postSale.created_at || 0).getTime()
     })
 
-  const selected = candidates[0]
+  // Recover only a confirmed contact, never infer a follow-up from a sale alone.
+  const { data: confirmedFollowups, error: followupsError } = await (supabase.from('whatsapp_post_sale_followups') as any)
+    .select('id,service_order_id,covered_service_order_ids,sent_at')
+    .eq('channel_id', channel.id)
+    .eq('store_id', channel.store_id)
+    .eq('tenant_id', channel.tenant_id)
+    .eq('customer_id', customer.id)
+    .in('remote_phone', [...getPhoneVariants(phone)])
+    .eq('status', 'sent')
+    .gte('sent_at', new Date(Date.now() - POST_SALE_PERSISTENT_MEMORY_MS).toISOString())
+    .order('sent_at', { ascending: false })
+  if (followupsError) throw followupsError
+  const confirmedFollowup = uniqueOpenConfirmedFollowup(
+    (confirmedFollowups || []) as Array<{ id: number; service_order_id: number; covered_service_order_ids: number[]; sent_at: string }>,
+    candidates.filter(item => item.postSale.status === 'Em Acompanhamento').map(item => Number(item.order.id)))
+  if (!confirmedFollowup) return null
+  const selected = candidates.find(item => Number(item.order.id) === Number(confirmedFollowup.service_order_id))
   if (!selected) return null
 
   const postSaleId = Number(selected.postSale.id)
@@ -1537,7 +1562,7 @@ async function loadPersistentPostSaleMemory(channel: ChannelRow, phone: string):
   const lastInteractionAt = interactions?.[0]?.created_at
     ? new Date(interactions[0].created_at).getTime()
     : 0
-  const lastMovementAt = Math.max(postSaleUpdatedAt, lastInteractionAt)
+  const lastMovementAt = Math.max(postSaleUpdatedAt, lastInteractionAt, Date.parse(confirmedFollowup.sent_at))
   if (!Number.isFinite(lastMovementAt) || Date.now() - lastMovementAt > POST_SALE_PERSISTENT_MEMORY_MS) {
     return null
   }
@@ -1563,6 +1588,7 @@ async function loadPersistentPostSaleMemory(channel: ChannelRow, phone: string):
     ? null
     : {
         postSalesId: postSaleId,
+        followupId: Number(confirmedFollowup.id),
         serviceOrderId: Number(selected.order.id),
         customerId: customer.id,
         deliveryDate,
@@ -3190,9 +3216,7 @@ async function resolveCustomerStatusInternal(
     })
   }
   if (immediateReminderContext
-    && state?.state !== 'human_pause'
-    && state?.state !== 'waiting_human_after_attachment'
-    && controlMode !== 'force_human'
+    && !humanControlBlocked
     && await isImmediatePaymentReminderAcknowledgement({
       channelId: channel.id,
       phone: normalizedPhone,
@@ -3254,8 +3278,7 @@ async function resolveCustomerStatusInternal(
   let prePilotPostSaleDiagnostic: WhatsAppAiDiagnostic | null = null
   if (storeOnePilotEnabled && pendingPrePilotPostSaleContext?.postSalesId
     && !explicitPostSaleRating && !explicitOrderRequest
-    && controlMode !== 'force_human' && controlMode !== 'force_ai'
-    && !['human_pause', 'waiting_human_after_attachment'].includes(state?.state ?? '')) {
+    && !humanControlBlocked) {
     postSaleTurnClassification = await classifyWhatsAppIntent({
       messageText: effectiveMessageText || '',
       channelLabel: channel.instance_key,
@@ -3273,7 +3296,15 @@ async function resolveCustomerStatusInternal(
     })
     prePilotPostSaleDiagnostic = await logAiResult(channel, inbound.id, 'intent_classification', postSaleTurnClassification)
   }
-  const useStoreOnePilot = shouldUseStoreOnePilotDuringPostSale({
+  const contextualPostSaleSignal = resolvePostSaleContextualSignal({
+    context: pendingPrePilotPostSaleContext,
+    signal: postSaleTurnClassification?.success ? postSaleTurnClassification.data.post_sale_signal : null,
+    confidence: postSaleTurnClassification?.success ? postSaleTurnClassification.data.confidence : 0,
+    minimumConfidence: AI_AUTOMATION_MIN_CONFIDENCE,
+    explicitHumanRequest: isExplicitHumanHandoffRequest(effectiveMessageText),
+    explicitOrderRequest,
+  })
+  const useStoreOnePilot = !contextualPostSaleSignal && shouldUseStoreOnePilotDuringPostSale({
     fullRouting: fullRedesignEnabled,
     explicitHumanRequest: isExplicitHumanHandoffRequest(effectiveMessageText),
     context: pendingPrePilotPostSaleContext,
@@ -4351,7 +4382,7 @@ async function resolveCustomerStatusInternal(
         handoffActive: false,
       })
       if (!prePilotPostSaleDiagnostic) await recordAiResult('intent_classification', postSaleTurnClassification)
-      postSaleTurnDisposition = decidePostSaleTurnDisposition({
+      postSaleTurnDisposition = contextualPostSaleSignal ? 'handle_post_sale' : decidePostSaleTurnDisposition({
         classificationSucceeded: postSaleTurnClassification.success,
         confidence: postSaleTurnClassification.success ? postSaleTurnClassification.data.confidence : 0,
         automationCandidate: postSaleTurnClassification.success
@@ -4382,6 +4413,51 @@ async function resolveCustomerStatusInternal(
         action: 'suppress_reply',
       }))
     }
+  }
+
+  if (channel.store_id === 1 && pendingPostSaleContext && contextualPostSaleSignal) {
+    const isAdjustment = contextualPostSaleSignal === 'frame_adjustment'
+    const action = isAdjustment ? 'human_handoff' as const : 'conservative_fallback' as const
+    const replyInput = {
+      action, intent: 'complaint_or_adaptation' as const,
+      userMessages: [{ kind: 'text', text: effectiveMessageText }],
+      conversationHistory: aiReplyContext.conversationHistory,
+      storeName: storeProfile.name,
+      facts: {
+        frameAdjustment: isAdjustment, postSaleGreeting: !isAdjustment,
+        postSaleStage: pendingPostSaleContext.stage ?? 'awaiting_feedback',
+        mustIdentifyIara: isAdjustment, mustMentionHumanHandoff: isAdjustment,
+      },
+    }
+    const reply = await generateWhatsAppRedesignReply(replyInput)
+    await recordAiResult('redesign_reply_generation', reply)
+    const rendered = resolveStoreOnePilotReplyText({
+      action, replyInput, messageType: isAdjustment ? 'human_handoff' : 'ai_greeting',
+    }, reply)
+    if (!rendered.shouldSend) return withAiDiagnostics(await ignoreInbound(inbound.id, {
+      stage: 'post_sale_reply_validation', reason: rendered.reason || 'unsafe_generation',
+      route: 'post_sale_context', action: 'suppress_reply',
+    }))
+    const response = await createOutbound(channel, inbound.id, normalizedPhone, rendered.text,
+      isAdjustment ? 'human_handoff' : 'ai_greeting', buildWhatsAppCanonicalPayload({
+        intent: 'post_sale_positive', action, outboundType: isAdjustment ? 'human_handoff' : 'ai_greeting',
+        canonicalReply: rendered.text, facts: { frameAdjustment: isAdjustment },
+      }), inbound.id)
+    if (response.shouldReply) {
+      await consumeForceAiOverrideIfNeeded()
+      await setCurrentConversationState(isAdjustment ? 'awaiting_human' : 'ai_session',
+        isAdjustment ? AWAITING_HUMAN_CONTEXT_MS : AI_SESSION_MS,
+        appendAiSessionMessage(mergeMetadata(baseMetadata, {
+          postSaleContext: (isAdjustment
+            ? transitionPostSaleContextAfterTurn(pendingPostSaleContext, 'post_sale_handoff')
+            : pendingPostSaleContext) as unknown as Json,
+          ...(isAdjustment ? { handoff_internal_note: 'Cliente relata boa adaptacao e solicita ajuste da armacao.' } : {}),
+        }), 'assistant', rendered.text))
+      if (isAdjustment) await recordPostSaleInteractionIfPossible({ channel,
+        postSaleContext: pendingPostSaleContext,
+        summary: 'Cliente relata boa adaptacao e solicita ajuste simples da armacao; handoff para ajuste, sem reclamacao visual.', dedupe: true })
+    }
+    return withAiDiagnostics(response)
   }
 
   const storeOnePostSaleAction = channel.store_id === 1

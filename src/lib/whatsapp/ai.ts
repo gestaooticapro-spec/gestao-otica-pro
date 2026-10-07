@@ -91,6 +91,7 @@ export const WhatsAppIntentClassificationSchema = z.object({
   intent: z.enum(WHATSAPP_INTENTS),
   confidence: z.number().min(0).max(1),
   automation_candidate: z.boolean(),
+  post_sale_signal: z.enum(['greeting', 'frame_adjustment']).nullable().optional(),
   entities: z.object({
     order_number: z.string().trim().min(1).max(80).nullish().transform(value => value ?? null),
     cpf: z.string().trim().min(1).max(20).nullish().transform(value => value ?? null),
@@ -465,6 +466,8 @@ function buildIntentPrompt(input: WhatsAppIntentClassificationInput) {
     'Inclua todas as chaves do schema. Para entidade ausente use null; para booleanos ausentes use false e para reasoning_tags use [].',
     'Se houver duvida comercial, clinica, reclamacao, anexo ou baixa confianca, seja conservador.',
     'Se a resposta indicar claramente satisfacao, elogio ou adaptacao boa em um contexto de acompanhamento apos a entrega, use post_sale_positive.',
+    'No acompanhamento de pos-venda, diferencie ajuste mecanico de armacao de reclamacao visual. Se o cliente diz que esta bom e so quer apertar ou ajustar a armacao, use post_sale_signal=frame_adjustment; nao rotule adaptacao ruim. Dor, tontura, visao ruim ou insatisfacao real continuam complaint_or_adaptation, com post_sale_signal=null.',
+    'Se houver acompanhamento pendente e a mensagem for somente cumprimento ou conversa social (como Bom dia ou Tudo bom), use post_sale_signal=greeting, intent=unknown, automation_candidate=true e confianca coerente. Tudo bom sozinho nao avalia os oculos. Para outros assuntos e pedido explicito de humano, use post_sale_signal=null.',
     'Se o contexto citar pos-venda recente, avalie a mensagem atual: use post_sale_positive ou complaint_or_adaptation somente quando ela claramente continuar esse acompanhamento; se for outro assunto, classifique pelo assunto novo.',
     '',
     'INTENTS PERMITIDAS:',
@@ -478,6 +481,7 @@ function buildIntentPrompt(input: WhatsAppIntentClassificationInput) {
       intent: 'order_status',
       confidence: 0.93,
       automation_candidate: true,
+      post_sale_signal: null,
       entities: {
         order_number: null,
         cpf: null,
@@ -832,6 +836,8 @@ export function buildWhatsAppRedesignReplyPrompt(input: WhatsAppRedesignReplyInp
     'Para answer_official_pix, inclua a chave Pix oficial exatamente como fornecida e nao altere caracteres.',
     'Para horarios e endereco, responda a pergunta especifica do cliente usando somente os fatos oficiais correspondentes.',
     'Para anexos, confirme o recebimento de forma breve e diga que um atendente vai revisar; nao interprete o conteudo clinico, financeiro ou comercial.',
+    'Se facts.postSaleGreeting for true, cumprimente e retome a pergunta de adaptacao dos oculos desse acompanhamento, sem assumir que Tudo bom significa adaptacao positiva. Se facts.postSaleStage for awaiting_rating, apenas indique que a avaliacao continua pendente, sem registrar nota.',
+    'Se facts.frameAdjustment for true, reconheca que a adaptacao esta boa e que o cliente quer um ajuste de armacao; diga que a equipe vai ajudar com esse ajuste. Nao apresente como reclamacao, adaptacao ruim ou urgencia; nao invente horario, agendamento nem prioridade.',
     'Mantenha a resposta breve, humana e sem menu de opcoes.',
     '',
     'SCHEMA:',

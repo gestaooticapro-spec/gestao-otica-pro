@@ -81,6 +81,14 @@ function suppressionReasonLabel(reason: string) {
     empty_canonical_reply: 'a IA não gerou um texto de resposta',
     handoff_omitted: 'a resposta não informou que um atendente continuará o atendimento',
     human_pause_active: 'a conversa estava em pausa humana quando a mensagem chegou',
+    human_control_active: 'o atendimento está com a equipe. A IA está pausada para não interromper a conversa',
+    human_control_blocks_ai: 'o atendimento está com a equipe. A IA está pausada para não interromper a conversa',
+    unclear_intent_preserved_pending_post_sale: 'não ficou claro o que o cliente quis dizer. O acompanhamento continua pendente',
+    post_sale_question_omitted: 'a resposta não retomou a pergunta sobre adaptação. O acompanhamento continua pendente',
+    adjustment_misrepresented: 'a resposta não tratou o ajuste da armação de forma adequada. A equipe pode revisar a conversa',
+    redesign_domain_action_unavailable: 'não foi possível continuar esse assunto automaticamente. A equipe pode revisar a conversa',
+    redesign_capture_unavailable: 'não foi possível recuperar o contexto da conversa para responder com segurança',
+    repeated_message_during_silent_window: 'essa mensagem já foi tratada há pouco. A IA evitou repetir a resposta',
     order_status_not_preserved: 'a resposta não preservou o status confirmado da OS',
     order_lookup_not_confirmed: 'a consulta de OS não foi confirmada pelo fluxo seguro',
     order_status_reply_unavailable: 'a IA não conseguiu redigir uma resposta válida sobre a OS',
@@ -91,7 +99,7 @@ function suppressionReasonLabel(reason: string) {
     superseded_by_newer_inbound: 'uma mensagem mais recente chegou durante o processamento',
     unsafe_generation: 'a resposta gerada não passou pela validação de segurança',
   }
-  return labels[reason] || readableDecisionValue(reason)
+  return labels[reason] || 'a resposta automática foi pausada por segurança. A equipe pode revisar a conversa'
 }
 
 function formatRelativeMinutes(value: string | null) {
@@ -180,11 +188,18 @@ function MessageBubble({ message, showTechnical }: { message: WhatsAppOperatorTh
 
         <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.text || '[sem texto]'}</p>
 
+        {!isInbound ? (
+          <p className={`mt-2 text-[11px] font-bold ${message.status === 'failed' ? 'text-amber-300' : 'text-white/60'}`}>
+            {({ pending: 'Aguardando envio', sending: 'Enviando', sent: 'Enviada ao WhatsApp', failed: 'Falha no envio — envio não confirmado', cancelled: 'Envio cancelado' } as Record<string, string>)[message.status] || 'Envio sem confirmação'}
+          </p>
+        ) : null}
+
         {message.processingDiagnostic ? (
           <div className="mt-3 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-[11px] text-amber-100">
             <p className="font-black uppercase tracking-wider text-amber-300">Resposta automática não enviada</p>
             <p className="mt-1">{suppressionReasonLabel(message.processingDiagnostic.reason)}.</p>
             {showTechnical ? <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-amber-100/70">
+              <span>motivo técnico: {message.processingDiagnostic.reason}</span>
               {message.processingDiagnostic.intent ? <span>intenção: {readableDecisionValue(message.processingDiagnostic.intent)}</span> : null}
               {message.processingDiagnostic.action ? <span>ação: {readableDecisionValue(message.processingDiagnostic.action)}</span> : null}
               {message.processingDiagnostic.route ? <span>etapa: {readableDecisionValue(message.processingDiagnostic.route)}</span> : null}
