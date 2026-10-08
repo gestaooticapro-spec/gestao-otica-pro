@@ -52,6 +52,7 @@ import {
 } from './humanization'
 import { findOpenInstallmentsByPhone } from '@/lib/actions/consultas.actions'
 import {
+  canClassifyPostSaleMessage,
   decidePostSaleTurnDisposition,
   resolvePostSaleContextualSignal,
   uniqueOpenConfirmedFollowup,
@@ -3296,9 +3297,49 @@ async function resolveCustomerStatusInternal(
   )
   const explicitOrderRequest = isExplicitOrderStatusOrReadinessQuestion(effectiveMessageText)
     || Boolean(extractExplicitOrderNumber(effectiveMessageText))
+  const isRepeatedMessageDuringSilentWindow = state?.state === 'silent'
+    && isRepeatedSilentInbound(effectiveMessageText, state.metadata)
+  if (fullRedesignEnabled && (humanControlBlocked || isRepeatedMessageDuringSilentWindow)) {
+    return ignoreInbound(inbound.id, {
+      stage: 'control_gate', route: redesignRoute, action: 'no_reply',
+      reason: humanControlBlocked ? 'human_control_active' : 'repeated_message_during_silent_window',
+    })
+  }
+  // No audio content or transcription is sent to the text models. Never infer
+  // feedback from a pending follow-up when only an audio message was received.
+  if (storeOnePilotEnabled && !humanControlBlocked && inboundPayloadMeta.attachmentKind === 'audio') {
+    const text = 'Sou a IAra, assistente virtual da \u00f3tica. Recebi seu \u00e1udio e vou encaminhar para a equipe ouvir e continuar o atendimento.'
+    const payload = buildWhatsAppCanonicalPayload({
+      intent: 'attachment', action: 'human_handoff', outboundType: 'human_handoff',
+      canonicalReply: text, facts: { attachmentKind: 'audio', audioTranscribed: false },
+    })
+    // Reuses the live-queue duplicate guard and only changes control after the
+    // outbound is accepted. An additional audio keeps the existing handoff.
+    const response = await createOutbound(channel, inbound.id, normalizedPhone, text,
+      'human_handoff', payload, inbound.id)
+    if (response.shouldReply) {
+      await setConversationState(channel, normalizedPhone, 'awaiting_human', AWAITING_HUMAN_CONTEXT_MS,
+        mergeMetadata(state?.metadata, {
+          ...payload, reason: 'audio_requires_human_review', attachmentKind: 'audio',
+          handoff_internal_note: 'Audio recebido sem transcricao; a equipe precisa ouvir para identificar o assunto.',
+          ...(pendingPrePilotPostSaleContext ? {
+            postSaleContext: transitionPostSaleContextAfterTurn(pendingPrePilotPostSaleContext, 'post_sale_handoff') as unknown as Json,
+          } : {}),
+        }), inbound.id)
+      if (pendingPrePilotPostSaleContext) await recordPostSaleInteractionIfPossible({
+        channel, postSaleContext: pendingPrePilotPostSaleContext,
+        summary: 'Audio recebido sem transcricao no acompanhamento; handoff para a equipe ouvir, sem avaliacao automatica do conteudo.',
+        dedupe: true,
+      })
+      if (controlMode === 'force_ai') await clearCustomerControlMode(channel.id, normalizedPhone)
+    }
+    return response
+  }
+
   let postSaleTurnClassification: WhatsAppAiResult<WhatsAppIntentClassification> | null = null
   let prePilotPostSaleDiagnostic: WhatsAppAiDiagnostic | null = null
   if (storeOnePilotEnabled && pendingPrePilotPostSaleContext?.postSalesId
+    && canClassifyPostSaleMessage({ messageText: effectiveMessageText, hasAttachment: inboundPayloadMeta.hasAttachment })
     && !explicitPostSaleRating && !explicitOrderRequest
     && !humanControlBlocked) {
     postSaleTurnClassification = await classifyWhatsAppIntent({
@@ -3319,6 +3360,8 @@ async function resolveCustomerStatusInternal(
     prePilotPostSaleDiagnostic = await logAiResult(channel, inbound.id, 'intent_classification', postSaleTurnClassification)
   }
   const contextualPostSaleSignal = resolvePostSaleContextualSignal({
+    messageText: effectiveMessageText,
+    hasAttachment: inboundPayloadMeta.hasAttachment,
     context: pendingPrePilotPostSaleContext,
     signal: postSaleTurnClassification?.success ? postSaleTurnClassification.data.post_sale_signal : null,
     confidence: postSaleTurnClassification?.success ? postSaleTurnClassification.data.confidence : 0,
@@ -3326,7 +3369,7 @@ async function resolveCustomerStatusInternal(
     explicitHumanRequest: isExplicitHumanHandoffRequest(effectiveMessageText),
     explicitOrderRequest,
   })
-  const useStoreOnePilot = !contextualPostSaleSignal && shouldUseStoreOnePilotDuringPostSale({
+  const useStoreOnePilot = inboundPayloadMeta.hasAttachment || (!contextualPostSaleSignal && shouldUseStoreOnePilotDuringPostSale({
     fullRouting: fullRedesignEnabled,
     explicitHumanRequest: isExplicitHumanHandoffRequest(effectiveMessageText),
     context: pendingPrePilotPostSaleContext,
@@ -3336,19 +3379,11 @@ async function resolveCustomerStatusInternal(
     intent: postSaleTurnClassification?.success ? postSaleTurnClassification.data.intent : null,
     confidence: postSaleTurnClassification?.success ? postSaleTurnClassification.data.confidence : 0,
     minimumConfidence: AI_AUTOMATION_MIN_CONFIDENCE,
-  })
+  }))
 
   let orderLookupPlan: StoreOneOrderLookupPlan | null = null
   let referencedOrderPersonName: string | null = null
   let redesignConversationHistory: string[] = []
-  const isRepeatedMessageDuringSilentWindow = state?.state === 'silent'
-    && isRepeatedSilentInbound(effectiveMessageText, state.metadata)
-  if (fullRedesignEnabled && (humanControlBlocked || isRepeatedMessageDuringSilentWindow)) {
-    return ignoreInbound(inbound.id, {
-      stage: 'control_gate', route: redesignRoute, action: 'no_reply',
-      reason: humanControlBlocked ? 'human_control_active' : 'repeated_message_during_silent_window',
-    })
-  }
   if (fullRedesignEnabled && useStoreOnePilot && !shadowCapture.captured) {
     return ignoreInbound(inbound.id, {
       stage: 'redesign_capture', reason: 'redesign_capture_unavailable',

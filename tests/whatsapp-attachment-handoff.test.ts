@@ -47,3 +47,12 @@ test('decisao nao repete handoff pendente mas mantem primeiro encaminhamento e p
   assert.equal(buildWhatsAppShadowDecision({ ...pending,
     classification: { ...pending.classification, requestsHuman: true } }).draft.action, 'repeat_handoff')
 })
+
+test('segundo audio do caso 12369/12370 preserva encaminhamento neutro ja aceito', () => {
+  const firstAudio = { message_type: 'human_handoff', status: 'sent',
+    created_at: '2026-10-08T14:19:45.442Z', inbound_message_id: 12369,
+    payload: { canonical: { intent: 'attachment', action: 'human_handoff',
+      facts: { attachmentKind: 'audio', audioTranscribed: false } } } }
+  assert.equal(shouldSuppressAttachmentHandoff({ latestOutbound: firstAudio,
+    inboundId: 12370, forceAi: false, now: '2026-10-08T14:19:49.106Z' }), true)
+})

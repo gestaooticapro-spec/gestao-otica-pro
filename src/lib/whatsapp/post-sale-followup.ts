@@ -39,15 +39,25 @@ export type PostSaleContext = {
 
 export type PostSaleTurnDisposition = 'handle_post_sale' | 'route_other_topic' | 'suppress_preserving_context'
 
+export function canClassifyPostSaleMessage(input: {
+  messageText: string | null | undefined
+  hasAttachment: boolean
+}) {
+  return !input.hasAttachment && Boolean(input.messageText?.trim())
+}
+
 export function resolvePostSaleContextualSignal(input: {
   context: PostSaleContext | null
   signal?: 'greeting' | 'frame_adjustment' | null
+  messageText: string | null | undefined
+  hasAttachment: boolean
   confidence: number
   minimumConfidence: number
   explicitHumanRequest: boolean
   explicitOrderRequest: boolean
 }) {
-  if (!input.context?.postSalesId || !['awaiting_feedback', 'awaiting_rating'].includes(input.context.stage ?? '')
+  if (!canClassifyPostSaleMessage(input)
+    || !input.context?.postSalesId || !['awaiting_feedback', 'awaiting_rating'].includes(input.context.stage ?? '')
     || input.confidence < input.minimumConfidence || input.explicitHumanRequest || input.explicitOrderRequest) return null
   return input.signal ?? null
 }

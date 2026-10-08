@@ -269,6 +269,22 @@ validacao evita abertura generica ou promessa de status, reserva e agendamento.
 Pausa humana ativa continua respeitada. Pendente de publicacao; nenhum envio ou
 alteracao de dados de clientes foi feito para esta correcao.
 
+## WA-10 - Audio sem transcricao interpretado como ajuste de armacao
+
+Em 08/10/2026, o inbound 12369 chegou as 11:19:38 (Brasilia), com audio de
+3 segundos e texto nulo. O classificador textual retornou frame_adjustment com
+confianca 0,95 sem receber o conteudo do audio. O fluxo de pos-venda aceitou esse
+sinal e enviou a saida 19547 as 11:19:45, mencionando ajuste de armacao. Outro
+audio (12370, 4 segundos) chegou depois e teve a resposta suprimida.
+
+Correcao preparada: audios da Loja 1 seguem antes da classificacao de pos-venda
+para encaminhamento neutro, com identificacao da IAra e confirmacao de recebimento.
+Nao existe transcricao neste fluxo. Texto vazio ou anexo nao autoriza sinal
+contextual de saudacao ou ajuste; o acompanhamento fica vinculado ao handoff, com
+registro neutro para impedir nota automatica por prazo, sem avaliar o conteudo. Pausa humana e protecao de fila
+contra repeticao continuam aplicadas. Nenhum dado ou envio real foi alterado;
+correcao pendente de publicacao.
+
 ## Ordem sugerida para as próximas correções
 
 1. **WA-04 e WA-07:** evitar texto antigo em recuperação e tornar falhas de envio visíveis. A consulta ao banco já sustenta esses problemas.

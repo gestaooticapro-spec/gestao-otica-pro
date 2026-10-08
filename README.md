@@ -127,6 +127,11 @@ confirmacoes de que o cliente vai buscar recebem apenas um reconhecimento, sem
 nova consulta de OS ou promessa de agendamento. Outro assunto ou aviso posterior
 invalida essa associacao; perguntas de status e pedidos humanos mantem prioridade.
 
+Na Loja 1, audios seguem para atendimento humano com confirmacao neutra e
+sem transcricao ou interpretacao do conteudo pelos modelos de texto. A rotina
+preserva o vinculo do acompanhamento em handoff e reutiliza a protecao contra encaminhamentos
+repetidos. Classificacao contextual de pos-venda exige texto real sem anexo.
+
 ### Limpeza do WhatsApp operacional
 
 A limpeza possui uma rotina diaria autenticada no app principal, com agenda

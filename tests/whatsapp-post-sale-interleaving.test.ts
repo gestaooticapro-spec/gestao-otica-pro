@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  canClassifyPostSaleMessage,
   canBypassPostSaleBusinessHoursForTest,
   canReuseStoreOnePostSaleTestFollowup,
+  decidePostSaleDeadlineOutcome,
   decidePostSaleTurnDisposition,
   currentPostSaleDeliveryAge,
   uniqueOpenConfirmedFollowup,
@@ -22,7 +24,7 @@ const MIN_CONFIDENCE = 0.72
 
 test('retoma saudacao sem registrar adaptacao e continua a avaliacao positiva seguinte', () => {
   const context: PostSaleContext = { postSalesId: 34, serviceOrderId: 56, stage: 'awaiting_feedback' }
-  const input = { context, confidence: 0.95, minimumConfidence: MIN_CONFIDENCE,
+  const input = { context, messageText: 'Esta bom, so quero apertar a armacao', hasAttachment: false, confidence: 0.95, minimumConfidence: MIN_CONFIDENCE,
     explicitHumanRequest: false, explicitOrderRequest: false }
   assert.equal(resolvePostSaleContextualSignal({ ...input, signal: 'greeting' }), 'greeting')
   assert.equal(getPostSaleForcedToolCall({ context, disposition: 'handle_post_sale', intent: 'unknown', explicitRating: null }), null)
@@ -229,4 +231,35 @@ test('agradecimento entre assuntos pode preservar a nota pendente sem responder 
   }), { action: 'defer', rating: null, reply_text: null })
   assert.equal(extractPostSaleRatingForStage('Certo, obrigado!', 'awaiting_rating'), null)
   assert.equal(extractPostSaleRatingForStage('Voltando a adaptacao, minha nota e 5', 'awaiting_rating'), 5)
+})
+
+test('audio sem transcricao nao recebe interpretacao de pos-venda mesmo com confianca alta', () => {
+  const base = { context: { postSalesId: 575, serviceOrderId: 1030, stage: 'awaiting_feedback' as const },
+    confidence: 0.95, minimumConfidence: MIN_CONFIDENCE, explicitHumanRequest: false, explicitOrderRequest: false }
+  // Reproduces inbound 12369: audio, null text and invented frame_adjustment.
+  for (const input of [
+    { messageText: null, hasAttachment: true },
+    { messageText: '', hasAttachment: true },
+    { messageText: '   ', hasAttachment: false },
+    { messageText: null, hasAttachment: false },
+    { messageText: 'Esta bom, quero ajustar a armacao', hasAttachment: true },
+  ]) {
+    assert.equal(canClassifyPostSaleMessage(input), false)
+    for (const signal of ['frame_adjustment', 'greeting'] as const) {
+      assert.equal(resolvePostSaleContextualSignal({ ...base, ...input, signal }), null)
+    }
+  }
+  assert.equal(canClassifyPostSaleMessage({ messageText: 'Bom dia', hasAttachment: false }), true)
+  assert.equal(resolvePostSaleContextualSignal({ ...base, hasAttachment: false,
+    messageText: 'Esta bom, so quero apertar a armacao', signal: 'frame_adjustment' }), 'frame_adjustment')
+})
+
+test('encaminhamento neutro de audio preserva vinculo e impede nota automatica por prazo', () => {
+  const context: PostSaleContext = { postSalesId: 575, serviceOrderId: 1030, stage: 'awaiting_feedback' }
+  assert.deepEqual(transitionPostSaleContextAfterTurn(context, 'post_sale_handoff'), {
+    ...context, stage: 'handoff',
+  })
+  assert.equal(decidePostSaleDeadlineOutcome([
+    'Audio recebido sem transcricao no acompanhamento; handoff para a equipe ouvir, sem avaliacao automatica do conteudo.',
+  ]), 'keep_human')
 })
