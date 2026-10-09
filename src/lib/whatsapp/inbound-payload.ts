@@ -308,6 +308,20 @@ export function extractWhatsAppInboundPayloadMeta(payload: Json | null | undefin
   return walk(payload)
 }
 
+/** Checks only the current message envelope, never the quoted message/context. */
+export function isWhatsAppInboundReaction(payload: Json | null | undefined): boolean {
+  const root = asRecord(payload)
+  const data = asRecord(root?.data)
+  let current = asRecord(data?.message) || asRecord(root?.message) || root
+  const visited = new Set<unknown>()
+  while (current && !visited.has(current)) {
+    visited.add(current)
+    if (asRecord(current.reactionMessage)) return true
+    current = asRecord(unwrapMessageContainer(current))
+  }
+  return false
+}
+
 export function isWhatsAppInboundPayloadFromMe(payload: Json | null | undefined): boolean {
   const root = asRecord(payload)
   const data = asRecord(root?.data)

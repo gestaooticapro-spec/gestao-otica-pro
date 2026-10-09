@@ -91,18 +91,30 @@ function eventName(payload) {
   return String(payload.event || payload.type || '').trim().toLowerCase()
 }
 
+function isReactionMessage(message = {}) {
+  let current = message
+  const visited = new Set()
+  while (current && typeof current === 'object' && !visited.has(current)) {
+    visited.add(current)
+    // Presence, not emoji text: removing a reaction carries an empty text.
+    if (current.reactionMessage && typeof current.reactionMessage === 'object') return true
+    const nested = unwrapMessage(current)
+    if (!nested || !Object.keys(nested).length) break
+    current = nested
+  }
+  return false
+}
+
 function extractText(message = {}) {
   const unwrappedMessage = unwrapMessage(message)
 
   return message.conversation
     || message.extendedTextMessage?.text
-    || message.reactionMessage?.text
     || message.imageMessage?.caption
     || message.videoMessage?.caption
     || message.documentMessage?.caption
     || unwrappedMessage.conversation
     || unwrappedMessage.extendedTextMessage?.text
-    || unwrappedMessage.reactionMessage?.text
     || unwrappedMessage.imageMessage?.caption
     || unwrappedMessage.videoMessage?.caption
     || unwrappedMessage.documentMessage?.caption
@@ -253,7 +265,7 @@ function extractInbound(payload) {
   const fromMe = Boolean(key.fromMe ?? data.fromMe)
   const statusReference = extractStatusReference(message, data.contextInfo)
 
-  if (fromMe || !providerMessageId || !remoteJid) return null
+  if (isReactionMessage(message) || fromMe || !providerMessageId || !remoteJid) return null
   if (remoteJid.endsWith('@g.us')) return null
 
   const participant = key.participant
@@ -297,7 +309,7 @@ function extractStoreInitiatedMessage(payload) {
   const providerMessageId = key.id || data.id || payload.messageId || ''
   const fromMe = Boolean(key.fromMe ?? data.fromMe)
 
-  if (!fromMe || !providerMessageId || !remoteJid) return null
+  if (isReactionMessage(message) || !fromMe || !providerMessageId || !remoteJid) return null
   if (remoteJid.endsWith('@g.us') || remoteJid === 'status@broadcast') return null
 
   const phone = remoteJid.split('@')[0].replace(/\D/g, '')
@@ -1142,6 +1154,12 @@ async function handleMessage(instanceKey, payload) {
     if (!detectedByReaction) {
       return { ignored: true, statusPublication: true }
     }
+  }
+
+  if (isReactionMessage(payload.data?.message || {})) {
+    const providerMessageId = payload.data?.key?.id || payload.data?.id || payload.messageId
+    if (providerMessageId) rememberProviderMessage(instanceKey, providerMessageId)
+    return { ignored: true, reaction: true }
   }
 
   const storeInitiated = extractStoreInitiatedMessage(payload)

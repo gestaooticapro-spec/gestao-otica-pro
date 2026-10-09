@@ -68,3 +68,8 @@ Os arquivos em `deploy/` seguem o mesmo padrão operacional do serviço fiscal:
 A composição de produção também inclui o container da automação. A Evolution
 fica em `127.0.0.1:8080`, a automação expõe apenas o healthcheck em
 `127.0.0.1:8081` e a comunicação entre ambas ocorre pela rede privada Docker.
+
+Reacoes vinculadas a mensagens (incluindo troca e remocao) sao ignoradas antes
+do agrupamento, da classificacao e do registro de atividade humana. A recuperacao
+de eventos aplica o mesmo filtro; emoji enviado como mensagem comum continua
+no atendimento. A protecao exige publicar o app e atualizar o servico de automacao.

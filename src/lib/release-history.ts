@@ -9,6 +9,9 @@ export type Release = {
 // altera o Dashboard ou o modal de histórico.
 export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'A consulta de OS na Loja 1 reconhece nomes completos informados pelo cliente, localiza pedidos de outro cadastro sem trocar o titular do WhatsApp e pede identificacao quando houver ambiguidade.',
+  'Os lembretes automaticos de parcelas a vencer retomam o agendamento com a credencial vigente, preservando a antecedencia configurada e as preferencias dos clientes.',
+  'Reacoes a mensagens no WhatsApp deixam de acionar novas respostas ou pausas humanas, incluindo troca e remocao da reacao; emojis enviados como mensagem continuam sendo recebidos normalmente.',
   'Na Loja 1, audios recebem encaminhamento neutro para a equipe, sem interpretar o conteudo ou registrar adaptacao e ajuste a partir de mensagens sem texto; audios adicionais preservam o encaminhamento existente.',
   'Na Loja 1, saudacoes apos um aviso recente da equipe retomam a retirada; confirmacoes como ja vou buscar recebem um agradecimento sem consultar novamente o pedido.',
   'Na Loja 1, arquivos adicionais nao repetem a apresentacao da IAra nem o aviso de encaminhamento quando a equipe ja foi acionada; a fila de envio tambem e conferida antes de criar outra resposta.',

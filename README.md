@@ -228,3 +228,14 @@ O rodape da Central de Operacoes exibe a versao atual e permite abrir o historic
 ## Observacao final
 
 O `README.md` foi intencionalmente mantido sem IP, usuario, segredo, cron real ou passo a passo sensivel de infraestrutura. Esse tipo de detalhe deve ficar em runbook local ignorado pelo Git.
+
+Reacoes vinculadas a mensagens (incluindo troca e remocao) sao ignoradas antes
+do agrupamento, da classificacao e do registro de atividade humana. A recuperacao
+de eventos aplica o mesmo filtro; emoji enviado como mensagem comum continua
+no atendimento. A protecao exige publicar o app e atualizar o servico de automacao.
+
+Na Loja 1, a consulta de OS pode usar um nome completo escrito pelo cliente,
+inclusive no contexto recente de uma pergunta sobre outra pessoa. A busca fica
+na mesma loja, exige um cadastro unico com nome completo correspondente e nao
+modifica o vinculo do remetente. Nomes incompletos ou ambiguos pedem identificacao;
+a ausencia de pedidos pelo telefone nao e apresentada como busca pelo nome.

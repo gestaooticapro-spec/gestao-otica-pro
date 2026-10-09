@@ -11,12 +11,14 @@ import {
 } from './contracts'
 import { isExplicitHumanHandoffRequest, isExplicitOrderStatusOrReadinessQuestion } from './intent-guards'
 import { extractExplicitOrderNumber } from './safe-replies-pilot'
+import { groundedOrderPersonName } from './order-person-lookup'
 
 export type StoreOneOrderLookupTool = 'lookup_open_orders' | 'lookup_open_orders_by_identifier'
 
 export type StoreOneOrderLookupPlan = {
   tool: StoreOneOrderLookupTool
   source: 'canonical_decision' | 'explicit_identifier' | 'pending_identifier'
+  personName?: string
 }
 
 export function planStoreOneOrderLookup(input: {
@@ -26,6 +28,7 @@ export function planStoreOneOrderLookup(input: {
   decision: WhatsAppSystemDecisionDraft
   messageText: string | null | undefined
   awaitingIdentifier: boolean
+  conversationHistory?: string[]
 }): StoreOneOrderLookupPlan | null {
   const { classification, decision } = input
   if (input.storeId !== 1 || !input.enabled || classification.requestsHuman
@@ -40,12 +43,12 @@ export function planStoreOneOrderLookup(input: {
     && (classification.intent === 'order_status' || classification.intent === 'unknown')
   const canonicalOrderDecision = decision.action === 'lookup_order_status'
   if (!canonicalOrderDecision && !explicitNumber && !pendingIdentifier) return null
-  if (decision.action === 'no_reply' && !explicitNumber) return null
 
   const messageDigits = (input.messageText || '').replace(/\D/gu, '')
   const explicitCpf = messageDigits.length === 11
-  // Nomes citados na pergunta nao autorizam consultar OS de outro cadastro.
-  // A consulta por nome usa apenas o cliente associado ao WhatsApp.
+  const personName = groundedOrderPersonName(classification.entities.patientName
+    || classification.entities.customerName, input.messageText, input.conversationHistory)
+  if (decision.action === 'no_reply' && !explicitNumber && !(pendingIdentifier && personName)) return null
   const entityValues = [classification.entities.orderNumber, classification.entities.cpf]
   const numericIdentifierInCurrentMessage = entityValues.some((value) => {
     if (!value) return false
@@ -53,13 +56,15 @@ export function planStoreOneOrderLookup(input: {
     return digits.length >= 3 && messageDigits.includes(digits)
   })
   const bareOrderNumber = /^\s*\d{1,10}\s*$/u.test(input.messageText || '')
-  const byIdentifier = Boolean(explicitNumber || explicitCpf
+  const numericIdentifier = Boolean(explicitNumber || explicitCpf
     || (pendingIdentifier && bareOrderNumber)
     || (canonicalOrderDecision && numericIdentifierInCurrentMessage))
+  const byIdentifier = numericIdentifier || Boolean(personName)
   return {
     tool: byIdentifier ? 'lookup_open_orders_by_identifier' : 'lookup_open_orders',
     source: explicitNumber ? 'explicit_identifier'
       : pendingIdentifier && byIdentifier ? 'pending_identifier' : 'canonical_decision',
+    ...(!numericIdentifier && personName ? { personName } : {}),
   }
 }
 
@@ -112,6 +117,12 @@ export function resolveStoreOneOrderDisposition(input: {
   const orders = Array.isArray(lookup.data.orders) ? lookup.data.orders as OpenOrderAgentFact[] : []
   const customerName = typeof lookup.data.customerName === 'string' ? lookup.data.customerName : null
   if (plan.tool === 'lookup_open_orders_by_identifier') {
+    if (!lookup.ok && lookup.data.code === 'order_name_needs_identifier'
+      && asksForIdentifier(replyText, false)
+      && !/\b(?:nenhum pedido|nao existe|nao possui|nao tem)\b/u.test(normalize(replyText))) {
+      return { kind: 'send', action: 'request_identifier', outboundType: 'identifier_prompt',
+        state: 'waiting_identifier', reason: 'order_identifier_requested', text: replyText, orderCount: 0 }
+    }
     if (lookup.ok && orders.length >= 1 && orders.length <= 2) {
       const validation = validateOrderAgentReply(replyText, orders, { customerName })
       if (!validation.valid) return { kind: 'suppress', reason: validation.reason }
@@ -131,6 +142,11 @@ export function resolveStoreOneOrderDisposition(input: {
     return { kind: 'suppress', reason: 'identifier_lookup_reply_unsafe' }
   }
 
+  if (orders.length === 0 && /\b(?:nao encontrei|nao localizei|nenhum pedido)\b/u.test(normalize(replyText))
+    && (!/\b(?:whatsapp|telefone|numero de telefone)\b/u.test(normalize(replyText))
+      || /\b(?:pelo nome|pesquisei pelo nome|busquei pelo nome)\b/u.test(normalize(replyText)))) {
+    return { kind: 'suppress', reason: 'phone_lookup_scope_misrepresented' }
+  }
   if ((lookup.data.code === 'customer_not_found' || lookup.data.tooManyOpenOrders === true
     || (lookup.ok && orders.length === 0)) && asksForIdentifier(replyText, lookup.data.tooManyOpenOrders === true)) {
     return { kind: 'send', action: 'request_identifier', outboundType: 'identifier_prompt',

@@ -285,6 +285,20 @@ registro neutro para impedir nota automatica por prazo, sem avaliar o conteudo. 
 contra repeticao continuam aplicadas. Nenhum dado ou envio real foi alterado;
 correcao pendente de publicacao.
 
+## WA-11 - Reacao convertida em mensagem e novo encaminhamento
+
+Em 09/10/2026, o joinha recebido no inbound 12457 foi persistido como texto
+comum no buffer, sem a referencia a mensagem original. A saida 19681, as 08:36:50
+(Brasilia), repetiu o encaminhamento depois da resposta 19680 das 07:53:19.
+O servico extraia reactionMessage.text e perdia a natureza do evento ao agrupar.
+
+Correcao preparada: adicao, troca e remocao de reacao nao entram no agrupamento,
+na recuperacao de inbounds ou no registro de mensagem enviada pelo funcionario.
+O app tambem ignora payload original de reacao antes de persistir e chamar a IA.
+Emojis enviados como texto comum e mensagens que apenas citam uma reacao seguem
+normalmente. Registros antigos que ja perderam a referencia nao podem ser
+reclassificados com seguranca. Pendente de deploy do app e do servico na VPS.
+
 ## Ordem sugerida para as próximas correções
 
 1. **WA-04 e WA-07:** evitar texto antigo em recuperação e tornar falhas de envio visíveis. A consulta ao banco já sustenta esses problemas.
@@ -301,3 +315,7 @@ correcao pendente de publicacao.
 - Banco: `service_orders`, `vendas`, `whatsapp_post_sale_followups`, `whatsapp_outbound_messages`, `whatsapp_inbound_messages`, `whatsapp_ai_logs` e registros do redesign.
 
 As consultas desta análise foram somente de leitura. Nenhum dado, fluxo, envio, versão ou registro de release foi alterado para produzir este documento.
+
+## WA-12 ? Consulta de OS de outro cadastro (Sirlei / Jose Paulo)
+
+Cliente identificou-se como esposa e informou o nome completo do marido. A consulta usada buscou somente pelo telefone da esposa, mas a resposta afirmou nao encontrar pedido pelo nome do marido. Correcao preparada: identificador por nome informado pelo cliente no turno ou contexto recente, busca na mesma loja com igualdade completa e unicidade, sem alterar o vinculo do telefone. Nome parcial ou homonimo pede nome completo/numero da OS. Consulta vazia pelo telefone precisa explicitar esse alcance. Caso de regressao: OS 1063, Loja 1. Publicacao do app ainda necessaria.

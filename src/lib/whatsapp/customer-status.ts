@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { Database, Json } from '@/lib/database.types'
 import { describeOpenOs, WhatsAppOsStatusCode } from './os-status'
 import { digitsOnly, findUniqueCustomerPhoneMatch, getPhoneVariants, phonesMatch, phonesMatchLast8, toEvolutionNumber } from './phone'
+import { orderPersonSearchPattern, uniqueExactOrderPerson } from './redesign/order-person-lookup'
 import { shouldPersistCustomerLink } from './customer-link-policy'
 import { resolveConversationStateCandidates } from './conversation-state-matching'
 import {
@@ -32,6 +33,7 @@ import {
 } from './ai'
 import {
   extractWhatsAppInboundPayloadMeta,
+  isWhatsAppInboundReaction,
   isWhatsAppInboundPayloadFromMe,
   stripWhatsAppInboundMediaContent,
 } from './inbound-payload'
@@ -3015,6 +3017,8 @@ async function resolveCustomerStatusInternal(
   input: CustomerStatusRequest,
   recovery?: { deferredInboundId: number },
 ): Promise<CustomerStatusResponse> {
+  if (isWhatsAppInboundReaction(input.payload)) return { shouldReply: false }
+
   const channel = await findActiveChannel(input.instanceKey)
   if (!channel) return { shouldReply: false }
 
@@ -3464,6 +3468,7 @@ async function resolveCustomerStatusInternal(
           decision,
           messageText: effectiveMessageText,
           awaitingIdentifier,
+          conversationHistory: redesignConversationHistory,
         })
 
         // O caminho ao vivo usa a mesma decisão já persistida para auditoria; não
@@ -4238,6 +4243,28 @@ async function resolveCustomerStatusInternal(
   }
 
   async function executeOrderLookup(call: WhatsAppToolCall): Promise<WhatsAppToolResult> {
+    if (channel!.store_id === 1 && call.name === 'lookup_open_orders_by_identifier'
+      && orderLookupPlan?.personName) {
+      const name = orderLookupPlan.personName
+      const limit = 10
+      const { data, error } = await (createAdminClient().from('customers') as any)
+        .select('id, full_name').eq('store_id', channel!.store_id)
+        .ilike('full_name', orderPersonSearchPattern(name)).limit(limit)
+      if (error) throw error
+      const customer = uniqueExactOrderPerson(name, (data ?? []) as CustomerRow[], limit)
+      if (!customer) return { tool: call.name, ok: false,
+        data: { code: 'order_name_needs_identifier', lookupScope: 'customer_name', searchedName: name } }
+      const orders = await findOpenOsForCustomer(channel!.store_id, customer.id, 3)
+      if (!orders.length) return { tool: call.name, ok: false,
+        data: { code: 'order_not_found_for_identifier', lookupScope: 'customer_name', searchedName: name } }
+      const settings = await loadStoreWhatsAppSettings(channel!.store_id)
+      return { tool: call.name, ok: true, data: { customerName: customer.full_name,
+        lookupScope: 'customer_name', ...prepareOpenOrdersForAgent(orders.map((order) => {
+          const status = describeOpenOs(customer.full_name, order, settings?.os_on_demand?.templates)
+          return { orderNumber: order.protocolo_fisico || String(order.id),
+            patientName: order.dependente_name, status: status.statusCode, statusText: status.replyText }
+        })) } }
+    }
     const phoneCustomer = channel!.store_id === 1
       ? await findCustomerByPhone(channel!.store_id, normalizedPhone) : null
     if (call.name === 'lookup_open_orders') {
@@ -6805,6 +6832,8 @@ export async function simulateCustomerStatus(
 export async function markStoreInitiatedConversation(
   input: StoreInitiatedConversationRequest
 ) {
+  if (isWhatsAppInboundReaction(input.payload)) return { success: true, skipped: 'reaction' as const }
+
   const channel = await findActiveChannel(input.instanceKey)
   if (!channel) return { success: false, reason: 'channel_not_found' as const }
 
