@@ -5,6 +5,7 @@ import { getProfileByAdmin } from '@/lib/supabase/admin'
 import { hasDailyHealthManagerGrant } from '@/lib/daily-health-access'
 import { generateDailyStoreHealthReport } from '@/lib/daily-store-health'
 import { requeuePostSalesForDailyHealth } from '@/lib/whatsapp/post-sale-followups'
+import { DAILY_HEALTH_PAUSED_UNTIL, isDailyHealthPaused } from '@/lib/daily-health-pause'
 
 const inputSchema = z.object({ storeId: z.coerce.number().int().positive() })
 
@@ -18,6 +19,7 @@ async function allowed(storeId: number) {
 }
 
 export async function POST(request: Request) {
+  if (isDailyHealthPaused()) return NextResponse.json({ error: 'Pontos de Atencao esta temporariamente pausado.', resumesAt: DAILY_HEALTH_PAUSED_UNTIL }, { status: 503 })
   const body = inputSchema.safeParse(await request.json().catch(() => null))
   if (!body.success) return NextResponse.json({ error: 'storeId invalido' }, { status: 400 })
   if (!(await allowed(body.data.storeId))) return NextResponse.json({ error: 'PIN de gerente necessario' }, { status: 403 })

@@ -5,6 +5,7 @@ import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { getDailyHealthManagerGrant } from '@/lib/daily-health-access'
 import { customerDuplicateCandidates, productDuplicateCandidates, type DuplicateIssueType } from '@/lib/daily-health-data-quality'
 import { buildMergeFieldComplements, buildMergeFieldConflicts, mergeDependenciesFor } from '@/lib/daily-health-merge-preview'
+import { DAILY_HEALTH_PAUSED_UNTIL, isDailyHealthPaused } from '@/lib/daily-health-pause'
 
 const kindSchema = z.enum(['duplicate-customers', 'duplicate-products', 'products-without-cost', 'stale-open-sales'])
 const batchSize = 10
@@ -139,6 +140,7 @@ async function mergePreview(admin: ReturnType<typeof createAdminClient>, storeId
 }
 
 export async function GET(request: Request) {
+  if (isDailyHealthPaused()) return NextResponse.json({ error: 'Pontos de Atencao esta temporariamente pausado.', resumesAt: DAILY_HEALTH_PAUSED_UNTIL }, { status: 503 })
   const url = new URL(request.url)
   const storeId = Number(url.searchParams.get('storeId'))
   const kind = kindSchema.safeParse(url.searchParams.get('kind'))
@@ -236,6 +238,7 @@ const actionSchema = z.discriminatedUnion('action', [
 ])
 
 export async function POST(request: Request) {
+  if (isDailyHealthPaused()) return NextResponse.json({ error: 'Pontos de Atencao esta temporariamente pausado.', resumesAt: DAILY_HEALTH_PAUSED_UNTIL }, { status: 503 })
   const parsed = actionSchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: 'Dados invalidos' }, { status: 400 })
   const auth = await authorization(parsed.data.storeId)

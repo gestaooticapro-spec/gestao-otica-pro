@@ -15,7 +15,7 @@ import type { DailyHealthAmountComparison, DailyHealthAlert, DailyHealthArea, Da
 // O cron noturno continua sendo a única geração automática enquanto investigamos o consumo na Vercel.
 const MANUAL_DAILY_HEALTH_REFRESH_ENABLED = true
 
-type Props = { storeId: number; report: DailyHealthReport | null; weeklySnapshot: PeriodicHealthSnapshot | null; monthlySnapshot: PeriodicHealthSnapshot | null; needsPin: boolean; canConfigure: boolean }
+type Props = { storeId: number; report: DailyHealthReport | null; weeklySnapshot: PeriodicHealthSnapshot | null; monthlySnapshot: PeriodicHealthSnapshot | null; needsPin: boolean; canConfigure: boolean; pausedUntil: string | null }
 
 const modules: Array<{ id: DailyHealthArea; label: string; icon: typeof CircleDollarSign }> = [
   { id: 'financeiro', label: 'Financeiro', icon: CircleDollarSign },
@@ -82,7 +82,7 @@ function PeriodicSnapshotView({ snapshot, cadence, onOpenProgramUsage }: { snaps
   return <section className="mt-8 max-w-6xl" aria-label={cadence === 'weekly' ? 'Varredura semanal' : 'Varredura mensal'}><div className="flex flex-wrap items-end justify-between gap-4 border-b border-white/10 pb-5"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-200">Snapshot salvo</p><h2 className="mt-2 text-2xl font-black text-white">{cadence === 'weekly' ? 'Varredura semanal' : 'Varredura mensal'}</h2><p className="mt-2 text-sm text-slate-400">Período: {period}. Esta leitura é somente consulta.</p></div>{usageButton}</div><p className="mt-6 max-w-6xl text-lg leading-8 text-slate-100">{snapshot.narrative}</p>{alerts.length ? <div className="mt-6 space-y-3">{alerts.map((alert: DailyHealthAlert) => <article key={alert.id} className={`border-l-4 bg-black/20 px-5 py-4 ${alert.priority === 'critico' ? 'border-rose-400' : 'border-amber-300'}`}><p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">{alert.area}</p><h3 className="mt-1 text-base font-bold text-white">{alert.presentation?.title || alert.title}</h3><p className="mt-1 text-sm leading-6 text-slate-200">{alert.presentation?.detail || alert.detail}</p></article>)}</div> : <div className="mt-6 flex items-center gap-3 text-sm text-emerald-100"><CheckCircle2 className="h-4 w-4" />Nenhum ponto de atenção foi consolidado neste período.</div>}</section>
 }
 
-export default function DailyHealthClient({ storeId, report, weeklySnapshot, monthlySnapshot, needsPin }: Props) {
+export default function DailyHealthClient({ storeId, report, weeklySnapshot, monthlySnapshot, needsPin, pausedUntil }: Props) {
   const router = useRouter()
   const [refreshing, setRefreshing] = useState(false)
   const [refreshError, setRefreshError] = useState<string | null>(null)
@@ -118,6 +118,8 @@ export default function DailyHealthClient({ storeId, report, weeklySnapshot, mon
   }
 
   if (needsPin) return <main className="min-h-full p-6 text-white lg:p-10"><div className="mx-auto max-w-7xl"><h1 className="text-3xl font-black">Pontos de Atenção (Beta)</h1><p className="mt-3 text-sm text-slate-300">Aguardando a confirmação do PIN de um gerente.</p></div><EmployeeAuthModal storeId={storeId} isOpen onClose={() => router.back()} onSuccess={() => router.refresh()} title="Abrir Pontos de Atenção" description="Informe o PIN de um gerente para visualizar os pontos de atenção." purpose="daily_health_access" /></main>
+
+  if (pausedUntil) return <main className="min-h-full p-6 text-white lg:p-10"><div className="mx-auto max-w-7xl"><header className="flex items-center gap-3 border-b border-white/10 pb-6"><Link href={`/dashboard/loja/${storeId}`} className="inline-flex h-9 w-9 items-center justify-center border border-white/10 bg-white/5 text-slate-300" aria-label="Voltar para a Central de Operações"><ArrowLeft className="h-5 w-5" /></Link><div><h1 className="text-3xl font-black">Pontos de Atenção (Beta)</h1><p className="mt-1 text-sm text-slate-300">Análises pausadas temporariamente</p></div></header><section className="mt-8 max-w-3xl border border-amber-300/20 bg-amber-300/[0.06] p-5"><h2 className="font-bold text-amber-100">Pausa para medição de logs</h2><p className="mt-2 text-sm leading-6 text-slate-200">As novas análises, atualizações e consultas deste módulo estão pausadas. Os relatórios salvos foram preservados. A geração será retomada automaticamente em {new Date(pausedUntil).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Sao_Paulo' })}.</p></section></div></main>
 
   const referenceDate = report ? new Date(`${report.reportDate}T12:00:00`).toLocaleDateString('pt-BR') : null
   const summary = report?.metrics.salesSummary

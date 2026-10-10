@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { hasDailyHealthManagerGrant } from '@/lib/daily-health-access'
+import { DAILY_HEALTH_PAUSED_UNTIL, isDailyHealthPaused } from '@/lib/daily-health-pause'
 
 async function allowed(storeId: number) {
   const client = createClient()
@@ -17,6 +18,7 @@ function selectedIds(value: string | null) {
 }
 
 export async function GET(request: Request) {
+  if (isDailyHealthPaused()) return NextResponse.json({ error: 'Pontos de Atencao esta temporariamente pausado.', resumesAt: DAILY_HEALTH_PAUSED_UNTIL }, { status: 503 })
   const url = new URL(request.url)
   const storeId = Number(url.searchParams.get('storeId'))
   const ids = selectedIds(url.searchParams.get('ids'))

@@ -1,5 +1,7 @@
 # Alterações pendentes para o próximo deploy
 
+- Pontos de Atenção fica temporariamente pausado para medir o consumo de logs; os relatórios existentes são preservados e as análises retomam automaticamente em 17/10.
+
 - O pós-venda pelo WhatsApp recupera os contatos recentes ainda não realizados e permite o primeiro contato de acompanhamentos abertos sem interação registrada. Os envios seguem a fila gradual, o horário da loja e as preferências do cliente; atendimentos já iniciados e casos concluídos são preservados.
 
 - Na Loja 1, reclamações e pedidos de atendente durante um acompanhamento recebem encaminhamento pelo redesign e preservam o contexto. Respostas oficiais de horário distinguem o expediente previsto da situação atual da loja e informam os intervalos cadastrados.

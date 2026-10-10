@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { DEFAULT_DAILY_HEALTH_SETTINGS, getDailyHealthSettings } from '@/lib/daily-store-health'
+import { DAILY_HEALTH_PAUSED_UNTIL, isDailyHealthPaused } from '@/lib/daily-health-pause'
 
 const settingsSchema = z.object({ storeId: z.number().int().positive(), overdueCriticalValue: z.number().min(0), minimumCostCoverage: z.number().min(0).max(1), labRequestHours: z.number().min(1).max(168) })
 
@@ -15,12 +16,14 @@ async function adminFor(storeId: number) {
 }
 
 export async function GET(request: Request) {
+  if (isDailyHealthPaused()) return NextResponse.json({ error: 'Pontos de Atencao esta temporariamente pausado.', resumesAt: DAILY_HEALTH_PAUSED_UNTIL }, { status: 503 })
   const storeId = Number(new URL(request.url).searchParams.get('storeId'))
   if (!Number.isInteger(storeId) || !(await adminFor(storeId))) return NextResponse.json({ error: 'Acesso negado.' }, { status: 403 })
   return NextResponse.json({ settings: await getDailyHealthSettings(storeId) })
 }
 
 export async function PUT(request: Request) {
+  if (isDailyHealthPaused()) return NextResponse.json({ error: 'Pontos de Atencao esta temporariamente pausado.', resumesAt: DAILY_HEALTH_PAUSED_UNTIL }, { status: 503 })
   const body = settingsSchema.safeParse(await request.json().catch(() => null))
   if (!body.success) return NextResponse.json({ error: 'Parametros invalidos.' }, { status: 400 })
   const context = await adminFor(body.data.storeId)

@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getProfileByAdmin } from '@/lib/supabase/admin'
 import { hasDailyHealthManagerGrant } from '@/lib/daily-health-access'
 import { getLatestDailyStoreHealthReport, getLatestPeriodicStoreHealthSnapshot } from '@/lib/daily-store-health'
+import { DAILY_HEALTH_PAUSED_UNTIL, isDailyHealthPaused } from '@/lib/daily-health-pause'
 
 export default async function StoreHealthPage({ params }: { params: Promise<{ storeId: string }> }) {
   const { storeId: rawStoreId } = await params
@@ -15,12 +16,13 @@ export default async function StoreHealthPage({ params }: { params: Promise<{ st
   const profile = await getProfileByAdmin(user.id) as { role?: string; store_id?: number | null } | null
   if (!profile || (profile.role !== 'admin' && Number(profile.store_id) !== storeId)) redirect('/dashboard')
   const needsPin = !(await hasDailyHealthManagerGrant(storeId))
-  const [report, weeklySnapshot, monthlySnapshot] = needsPin
+  const paused = isDailyHealthPaused()
+  const [report, weeklySnapshot, monthlySnapshot] = needsPin || paused
     ? [null, null, null]
     : await Promise.all([
       getLatestDailyStoreHealthReport(storeId),
       getLatestPeriodicStoreHealthSnapshot(storeId, 'weekly'),
       getLatestPeriodicStoreHealthSnapshot(storeId, 'monthly'),
     ])
-  return <DailyHealthClient storeId={storeId} report={report} weeklySnapshot={weeklySnapshot} monthlySnapshot={monthlySnapshot} needsPin={needsPin} canConfigure={profile.role === 'admin'} />
+  return <DailyHealthClient storeId={storeId} report={report} weeklySnapshot={weeklySnapshot} monthlySnapshot={monthlySnapshot} needsPin={needsPin} canConfigure={profile.role === 'admin'} pausedUntil={paused ? DAILY_HEALTH_PAUSED_UNTIL : null} />
 }

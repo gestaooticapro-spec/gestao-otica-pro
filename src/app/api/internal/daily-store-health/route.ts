@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateDailyStoreHealthReport, generatePeriodicStoreHealthSnapshot } from '@/lib/daily-store-health'
+import { DAILY_HEALTH_PAUSED_UNTIL, isDailyHealthPaused } from '@/lib/daily-health-pause'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -18,6 +19,7 @@ function authorized(request: Request) {
 
 export async function GET(request: Request) {
   if (!authorized(request)) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+  if (isDailyHealthPaused()) return NextResponse.json({ success: true, paused: true, resumesAt: DAILY_HEALTH_PAUSED_UNTIL })
   try {
     const admin = createAdminClient({ noStore: true })
     const { data: stores, error: storesError } = await (admin.from('stores') as any).select('id').order('id', { ascending: true })

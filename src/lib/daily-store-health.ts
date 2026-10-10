@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { isDailyHealthPaused } from '@/lib/daily-health-pause'
 import { getWhatsAppPendencias } from '@/lib/actions/consultas.actions'
 import { phonesMatch } from '@/lib/whatsapp/phone'
 import { customerDuplicateCandidates, productDuplicateCandidates } from '@/lib/daily-health-data-quality'
@@ -1273,6 +1274,7 @@ async function createNarrative(metrics: DailyHealthMetrics, alerts: DailyHealthA
 }
 
 export async function generateDailyStoreHealthReport(storeId = 1, reportDate = previousDateKey(dateKey(), 1), options: { force?: boolean } = {}): Promise<DailyHealthReport> {
+  if (isDailyHealthPaused()) throw new Error('Pontos de Atencao esta temporariamente pausado.')
   const admin = createAdminClient({ noStore: true })
   const force = options.force === true
   const { data: existingReport, error: existingReportError } = await (admin.from('daily_store_health_reports') as any)
@@ -1567,6 +1569,7 @@ export type PeriodicSnapshotGenerationOptions = {
 }
 
 export async function generatePeriodicStoreHealthSnapshot(storeId: number, cadence: HealthSnapshotCadence, reportDate = previousDateKey(dateKey(), 1), options: PeriodicSnapshotGenerationOptions = {}): Promise<PeriodicHealthSnapshot | null> {
+  if (isDailyHealthPaused()) return null
   const allowOpenMonthly = cadence === 'monthly' && options.allowOpenMonthly === true
   const persist = options.persist !== false
   const period = periodicPeriodForReportDate(reportDate, cadence, allowOpenMonthly)
