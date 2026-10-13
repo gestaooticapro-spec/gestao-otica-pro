@@ -319,3 +319,7 @@ As consultas desta análise foram somente de leitura. Nenhum dado, fluxo, envio,
 ## WA-12 ? Consulta de OS de outro cadastro (Sirlei / Jose Paulo)
 
 Cliente identificou-se como esposa e informou o nome completo do marido. A consulta usada buscou somente pelo telefone da esposa, mas a resposta afirmou nao encontrar pedido pelo nome do marido. Correcao preparada: identificador por nome informado pelo cliente no turno ou contexto recente, busca na mesma loja com igualdade completa e unicidade, sem alterar o vinculo do telefone. Nome parcial ou homonimo pede nome completo/numero da OS. Consulta vazia pelo telefone precisa explicitar esse alcance. Caso de regressao: OS 1063, Loja 1. Publicacao do app ainda necessaria.
+
+## WA-13 ? Cumprimento enviado antes do restante da fala (Cristine)
+
+Em 13/10, a entrada 12623 agrupou somente Bom dia/Tudo bem e gerou a saida 19943. A entrada seguinte 12624 trouxe a tentativa de pagamento e a troca de cartao, em outro bloco. O ajuste trata somente agrupamento, sem resolver pagamento/link: cumprimentos isolados aguardam 60 segundos de silencio; quando chega conteudo, o bloco inteiro usa os 20 segundos normais apos a ultima mensagem. Testes simulam continuacao, reinicio do temporizador e cumprimento sem continuacao. Necessaria publicacao do servico na VPS.

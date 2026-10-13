@@ -11,8 +11,9 @@ const config = {
 
 // Clientes costumam separar a resposta em saudacao + conteudo (por exemplo,
 // "Boa tarde" e, alguns segundos depois, "Esta otima"). Vinte segundos
-// preservam uma conversa mais natural sem atrasar demais a resposta.
+// preservam o bloco de conteudo; cumprimentos isolados aguardam a continuacao.
 const INBOUND_AGGREGATION_WINDOW_MS = Number(process.env.WHATSAPP_INBOUND_AGGREGATION_WINDOW_MS || 20000)
+const INBOUND_GREETING_WINDOW_MS = Math.max(INBOUND_AGGREGATION_WINDOW_MS, Number(process.env.WHATSAPP_INBOUND_GREETING_WINDOW_MS || 60000))
 const APP_REQUEST_TIMEOUT_MS = Number(process.env.WHATSAPP_APP_REQUEST_TIMEOUT_MS || 65000)
 const PENDING_REPLY_RECOVERY_ATTEMPTS = 4
 const PENDING_REPLY_RECOVERY_DELAY_MS = 1500
@@ -352,7 +353,7 @@ function buildAggregatedInboundPayload(messages) {
   return {
     source: 'whatsapp-automation-buffer',
     aggregated: true,
-    aggregationWindowMs: INBOUND_AGGREGATION_WINDOW_MS,
+    aggregationWindowMs: bufferedInboundWindowMs({ messages }),
     messageCount: messages.length,
     messages: messages.map((message) => ({
       providerMessageId: message.providerMessageId,
@@ -1098,13 +1099,25 @@ async function flushBufferedInbound(key, reason = 'timeout') {
   }
 }
 
+function bufferedInboundWindowMs(entry) {
+  const socialOnly = entry.messages.length > 0 && entry.messages.every((message) => {
+    const lines = normalizeAggregationText(message.messageText).split('\n').filter(Boolean)
+    return lines.length > 0 && lines.every((line) => {
+      const text = line.normalize('NFD').replace(/[\u0300-\u036f]/gu, '')
+        .toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/gu, ' ').trim()
+      return /^(?:oi+|ola+|bom dia|boa tarde|boa noite|tudo bem|tudo bom|como vai|como esta|buenos dias|buenas tardes|buenas noches|hola|que tal|hello|hi|good morning|good afternoon|good evening|how are you)$/.test(text)
+    })
+  })
+  return socialOnly ? INBOUND_GREETING_WINDOW_MS : INBOUND_AGGREGATION_WINDOW_MS
+}
+
 function scheduleBufferedInbound(key, entry) {
   clearBufferedInboundTimer(entry)
   entry.timer = setTimeout(() => {
     flushBufferedInbound(key, 'timer').catch((error) => {
       console.error(`[webhook] failed to flush buffered inbound ${key}:`, error)
     })
-  }, INBOUND_AGGREGATION_WINDOW_MS)
+  }, bufferedInboundWindowMs(entry))
 }
 
 function enqueueBufferedInbound(instanceKey, inbound) {
@@ -1134,7 +1147,7 @@ function enqueueBufferedInbound(instanceKey, inbound) {
   inboundBuffers.set(key, entry)
   scheduleBufferedInbound(key, entry)
 
-  console.log(`[webhook] buffered instance=${instanceKey} phone=${inbound.phone} messages=${entry.messages.length} wait_ms=${INBOUND_AGGREGATION_WINDOW_MS} text="${previewText(inbound.messageText)}"`)
+  console.log(`[webhook] buffered instance=${instanceKey} phone=${inbound.phone} messages=${entry.messages.length} wait_ms=${bufferedInboundWindowMs(entry)} text="${previewText(inbound.messageText)}"`)
   return { ignored: true, buffered: true, pendingMessages: entry.messages.length }
 }
 

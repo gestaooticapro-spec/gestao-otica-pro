@@ -29,3 +29,7 @@ O app so recebe o texto acima depois do silencio final da janela configurada.
 Essa agregacao acontece antes da logica de roteamento do app. Entao ela vale para qualquer conversa automatica que entre por `services/whatsapp-automation/server.mjs`, inclusive quando o cliente responde em varias partes durante uma automacao ja ativa.
 
 Ela deixa de importar apenas quando a conversa ja foi entregue para fluxo humano e o app decide nao responder automaticamente.
+
+## Espera inicial para cumprimentos
+
+Blocos compostos somente por cumprimentos ou perguntas sociais curtas (Bom dia, Tudo bem?) aguardam 60 segundos de silencio por padrao, configuraveis em `WHATSAPP_INBOUND_GREETING_WINDOW_MS`. Cada nova mensagem reinicia o temporizador. Quando chega uma pergunta ou explicacao, o bloco completo passa a usar a janela normal de 20 segundos apos a ultima mensagem. Cumprimento com conteudo na mesma frase tambem usa a janela normal. Anexos e reacoes mantem o tratamento existente.

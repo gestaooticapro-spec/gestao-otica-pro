@@ -239,3 +239,7 @@ inclusive no contexto recente de uma pergunta sobre outra pessoa. A busca fica
 na mesma loja, exige um cadastro unico com nome completo correspondente e nao
 modifica o vinculo do remetente. Nomes incompletos ou ambiguos pedem identificacao;
 a ausencia de pedidos pelo telefone nao e apresentada como busca pelo nome.
+
+O agrupamento do WhatsApp espera ate 60 segundos de silencio enquanto o cliente
+envia apenas cumprimentos. Quando chega conteudo, o bloco completo usa a janela
+normal de 20 segundos, reiniciada a cada mensagem, antes de chamar a IA.
