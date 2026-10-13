@@ -1,5 +1,9 @@
 # Instalacao Windows da Neosmart
 
+O instalador não é mais gerado neste repositório. Use `G:\projetos\torre-neosmart`
+e o `RELEASE_CHECKLIST.md` de lá. Os comandos abaixo descrevem o pacote antigo
+e não funcionam aqui.
+
 Este roteiro cobre o primeiro piloto fisico do Passo 10. Ele nao substitui a
 homologacao presencial de camera, touch e segunda tela.
 
