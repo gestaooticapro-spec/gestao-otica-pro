@@ -467,17 +467,15 @@ export default function ParcelaSearchModal({
 
         setIsSendingReceipt(true)
         try {
-            for (const installmentId of paidParcelaIds) {
-                const result = await sendInstallmentReceiptWhatsApp({
-                    storeId,
-                    installmentId,
-                    receiptOperationId: paidReceiptOperationId || undefined,
-                })
+            const result = await sendInstallmentReceiptWhatsApp({
+                storeId,
+                installmentId: paidParcelaIds[0],
+                receiptOperationId: paidReceiptOperationId || undefined,
+            })
 
-                if (!result.success) {
-                    toast.error(result.message)
-                    return
-                }
+            if (!result.success) {
+                toast.error(result.message)
+                return
             }
 
             setReceiptSent(true)

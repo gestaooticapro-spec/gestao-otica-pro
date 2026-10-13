@@ -20,6 +20,7 @@ import {
   getCustomerFinancialSummary,
   getCustomerPrescriptionSummary,
 } from '@/lib/actions/customer-history.actions'
+import { installmentReceiptAmount } from '@/lib/installment-receipt-amount'
 
 const ALLOWED_ROLES = ['admin', 'manager', 'store_operator', 'vendedor', 'tecnico']
 
@@ -992,13 +993,27 @@ export async function sendInstallmentReceiptWhatsApp(input: SendInstallmentRecei
     const latestReceiptOperationId = requestedOperationId ?? (latestInstallmentPayment?.receipt_operation_id == null
       ? null
       : Number(latestInstallmentPayment.receipt_operation_id))
-    const receiptPayments = latestReceiptOperationId
-      ? (installmentPayments || []).filter((payment: any) => Number(payment.receipt_operation_id) === latestReceiptOperationId)
-      : installmentPayments || []
-    const receiptAmount = receiptPayments.length > 0 ? receiptPayments.reduce(
-      (total: number, payment: any) => total + Number(payment.valor_pago || 0),
-      0
-    ) : Number(installment.valor_pago || 0)
+    let operationPayments: Array<{ valor_pago: number | null, data_pagamento?: string | null, created_at?: string | null }> | null = null
+    if (latestReceiptOperationId) {
+      const { data, error: operationPaymentsError } = await (supabaseAdmin.from('pagamentos') as any)
+        .select('id, valor_pago, created_at, data_pagamento, receipt_operation_id')
+        .eq('store_id', storeId)
+        .eq('receipt_operation_id', latestReceiptOperationId)
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true })
+      if (operationPaymentsError) throw operationPaymentsError
+      operationPayments = data || []
+    }
+    const receiptPayments = operationPayments && operationPayments.length > 0
+      ? operationPayments
+      : (latestReceiptOperationId
+        ? (installmentPayments || []).filter((payment: any) => Number(payment.receipt_operation_id) === latestReceiptOperationId)
+        : installmentPayments || [])
+    const receiptAmount = installmentReceiptAmount({
+      installmentPayments: receiptPayments,
+      operationPayments,
+      installmentFallbackAmount: Number(installment.valor_pago || 0),
+    })
     if (receiptAmount <= 0) {
       throw new Error('Esta parcela nao possui valor recebido para emitir um recibo.')
     }
