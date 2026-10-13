@@ -323,3 +323,7 @@ Cliente identificou-se como esposa e informou o nome completo do marido. A consu
 ## WA-13 ? Cumprimento enviado antes do restante da fala (Cristine)
 
 Em 13/10, a entrada 12623 agrupou somente Bom dia/Tudo bem e gerou a saida 19943. A entrada seguinte 12624 trouxe a tentativa de pagamento e a troca de cartao, em outro bloco. O ajuste trata somente agrupamento, sem resolver pagamento/link: cumprimentos isolados aguardam 60 segundos de silencio; quando chega conteudo, o bloco inteiro usa os 20 segundos normais apos a ultima mensagem. Testes simulam continuacao, reinicio do temporizador e cumprimento sem continuacao. Necessaria publicacao do servico na VPS.
+
+## WA-14 ? Boa adaptacao com comentario sobre pagamento (Patricia)
+
+Retorno ao pos-venda: Otimo / Jeje / Solo falta ir a pagar. A resposta abandonou a adaptacao, buscou pedido em aberto e nao pediu nota nem identificou a IAra. Correcao preparada para contexto confirmado: reconhecer boa adaptacao mesmo com comentario casual sobre pagar; manter avaliacao de 1 a 5, sem inferir divida ou fatura. Perguntas financeiras, reclamacoes, anexos e pedidos humanos preservam prioridade. Comentario isolado durante espera de nota nao abre consulta nem repete o pedido. Publicacao do app pendente.

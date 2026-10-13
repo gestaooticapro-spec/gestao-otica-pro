@@ -9,6 +9,7 @@ export type Release = {
 // altera o Dashboard ou o modal de histórico.
 export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'O pos-venda reconhece boa adaptacao acompanhada de comentarios casuais sobre pagar, pede a nota sem abrir consulta de OS ou divida e identifica a IAra na primeira resposta.',
   'A venda passa a ser marcada como NFC-e emitida no momento em que a nota de produção é autorizada, mesmo se a tela não confirmar o retorno da emissão.',
   'O WhatsApp aguarda mais tempo quando chegam apenas cumprimentos, reunindo a continuacao do cliente antes de responder; perguntas e explicacoes mantem a espera normal.',
   'A consulta de OS na Loja 1 reconhece nomes completos informados pelo cliente, localiza pedidos de outro cadastro sem trocar o titular do WhatsApp e pede identificacao quando houver ambiguidade.',

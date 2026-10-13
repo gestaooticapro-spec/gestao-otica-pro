@@ -82,6 +82,7 @@ export function postSaleRatingThanksText(rating: number) {
 export function validatePostSaleActionReply(input: {
   text: string
   action: 'request_rating' | 'confirm_rating'
+  mustIdentifyIara?: boolean
   rating?: number | null
 }): { valid: true } | { valid: false; reason: string } {
   const normalized = input.text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
@@ -89,6 +90,8 @@ export function validatePostSaleActionReply(input: {
   if (/\b(?:os|pedido)\s*#?\d+\b|\bcpf\b|\bpix\b/.test(normalized)) {
     return { valid: false, reason: 'unrelated_customer_facts' }
   }
+
+  if (input.mustIdentifyIara && (!/\biara\b/u.test(normalized) || !/\bassistente virtual\b/u.test(normalized))) return { valid: false, reason: 'iara_identification_missing' }
 
   if (input.action === 'request_rating') {
     const acknowledgesFeedback = /\b(?:bom|otimo|legal|feliz|contente|agradec\w*|great|glad|happy|pleased|good|nice|gracias|alegr\w*|bien|genial)\b/.test(normalized)

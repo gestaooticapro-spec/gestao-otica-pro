@@ -1,3 +1,4 @@
+import { postSaleFeedbackContinuation, needsPostSaleIaraIntroduction } from './post-sale-feedback-continuation'
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -3340,6 +3341,15 @@ async function resolveCustomerStatusInternal(
     return response
   }
 
+  const feedbackContinuation = channel.store_id === 1 ? postSaleFeedbackContinuation({
+    context: pendingPrePilotPostSaleContext, messageText: effectiveMessageText,
+    hasAttachment: inboundPayloadMeta.hasAttachment,
+    explicitHumanRequest: isExplicitHumanHandoffRequest(effectiveMessageText), explicitOrderRequest,
+  }) : null
+  if (feedbackContinuation === 'comment' && !humanControlBlocked) {
+    return ignoreInbound(inbound.id, { stage: 'post_sale_context',
+      reason: 'incidental_payment_comment_preserves_rating', action: 'no_reply' })
+  }
   let postSaleTurnClassification: WhatsAppAiResult<WhatsAppIntentClassification> | null = null
   let prePilotPostSaleDiagnostic: WhatsAppAiDiagnostic | null = null
   if (storeOnePilotEnabled && pendingPrePilotPostSaleContext?.postSalesId
@@ -3363,7 +3373,7 @@ async function resolveCustomerStatusInternal(
     })
     prePilotPostSaleDiagnostic = await logAiResult(channel, inbound.id, 'intent_classification', postSaleTurnClassification)
   }
-  const contextualPostSaleSignal = resolvePostSaleContextualSignal({
+  const contextualPostSaleSignal = feedbackContinuation ? null : resolvePostSaleContextualSignal({
     messageText: effectiveMessageText,
     hasAttachment: inboundPayloadMeta.hasAttachment,
     context: pendingPrePilotPostSaleContext,
@@ -3373,7 +3383,7 @@ async function resolveCustomerStatusInternal(
     explicitHumanRequest: isExplicitHumanHandoffRequest(effectiveMessageText),
     explicitOrderRequest,
   })
-  const useStoreOnePilot = inboundPayloadMeta.hasAttachment || (!contextualPostSaleSignal && shouldUseStoreOnePilotDuringPostSale({
+  const useStoreOnePilot = inboundPayloadMeta.hasAttachment || (!feedbackContinuation && !contextualPostSaleSignal && shouldUseStoreOnePilotDuringPostSale({
     fullRouting: fullRedesignEnabled,
     explicitHumanRequest: isExplicitHumanHandoffRequest(effectiveMessageText),
     context: pendingPrePilotPostSaleContext,
@@ -4467,7 +4477,7 @@ async function resolveCustomerStatusInternal(
         handoffActive: false,
       })
       if (!prePilotPostSaleDiagnostic) await recordAiResult('intent_classification', postSaleTurnClassification)
-      postSaleTurnDisposition = contextualPostSaleSignal ? 'handle_post_sale' : decidePostSaleTurnDisposition({
+      postSaleTurnDisposition = (feedbackContinuation || contextualPostSaleSignal) ? 'handle_post_sale' : decidePostSaleTurnDisposition({
         classificationSucceeded: postSaleTurnClassification.success,
         confidence: postSaleTurnClassification.success ? postSaleTurnClassification.data.confidence : 0,
         automationCandidate: postSaleTurnClassification.success
@@ -4549,7 +4559,8 @@ async function resolveCustomerStatusInternal(
     ? getPostSaleForcedToolCall({
       context: pendingPostSaleContext,
       disposition: postSaleTurnDisposition,
-      intent: postSaleTurnClassification?.success ? postSaleTurnClassification.data.intent : null,
+      intent: feedbackContinuation === 'positive' ? 'post_sale_positive'
+        : postSaleTurnClassification?.success ? postSaleTurnClassification.data.intent : null,
       explicitRating: explicitPostSaleRating,
     })
     : null
@@ -4563,7 +4574,9 @@ async function resolveCustomerStatusInternal(
   if (storeOnePostSaleAction && pendingPostSaleContext?.postSalesId) {
     const isRatingRequest = storeOnePostSaleAction.name === 'request_post_sale_rating'
     const rating = isRatingRequest ? null : storeOnePostSaleAction.rating
+    const mustIdentifyIara = needsPostSaleIaraIntroduction(aiReplyContext.conversationHistory || [])
     const reply = await writeWhatsAppPostSaleActionReply({
+      mustIdentifyIara,
       action: isRatingRequest ? 'request_rating' : 'confirm_rating',
       rating,
       messageText: effectiveMessageText || '',
@@ -4579,6 +4592,7 @@ async function resolveCustomerStatusInternal(
     }
     const validation = validatePostSaleActionReply({
       text: reply.data.reply_text,
+      mustIdentifyIara,
       action: isRatingRequest ? 'request_rating' : 'confirm_rating',
       rating,
     })

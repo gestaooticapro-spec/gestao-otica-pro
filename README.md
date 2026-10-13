@@ -243,3 +243,9 @@ a ausencia de pedidos pelo telefone nao e apresentada como busca pelo nome.
 O agrupamento do WhatsApp espera ate 60 segundos de silencio enquanto o cliente
 envia apenas cumprimentos. Quando chega conteudo, o bloco completo usa a janela
 normal de 20 segundos, reiniciada a cada mensagem, antes de chamar a IA.
+
+No pos-venda confirmado da Loja 1, elogios claros acompanhados de comentarios
+casuais como so falta pagar continuam o acompanhamento e pedem nota de 1 a 5.
+Perguntas financeiras reais seguem o fluxo proprio; comentarios nao afirmam
+divida, quitacao nem fatura de cartao. A resposta especializada identifica a
+IAra quando ela ainda nao se apresentou no historico recente.

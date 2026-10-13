@@ -267,6 +267,7 @@ export type WhatsAppPostSaleRatingResolutionInput = {
 }
 
 export type WhatsAppPostSaleActionReplyInput = {
+  mustIdentifyIara?: boolean
   messageText: string
   storeName?: string | null
   action: 'request_rating' | 'confirm_rating'
@@ -466,6 +467,7 @@ function buildIntentPrompt(input: WhatsAppIntentClassificationInput) {
     'Inclua todas as chaves do schema. Para entidade ausente use null; para booleanos ausentes use false e para reasoning_tags use [].',
     'Se houver duvida comercial, clinica, reclamacao, anexo ou baixa confianca, seja conservador.',
     'Se a resposta indicar claramente satisfacao, elogio ou adaptacao boa em um contexto de acompanhamento apos a entrega, use post_sale_positive.',
+    'No pos-venda, Otimo seguido de Jeje e Solo falta ir a pagar continua post_sale_positive. Comentario sobre pagar sem pergunta ou solicitacao nao muda o assunto para financeiro ou OS. Perguntas de saldo, link ou pagamento continuam sendo pedidos financeiros reais.',
     'No acompanhamento de pos-venda, diferencie ajuste mecanico de armacao de reclamacao visual. Se o cliente diz que esta bom e so quer apertar ou ajustar a armacao, use post_sale_signal=frame_adjustment; nao rotule adaptacao ruim. Dor, tontura, visao ruim ou insatisfacao real continuam complaint_or_adaptation, com post_sale_signal=null.',
     'Se houver acompanhamento pendente e a mensagem for somente cumprimento ou conversa social (como Bom dia ou Tudo bom), use post_sale_signal=greeting, intent=unknown, automation_candidate=true e confianca coerente. Tudo bom sozinho nao avalia os oculos. Para outros assuntos e pedido explicito de humano, use post_sale_signal=null.',
     'Se o contexto citar pos-venda recente, avalie a mensagem atual: use post_sale_positive ou complaint_or_adaptation somente quando ela claramente continuar esse acompanhamento; se for outro assunto, classifique pelo assunto novo.',
@@ -799,6 +801,8 @@ async function runWithOpenAIOnly(task: WhatsAppAiTask, prompt: string, modelOver
 export function buildWhatsAppPostSaleActionReplyPrompt(input: WhatsAppPostSaleActionReplyInput) {
   return [
     'Voce redige a proxima mensagem de uma conversa de pos-venda de uma otica.',
+    input.mustIdentifyIara ? 'Comece com Sou a IAra, assistente virtual da otica. Esta e sua primeira identificacao nesta conversa.' : 'Nao repita a apresentacao da IAra.',
+    'Um comentario como so falta pagar ou solo falta ir a pagar nao e pedido de consulta financeira. Preserve o retorno de adaptacao, sem afirmar divida, quitacao, fatura ou cartao e sem pedir OS ou CPF.',
     WHATSAPP_NATURAL_STORE_REFERENCE,
     'Responda somente com um objeto JSON contendo reply_text como string.',
     'Use o idioma da mensagem atual. Escreva de forma natural, breve e relacionada ao que o cliente acabou de dizer.',
