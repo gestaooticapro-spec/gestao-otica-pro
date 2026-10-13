@@ -41,10 +41,6 @@ interface VendaInterfaceProps {
     pagamentos: Pagamento[]
     receiptOperations?: ReceiptOperation[]
     financiamento: (Financiamento & { financiamento_parcelas: FinanciamentoParcela[] }) | null
-    // Lentes, Armações, Tratamentos não são usados diretamente aqui, mas vêm da props
-    lentes: any[]
-    armacoes: any[]
-    tratamentos: any[]
     isQuitado: boolean
     isVendaFechadaOuCancelada: boolean
     onDataReload: () => Promise<void>

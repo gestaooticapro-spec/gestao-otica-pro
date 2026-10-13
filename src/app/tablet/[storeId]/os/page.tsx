@@ -2,7 +2,7 @@ import { listOSPendentesLab } from '@/lib/actions/medidas.actions'
 import Link from 'next/link'
 import { ArrowLeft, Camera, Ruler } from 'lucide-react'
 import { unstable_noStore as noStore } from 'next/cache'
-import { TabletOSAutoRefresh } from '@/components/tablet/TabletOSAutoRefresh'
+import { TabletOSRefreshButton } from '@/components/tablet/TabletOSRefreshButton'
 import FullscreenToggleButton from '@/components/FullscreenToggleButton'
 
 export const dynamic = 'force-dynamic'
@@ -16,7 +16,6 @@ export default async function TabletOSPage(props: { params: Promise<{ storeId: s
 
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col">
-      <TabletOSAutoRefresh />
       <FullscreenToggleButton />
       <header className="flex items-center gap-3 px-4 py-4 border-b border-white/10 bg-slate-900">
         <Link href={`/tablet/${storeId}`} className="p-2 rounded-lg hover:bg-white/10 transition-colors">
@@ -26,6 +25,7 @@ export default async function TabletOSPage(props: { params: Promise<{ storeId: s
           <h1 className="font-bold text-lg leading-tight">OS Pendentes de Laboratório</h1>
           <p className="mt-1 text-base font-medium text-slate-300">{lista.length} OS que faltam pedir no laboratório</p>
         </div>
+        <TabletOSRefreshButton />
       </header>
 
       {lista.length === 0 ? (

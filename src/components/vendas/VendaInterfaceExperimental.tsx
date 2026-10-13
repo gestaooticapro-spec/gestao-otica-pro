@@ -91,9 +91,6 @@ interface VendaInterfaceProps {
     dependentes: Dependente[]
     oftalmologistas: Oftalmologista[]
     employees: Employee[]
-    lentes: any[]
-    armacoes: any[]
-    tratamentos: any[]
     isQuitado: boolean
     isVendaFechadaOuCancelada: boolean
     onDataReload: () => Promise<void>

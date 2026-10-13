@@ -1,5 +1,9 @@
 # Alterações pendentes para o próximo deploy
 
+- O painel da loja atualiza somente os handoffs do WhatsApp a cada 30 segundos. Alertas, aniversários, vencimentos e retornos permanecem até a próxima navegação.
+- A lista de OS do tablet deixa de atualizar sozinha e passa a ter o botão Buscar OSs sem medidas.
+- A abertura da venda deixa de baixar o catálogo completo de lentes, armações e tratamentos. A busca de produto na inclusão do item continua igual.
+
 - Pontos de Atenção fica temporariamente pausado para medir o consumo de logs; os relatórios existentes são preservados e as análises retomam automaticamente em 17/10.
 
 - O pós-venda pelo WhatsApp recupera os contatos recentes ainda não realizados e permite o primeiro contato de acompanhamentos abertos sem interação registrada. Os envios seguem a fila gradual, o horário da loja e as preferências do cliente; atendimentos já iniciados e casos concluídos são preservados.

@@ -13,7 +13,7 @@ import AniversariantesWidget from '@/components/consultas/AniversariantesWidget'
 import { WidgetEntregas, WidgetLaboratorio } from '@/components/consultas/PaineisAlertas'
 import WidgetVencimentos from '@/components/consultas/WidgetVencimentos'
 import RetornosCobrancaWidget from '@/components/consultas/RetornosCobrancaWidget'
-import { AlertaEntrega, AlertaLaboratorio, Aniversariante, VencimentoProximo, WhatsAppPendencia } from '@/lib/actions/consultas.actions'
+import { AlertaEntrega, AlertaLaboratorio, Aniversariante, getWhatsAppPendencias, VencimentoProximo, WhatsAppPendencia } from '@/lib/actions/consultas.actions'
 import { RetornoCobranca } from '@/lib/actions/collection.actions'
 import ParcelaSearchModal from '@/components/modals/ParcelaSearchModal'
 import WidgetWhatsAppPendencias from '@/components/consultas/WidgetWhatsAppPendencias'
@@ -162,6 +162,7 @@ export default function ActionMenuDashboard({
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false)
   const [isStatusContextModalOpen, setIsStatusContextModalOpen] = useState(false)
   const [pendingStatusContexts, setPendingStatusContexts] = useState(whatsAppStatusContextsPending)
+  const [handoffs, setHandoffs] = useState(whatsAppPendencias)
   const [effectiveWhatsAppConnected, setEffectiveWhatsAppConnected] = useState(isWhatsAppConnected)
   const [whatsAppWakeWarning, setWhatsAppWakeWarning] = useState<string | null>(
     isWhatsAppAutomationEnabled && isWhatsAppChannelConfigured && !isWhatsAppConnected
@@ -230,15 +231,27 @@ export default function ActionMenuDashboard({
   }, [isWhatsAppAutomationEnabled, isWhatsAppChannelConfigured, isWhatsAppConnected, router, storeId])
 
   useEffect(() => {
+    setHandoffs(whatsAppPendencias)
+  }, [whatsAppPendencias])
+
+  useEffect(() => {
     if (!isWhatsAppAutomationEnabled || !isWhatsAppChannelConfigured || !isWhatsAppConnected) return
 
-    // O radar precisa acompanhar novos handoffs sem depender da abertura da central operacional.
+    // O radar acompanha novos handoffs sem recarregar o restante do painel.
+    let cancelled = false
+    const refreshHandoffs = async () => {
+      const nextHandoffs = await getWhatsAppPendencias(storeId)
+      if (!cancelled) setHandoffs(nextHandoffs)
+    }
     const interval = window.setInterval(() => {
-      router.refresh()
+      void refreshHandoffs()
     }, 30_000)
 
-    return () => window.clearInterval(interval)
-  }, [isWhatsAppAutomationEnabled, isWhatsAppChannelConfigured, isWhatsAppConnected, router])
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [isWhatsAppAutomationEnabled, isWhatsAppChannelConfigured, isWhatsAppConnected, storeId])
 
   useEffect(() => {
     const refreshDashboard = () => router.refresh()
@@ -529,7 +542,7 @@ export default function ActionMenuDashboard({
                     <div className="rounded-3xl overflow-hidden shadow-2xl shadow-black/20 ring-1 ring-white/10">
                       <WidgetWhatsAppPendencias
                         storeId={storeId}
-                        pendencias={whatsAppPendencias}
+                        pendencias={handoffs}
                         humanOverrides={whatsAppHumanOverrides}
                         onOpen={() => setIsWhatsAppModalOpen(true)}
                       />

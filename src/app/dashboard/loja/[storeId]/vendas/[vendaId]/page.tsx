@@ -2,7 +2,7 @@
 
 import { notFound } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
-import { getVendaPageData, type VendaPageData } from '@/lib/actions/vendas.actions'
+import { getVendaPageData } from '@/lib/actions/vendas.actions'
 import VendaInterface from '@/components/vendas/VendaInterface'
 
 type Props = {
@@ -36,9 +36,6 @@ export default async function VendaPage(props: Props) {
     receiptOperations,
     serviceOrders, 
     financiamento,
-    lentes,
-    armacoes,
-    tratamentos
   } = data
 
   const handleDataReload = async () => {
@@ -59,9 +56,6 @@ export default async function VendaPage(props: Props) {
       pagamentos={pagamentos}
       receiptOperations={receiptOperations}
       financiamento={financiamento}
-      lentes={lentes || []}
-      armacoes={armacoes || []}
-      tratamentos={tratamentos || []}
       isQuitado={isQuitado}
       isVendaFechadaOuCancelada={isVendaFechadaOuCancelada}
       onDataReload={handleDataReload}

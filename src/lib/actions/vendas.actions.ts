@@ -36,7 +36,6 @@ type Venda = Database['public']['Tables']['vendas']['Row']
 export type VendaItem = Database['public']['Tables']['venda_itens']['Row'] & { unidade?: string | null }
 type ServiceOrder = Database['public']['Tables']['service_orders']['Row']
 type Oftalmologista = Database['public']['Tables']['oftalmologistas']['Row']
-type Product = Database['public']['Tables']['products']['Row']
 type Pagamento = Database['public']['Tables']['pagamentos']['Row']
 type Financiamento = Database['public']['Tables']['financiamento_loja']['Row']
 type FinanciamentoParcela = Database['public']['Tables']['financiamento_parcelas']['Row']
@@ -103,10 +102,6 @@ export type VendaPageData = {
   dependentes: Dependente[]
   oftalmologistas: Oftalmologista[]
   employees: Employee[]
-  // CORREÃ‡ÃƒO: Agora são listas de Product
-  lentes: Product[]
-  armacoes: Product[]
-  tratamentos: Product[]
 }
 
 export type GetVendaPageDataResult = {
@@ -1230,10 +1225,6 @@ export async function getVendaPageData(
       dependentesRes,
       oftalmosRes,
       employeesRes,
-      // BUSCA AGORA NA TABELA PRODUCTS COM FILTRO
-      lentesRes,
-      armacoesRes,
-      tratamentosRes,
     ] = await Promise.all([
       supabaseAdmin.from('customers').select('*').eq('id', customer_id).single(),
       employee_id ? supabaseAdmin.from('employees').select('*').eq('id', employee_id).single() : Promise.resolve({ data: null }),
@@ -1253,11 +1244,6 @@ export async function getVendaPageData(
       supabaseAdmin.from('dependentes').select('*').eq('customer_id', customer_id).order('full_name'),
       supabaseAdmin.from('oftalmologistas').select('*').eq('store_id', storeId).order('nome_completo'),
       supabaseAdmin.from('employees').select('*').eq('store_id', storeId).eq('is_active', true).order('full_name'),
-
-      // Consultas unificadas
-      supabaseAdmin.from('products').select('*').eq('store_id', storeId).eq('tipo_produto', 'Lente'),
-      supabaseAdmin.from('products').select('*').eq('store_id', storeId).eq('tipo_produto', 'Armacao'),
-      supabaseAdmin.from('products').select('*').eq('store_id', storeId).eq('tipo_produto', 'Tratamento'),
     ])
 
     console.log('[DEBUG] VendaID:', vendaId)
@@ -1312,9 +1298,6 @@ export async function getVendaPageData(
       dependentes: dependentesRes.data || [],
       oftalmologistas: oftalmosRes.data || [],
       employees: employeesRes.data || [],
-      lentes: lentesRes.data || [],
-      armacoes: armacoesRes.data || [],
-      tratamentos: tratamentosRes.data || [],
     }
 
     return { success: true, data }

@@ -55,9 +55,6 @@ export default async function VendaPageExperimental(props: Props) {
         dependentes,
         oftalmologistas,
         employees,
-        lentes,
-        armacoes,
-        tratamentos
     } = data
 
     const handleDataReload = async () => {
@@ -99,9 +96,6 @@ export default async function VendaPageExperimental(props: Props) {
             dependentes={dependentes}
             oftalmologistas={oftalmologistas}
             employees={employees}
-            lentes={lentes || []}
-            armacoes={armacoes || []}
-            tratamentos={tratamentos || []}
             isQuitado={isQuitado}
             isVendaFechadaOuCancelada={isVendaFechadaOuCancelada}
             onDataReload={handleDataReload}
