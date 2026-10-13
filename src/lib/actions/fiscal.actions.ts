@@ -555,6 +555,25 @@ async function ensureNoActiveInvoiceForWorkOrder(
     return `Ja existe ${tipoDocumento} ${environment === "production" ? "de producao" : "de homologacao"} para esta OS.`;
 }
 
+async function markSaleNfceEmitida(
+    supabase: any,
+    invoice: { store_id?: number | null; work_order_id?: number | null; tipo_documento?: string | null; environment?: string | null },
+    emitted: boolean
+) {
+    if (invoice.tipo_documento !== "NFCe" || invoice.environment !== "production") return;
+    if (!invoice.store_id || !invoice.work_order_id) return;
+
+    const { error } = await supabase
+        .from("vendas")
+        .update({ nf_emitida: emitted })
+        .eq("id", invoice.work_order_id)
+        .eq("store_id", invoice.store_id);
+
+    if (error) {
+        console.error("[NFC-e] Falha ao atualizar nf_emitida da venda:", error);
+    }
+}
+
 export async function emitirNFCe(payload: EmissionPayload) {
     const supabase = createClient();
     const adminSupabase = createAdminClient() as any;
@@ -1012,6 +1031,13 @@ export async function emitirNFCe(payload: EmissionPayload) {
                 .from("fiscal_invoices")
                 .update(authorizedUpdate)
                 .eq("id", invoice.id);
+
+            await markSaleNfceEmitida(adminSupabase, {
+                store_id: payload.store_id,
+                work_order_id: payload.work_order_id,
+                tipo_documento: "NFCe",
+                environment: env,
+            }, true);
 
             return { success: true, invoiceId: invoice.id };
         }
@@ -1676,6 +1702,12 @@ export async function consultarNFCe(invoiceId: string) {
             .update(updatePayload)
             .eq("id", invoiceId);
 
+        if (novoStatus === "authorized") {
+            await markSaleNfceEmitida(supabase, invoice, true);
+        } else if (novoStatus === "cancelled") {
+            await markSaleNfceEmitida(supabase, invoice, false);
+        }
+
         return { success: true, status: novoStatus, data: result };
 
     } catch (error: any) {
@@ -2319,6 +2351,8 @@ export async function cancelarNota(invoiceId: string, justificativa: string = "E
                 error_message: null
             })
             .eq("id", invoiceId);
+
+        await markSaleNfceEmitida(supabase, invoice, false);
 
         return { success: true, message: "Nota cancelada com sucesso!" };
 

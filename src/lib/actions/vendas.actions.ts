@@ -1202,7 +1202,7 @@ export async function getVendaPageData(
   vendaId: number,
   storeId: number
 ): Promise<GetVendaPageDataResult> {
-  const supabaseAdmin = createAdminClient()
+  const supabaseAdmin = createAdminClient({ noStore: true })
 
   try {
     const { data: venda, error: vendaError } = await supabaseAdmin
@@ -2882,7 +2882,7 @@ export type SalesFilterOptions = {
 }
 
 export async function getSalesList(storeId: number, options?: SalesFilterOptions) {
-  const supabaseAdmin = createAdminClient()
+  const supabaseAdmin = createAdminClient({ noStore: true })
 
   const mode = options?.mode || 'pendencias'
   const search = options?.search

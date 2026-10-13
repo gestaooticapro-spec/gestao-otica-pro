@@ -786,7 +786,7 @@ export default function VendaInterfaceExperimental({
 
     // Novos campos experimentais
     const [obsGeral, setObsGeral] = useState(venda.obs_geral || '')
-    const [nfEmitida, setNfEmitida] = useState(venda.nf_emitida || false)
+    const [nfEmitida, setNfEmitida] = useState(Boolean(venda.nf_emitida))
     const [isSavingObs, setIsSavingObs] = useState(false)
     const savedObsGeral = venda.obs_geral?.trim() || ''
 
@@ -831,6 +831,10 @@ export default function VendaInterfaceExperimental({
             setActiveModal('none')
         }
     }, [activeModal, modules.installments])
+
+    useEffect(() => {
+        setNfEmitida(Boolean(venda.nf_emitida))
+    }, [venda.id, venda.nf_emitida])
 
     useEffect(() => {
         let cancelled = false

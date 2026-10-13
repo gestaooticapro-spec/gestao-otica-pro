@@ -211,7 +211,7 @@ export default function FiscalEmissionModal({
 
             if (result.success) {
                 setSuccessMsg("NFC-e emitida com sucesso!")
-                onSuccess(environment)
+                await onSuccess(environment)
             } else {
                 setError(result.error || "Erro desconhecido na emissão.")
             }
