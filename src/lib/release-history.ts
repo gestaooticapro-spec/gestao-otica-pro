@@ -12,6 +12,7 @@ export const PENDING_RELEASE_CHANGES: readonly string[] = [
   'O recibo em PDF enviado pelo WhatsApp mostra o valor total que o cliente entregou, tambem quando esse recebimento quita mais de uma parcela.',
   'A reimpressao do recibo de parcela mostra o valor total recebido quando esse pagamento quita mais de uma parcela.',
   'O botão Reimprimir Recibo da parcela carimba o recibo como reimpressão. O recibo aberto automaticamente na baixa continua sem esse carimbo.',
+  'A baixa da parcela abre o recibo original junto com a confirmação da senha.',
   'Na tela Gerar Recibos e na venda expressa, o recibo sai carimbado quando inclui parcela ou pagamento já impresso. O carimbo do recibo completo fica legível.',
   'Os recibos de parcela passam a mostrar o valor do contrato, o valor pago e o que ainda falta do carnê.',
   'O recibo completo mostra o horário de São Paulo em que o pagamento foi lançado.',

@@ -149,6 +149,8 @@ export default function ParcelaSearchModal({
     const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const loadMorePendingRef = useRef(false)
     const receiptAttemptRef = useRef<{ signature: string; key: string } | null>(null)
+    const receiptWindowRef = useRef<Window | null>(null)
+    const receiptWindowHeldRef = useRef(false)
 
     const valorTotalRecebido = parseMoney(valorTotalPagoStr)
     const totalFormasRecebimento = recebimentos.reduce(
@@ -365,6 +367,7 @@ export default function ParcelaSearchModal({
     // --- PONTO CRÍTICO 2: Retorno da Senha ---
     const handleAuthSuccess = (employee: { id: number }) => {
         console.log("[DEBUG] 2. Autenticação SUCESSO. Funcionario ID:", employee.id)
+        receiptWindowHeldRef.current = true
 
         setIsAuthOpen(false)
         if (!selectedParcela) {
@@ -447,18 +450,36 @@ export default function ParcelaSearchModal({
                     router.refresh()
                     window.dispatchEvent(new Event('installment-payment-recorded'))
                     setIsPrinting(true)
-                    if (paymentIds.length > 0) {
-                        window.open(`/print/recibo/${paymentIds.join('-')}?t=${Date.now()}`, '_blank')
+                    const receiptUrl = paymentIds.length > 0
+                        ? `/print/recibo/${paymentIds.join('-')}?t=${Date.now()}`
+                        : ''
+                    const receiptWindow = receiptWindowRef.current
+                    receiptWindowHeldRef.current = true
+                    if (receiptUrl) {
+                        if (receiptWindow && !receiptWindow.closed) {
+                            receiptWindow.location.href = receiptUrl
+                            receiptWindow.focus()
+                        } else {
+                            window.open(receiptUrl, '_blank')
+                        }
                     } else {
+                        receiptWindow?.close()
+                        receiptWindowRef.current = null
                         // Compatibilidade com baixas antigas que nao retornam os IDs.
                         printParcela(parcelaId).catch(console.error)
                     }
                     setIsPrinting(false)
                 } else {
+                    receiptWindowRef.current?.close()
+                    receiptWindowRef.current = null
+                    receiptWindowHeldRef.current = false
                     console.error("[DEBUG] Erro retornado pelo servidor:", res.message)
                     alert(`Erro: ${res.message}`)
                 }
             } catch (err) {
+                receiptWindowRef.current?.close()
+                receiptWindowRef.current = null
+                receiptWindowHeldRef.current = false
                 console.error("[DEBUG] CRITICAL ERROR na chamada da Server Action:", err)
                 alert("Erro crítico ao processar pagamento. Verifique o console.")
             }
@@ -805,7 +826,22 @@ export default function ParcelaSearchModal({
                     isOpen={isAuthOpen}
                     onClose={() => {
                         console.log("[DEBUG] Modal de Auth fechado pelo usuário");
+                        if (!receiptWindowHeldRef.current) {
+                            receiptWindowRef.current?.close()
+                            receiptWindowRef.current = null
+                        }
                         setIsAuthOpen(false);
+                    }}
+                    onAuthorizeStart={() => {
+                        receiptWindowHeldRef.current = false
+                        if (!receiptWindowRef.current || receiptWindowRef.current.closed) {
+                            receiptWindowRef.current = window.open('', '_blank')
+                        }
+                    }}
+                    onAuthorizeError={() => {
+                        if (receiptWindowHeldRef.current) return
+                        receiptWindowRef.current?.close()
+                        receiptWindowRef.current = null
                     }}
                     onSuccess={handleAuthSuccess}
                     title="Autorizar Pagamento"

@@ -31,6 +31,8 @@ type EmployeeAuthModalProps = {
   description?: string
   purpose?: 'evaluation_unlink' | 'installment_receipt_reversal' | 'pix_charge_create' | 'pix_charge_cancel' | 'pix_charge_recover' | 'daily_health_access'
   authorizationContext?: string
+  onAuthorizeStart?: () => void
+  onAuthorizeError?: () => void
 }
 
 function SubmitButton() {
@@ -58,6 +60,8 @@ function EmployeeAuthForm({
   description,
   purpose,
   authorizationContext,
+  onAuthorizeStart,
+  onAuthorizeError,
 }: Omit<EmployeeAuthModalProps, 'isOpen'>) {
   const initialState: AuthEmployeeResult = { success: false, message: '' }
   const [state, dispatch] = useFormState(autenticarFuncionarioPorPin, initialState)
@@ -70,8 +74,10 @@ function EmployeeAuthForm({
       handledSuccessRef.current = true
       onSuccess(state.employee)
       onClose()
+      return
     }
-  }, [state, onSuccess, onClose])
+    if (state.message && !state.success) onAuthorizeError?.()
+  }, [state, onSuccess, onClose, onAuthorizeError])
 
   const inputStyle = 'block w-full rounded-xl border border-white/10 bg-white/5 text-white h-11 text-center text-xl tracking-[0.2em] focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 focus:outline-none font-bold transition-all placeholder:font-normal placeholder:text-slate-500 placeholder:tracking-normal backdrop-blur-md'
   const labelStyle = 'block text-[10px] font-black text-slate-400 uppercase tracking-[0.1em] text-center mb-1.5'
@@ -83,7 +89,7 @@ function EmployeeAuthForm({
       </h2>
       <p className="text-sm text-slate-400 font-bold mb-6 text-center">{description}</p>
 
-      <form action={dispatch} className="space-y-6">
+      <form action={dispatch} className="space-y-6" onSubmit={() => onAuthorizeStart?.()}>
         <input type="hidden" name="store_id" value={storeId} />
         {purpose && <input type="hidden" name="authorization_purpose" value={purpose} />}
         {authorizationContext && <input type="hidden" name="authorization_context" value={authorizationContext} />}
@@ -128,6 +134,8 @@ export default function EmployeeAuthModal({
   description = 'Insira seu PIN para confirmar o recebimento.',
   purpose,
   authorizationContext,
+  onAuthorizeStart,
+  onAuthorizeError,
 }: EmployeeAuthModalProps) {
   const [mounted, setMounted] = useState(false)
 
@@ -164,6 +172,8 @@ export default function EmployeeAuthModal({
           description={description}
           purpose={purpose}
           authorizationContext={authorizationContext}
+          onAuthorizeStart={onAuthorizeStart}
+          onAuthorizeError={onAuthorizeError}
         />
       </div>
     </div>,
