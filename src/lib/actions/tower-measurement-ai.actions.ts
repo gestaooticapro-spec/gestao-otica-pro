@@ -1,6 +1,7 @@
 'use server'
 
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import { OPENAI_VISION_MODEL } from '@/lib/openai-models'
 
 export type TowerAiPointKey =
   | 'calibA'
@@ -65,7 +66,6 @@ const GEMINI_KEYS = [
 
 const GEMINI_MODEL = 'gemini-2.5-flash'
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY
-const OPENAI_VISION_MODEL = process.env.OPENAI_VISION_MODEL || 'gpt-4.1-mini'
 
 export async function locateTowerMeasurementPointsWithAiAction(params: {
   dataUrl: string

@@ -1,6 +1,7 @@
 'use server'
 
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import { OPENAI_TEXT_MODEL, OPENAI_TEXT_FALLBACK_MODELS } from '@/lib/openai-models'
 import type { RecommendationCaseInput, RecommendationOption } from '@/lib/server/lens-recommendation'
 
 const GEMINI_KEYS = [
@@ -11,7 +12,6 @@ const GEMINI_KEYS = [
   process.env.GEMINI_SECRET_KEY_5,
 ].filter(Boolean) as string[]
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY
-const OPENAI_TEXT_MODEL = process.env.OPENAI_TEXT_MODEL || 'gpt-4.1-nano'
 const GLM_API_KEY = process.env.GLM_API_KEY
 const GLM_TEXT_MODEL = process.env.GLM_TEXT_MODEL || 'glm-4.7-flash'
 const GLM_API_BASE_URL = (process.env.GLM_API_BASE_URL || 'https://api.z.ai/api/paas/v4').replace(/\/$/, '')
@@ -383,13 +383,7 @@ async function generateWithOpenAI(
 
   const modelCandidates = Array.from(
     new Set(
-      [
-        OPENAI_TEXT_MODEL,
-        'gpt-4o-mini-2024-07-18',
-        'gpt-4o-mini',
-        'gpt-4.1-mini',
-        'gpt-4.1-nano',
-      ].filter(Boolean),
+      [OPENAI_TEXT_MODEL, ...OPENAI_TEXT_FALLBACK_MODELS].filter(Boolean),
     ),
   )
   const errors: string[] = []

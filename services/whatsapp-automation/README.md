@@ -12,7 +12,10 @@ o telefone recebido.
 - `EVOLUTION_API_KEY`: chave global da Evolution API.
 - `EVOLUTION_WEBHOOK_SECRET`: segredo exigido no webhook.
 - `PORT`: porta HTTP, padrão `8080`.
-- `WHATSAPP_RECONCILIATION_INTERVAL_MS`: intervalo da varredura que recupera evento perdido. O padrão do código e deste exemplo é `300000` (5 minutos). O webhook continua sendo o caminho principal. Se a variável existir no ambiente do processo, ela prevalece; o piso aplicado no código é `30000`.
+- `WHATSAPP_RECONCILIATION_INTERVAL_MS`: intervalo da varredura que recupera evento perdido. O padrão do código e deste exemplo é `1800000` (30 minutos). O webhook continua sendo o caminho principal. Se a variável existir no ambiente do processo, ela prevalece; o piso aplicado no código é `30000`.
+- `WHATSAPP_RECONCILIATION_LOOKBACK_MS`: quanto do histórico a varredura revisa. O padrão é `10800000` (3 horas), e o código nunca usa uma janela menor que o dobro do intervalo.
+- `WHATSAPP_WATCHDOG_INTERVAL_MS`: intervalo para perceber queda de conexão. O padrão é `300000` (5 minutos).
+- `WHATSAPP_ACTIVE_CHANNELS_REFRESH_MS`: intervalo para reler a lista de canais ativos. O padrão é `300000` (5 minutos).
 
 ## Webhook
 

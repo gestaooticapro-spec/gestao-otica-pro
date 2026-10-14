@@ -1,6 +1,7 @@
 'use server'
 
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import { OPENAI_TEXT_MODEL } from '@/lib/openai-models'
 import { enforceVisagismoNarrativeColorPolicy } from '@/lib/visagismo/color-recommendation-policy'
 import type { GlobalVisagismoFrameTemplate } from '@/lib/actions/visagismo.actions'
 import type { FaceAnalysisResult } from '@/lib/visagismo/face-analysis'
@@ -15,7 +16,6 @@ const GEMINI_KEYS = [
 ].filter(Boolean) as string[]
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY
-const OPENAI_TEXT_MODEL = process.env.OPENAI_TEXT_MODEL || 'gpt-4.1-nano'
 
 export type VisagismoNarrativeOption = {
   templateId: string

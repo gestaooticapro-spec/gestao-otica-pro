@@ -1,3 +1,4 @@
+import { WHATSAPP_OPENAI_ORDER_STATUS_MODEL } from '@/lib/openai-models'
 import { writeWhatsAppToolAgentReply, type WhatsAppToolAgentInput } from '../ai'
 import { completeVerifiedOrderNames, validateOrderAgentReply, type OpenOrderAgentFact } from '../order-status-agent'
 import {
@@ -213,7 +214,7 @@ export async function runStoreOneOrderStatusTurn(input: {
           statusText: order.statusText,
         })),
       },
-    }, agent.toolResults, { model: 'gpt-4.1-mini' })
+    }, agent.toolResults, { model: WHATSAPP_OPENAI_ORDER_STATUS_MODEL })
     agent.aiResults.push(revision)
     agent.aiResultTasks.push('tool_agent_reply')
     const revisionDisposition: StoreOneOrderDisposition = revision.success

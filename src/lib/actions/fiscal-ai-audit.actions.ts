@@ -1,5 +1,6 @@
 "use server";
 
+import { OPENAI_TEXT_MODEL } from "@/lib/openai-models";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isStoreModuleEnabledForStore } from "@/lib/store-modules.server";
@@ -108,7 +109,7 @@ async function auditWithOpenAI(prompt: string) {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) throw new Error("OPENAI_API_KEY nao configurada.");
 
-    const model = process.env.OPENAI_TEXT_MODEL || "gpt-4.1-nano";
+    const model = OPENAI_TEXT_MODEL;
     const responsesResult = await fetch("https://api.openai.com/v1/responses", {
         method: "POST",
         headers: {

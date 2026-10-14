@@ -8,8 +8,7 @@ type BrowserAudioContext = AudioContext & { state: AudioContextState }
 export const WHATSAPP_SOUND_ALERT_CHANGED = 'whatsapp-local-sound-alert-change'
 // Desativação emergencial temporária; voltar para false após a janela de risco.
 const TEMPORARILY_DISABLE_WHATSAPP_SOUND_ALERT = false
-const VISIBLE_POLL_INTERVAL_MS = 30_000
-const HIDDEN_POLL_INTERVAL_MS = 120_000
+const VISIBLE_POLL_INTERVAL_MS = 180_000
 
 export function whatsappSoundAlertStorageKey(storeId: number) {
   return `whatsapp-local-sound-alert:${storeId}`
@@ -97,6 +96,7 @@ export default function WhatsAppSoundAlertMonitor({ storeId }: { storeId: number
       return
     }
 
+    if (visibilityState !== 'visible') return
     if (!audioContextRef.current) audioContextRef.current = createBrowserAudioContext()
 
     let cancelled = false
@@ -123,10 +123,7 @@ export default function WhatsAppSoundAlertMonitor({ storeId }: { storeId: number
     }
 
     void checkForNewMessage()
-    const timer = window.setInterval(
-      checkForNewMessage,
-      visibilityState === 'visible' ? VISIBLE_POLL_INTERVAL_MS : HIDDEN_POLL_INTERVAL_MS,
-    )
+    const timer = window.setInterval(checkForNewMessage, VISIBLE_POLL_INTERVAL_MS)
     return () => {
       cancelled = true
       window.clearInterval(timer)

@@ -54,7 +54,13 @@ function asJson(value: unknown): Json {
 }
 
 export class WhatsAppRedesignConversationStore {
+  private readonly equivalentConversations = new Map<string, ConversationRow[]>()
+
   constructor(private readonly client: RedesignStoreClient = createAdminClient()) {}
+
+  private equivalentKey(channelId: number, remotePhone: string) {
+    return `${channelId}:${remotePhone}`
+  }
 
   async getOrCreateConversation(identityInput: WhatsAppConversationIdentity): Promise<ConversationRow> {
     const identity = WhatsAppConversationIdentitySchema.parse(identityInput)
@@ -68,6 +74,7 @@ export class WhatsAppRedesignConversationStore {
         .select('*')
         .single()
       if (updateError) throw updateError
+      this.equivalentConversations.delete(this.equivalentKey(identity.channelId, identity.remotePhone))
       return updated
     }
 
@@ -85,9 +92,13 @@ export class WhatsAppRedesignConversationStore {
       .select('*')
       .single()
 
-    if (!error && data) return data
+    if (!error && data) {
+      this.equivalentConversations.set(this.equivalentKey(identity.channelId, identity.remotePhone), [data])
+      return data
+    }
     if (error?.code !== '23505') throw error
 
+    this.equivalentConversations.delete(this.equivalentKey(identity.channelId, identity.remotePhone))
     const concurrent = await this.findConversation(identity.channelId, identity.remotePhone)
     if (!concurrent) throw new Error('A conversa foi criada em paralelo, mas nao foi localizada.')
     return concurrent
@@ -573,6 +584,10 @@ export class WhatsAppRedesignConversationStore {
   }
 
   private async findEquivalentConversations(channelId: number, remotePhone: string): Promise<ConversationRow[]> {
+    const cacheKey = this.equivalentKey(channelId, remotePhone)
+    const cached = this.equivalentConversations.get(cacheKey)
+    if (cached) return cached
+
     const variants = [...getPhoneVariants(remotePhone)]
     if (!variants.length) return []
     const { data, error } = await (this.client
@@ -582,8 +597,10 @@ export class WhatsAppRedesignConversationStore {
       .in('remote_phone', variants)
 
     if (error) throw error
-    return ((data ?? []) as ConversationRow[])
+    const rows = ((data ?? []) as ConversationRow[])
       .filter((row) => phonesMatch(row.remote_phone, remotePhone))
       .sort((left, right) => Date.parse(right.updated_at) - Date.parse(left.updated_at))
+    if (rows.length) this.equivalentConversations.set(cacheKey, rows)
+    return rows
   }
 }

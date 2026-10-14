@@ -9,6 +9,10 @@ export type Release = {
 // altera o Dashboard ou o modal de histórico.
 export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'O aviso sonoro de nova mensagem do WhatsApp toca em ate tres minutos e somente com a aba do sistema visivel. A mensagem continua gravada na hora.',
+  'A queda de conexao do WhatsApp passa a ser percebida em cerca de cinco minutos.',
+  'Uma mudanca na configuracao do WhatsApp da loja ou do canal pode levar ate um minuto para valer no atendimento.',
+  'As analises e respostas da IA passam a respeitar os modelos configurados em todos os fluxos, incluindo medidas, consulta de OS e leitura diaria da loja.',
   'O recibo em PDF enviado pelo WhatsApp mostra o valor total que o cliente entregou, tambem quando esse recebimento quita mais de uma parcela.',
   'A reimpressao do recibo de parcela mostra o valor total recebido quando esse pagamento quita mais de uma parcela.',
   'O botão Reimprimir Recibo da parcela carimba o recibo como reimpressão. O recibo aberto automaticamente na baixa continua sem esse carimbo.',
@@ -34,7 +38,7 @@ export const PENDING_RELEASE_CHANGES: readonly string[] = [
   'O botao das parcelas exibe Receber parcela nas lojas, oferece baixa manual ou Pix nas lojas habilitadas e preserva a consulta de cobrancas Pix existentes.',
   'A renegociacao de carne em vendas abertas permite reduzir o saldo parcelado e receber a diferenca como entrada, preservando os pagamentos anteriores.',
   'O texto de Visagismo explica somente os formatos e as proporcoes das armacoes, sem recomendacoes de cores.',
-  'Mensagens de WhatsApp que o webhook nao entregar passam a ser recuperadas em cerca de cinco minutos.',
+  'Mensagens de WhatsApp que o webhook nao entregar passam a ser recuperadas em cerca de trinta minutos, revisando as ultimas tres horas.',
   'Lembretes de parcela e pos-venda enviados pelo sistema retomam a conversa apos uma pausa humana anterior, mantem a memoria de assuntos anteriores e reconhecem agradecimentos ligados ao lembrete mais recente sem confundi-los com outras conversas.',
   'No WhatsApp da Loja 1, respostas de OS sem previsao oficial deixam de prometer retirada ou recomendar novo contato; o envio concorrente da mesma resposta e bloqueado, e o caminho do atendimento ganha rastreamento sem dados pessoais.',
   'No pos-venda da Loja 1, respostas como "minha nota e 5" encerram a avaliacao com confirmacao contextual; agradecimentos e mudancas de assunto preservam a nota pendente sem repetir a pergunta.',

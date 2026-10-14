@@ -249,3 +249,26 @@ casuais como so falta pagar continuam o acompanhamento e pedem nota de 1 a 5.
 Perguntas financeiras reais seguem o fluxo proprio; comentarios nao afirmam
 divida, quitacao nem fatura de cartao. A resposta especializada identifica a
 IAra quando ela ainda nao se apresentou no historico recente.
+
+## Configuracao dos modelos OpenAI
+
+O backend centraliza os modelos em `src/lib/openai-models.ts`.
+`OPENAI_TEXT_MODEL` define o modelo geral; `WHATSAPP_AI_OPENAI_MODEL`
+define o modelo geral do WhatsApp e herda o primeiro quando vazio.
+As variaveis opcionais abaixo sobrescrevem somente sua tarefa:
+
+- `OPENAI_VISION_MODEL`: localizacao de pontos nas fotos de medidas.
+- `DAILY_STORE_HEALTH_OPENAI_MODEL`: leitura diaria da loja.
+- `WHATSAPP_AI_OPENAI_ORDER_HANDOFF_MODEL`: texto de encaminhamento humano.
+- `WHATSAPP_AI_OPENAI_CLASSIFICATION_MODEL`: classificacao do redesign da Loja 1.
+- `WHATSAPP_AI_OPENAI_ORDER_STATUS_MODEL`: resposta e revisao de consulta de OS.
+
+Quando vazias, as variaveis de tarefa herdam o modelo geral correspondente.
+`OPENAI_TEXT_FALLBACK_MODELS` aceita alternativas para narrativas, separadas por
+virgula e tentadas em ordem depois do modelo principal. Quando vazia, nenhuma
+alternativa de modelo e acrescentada. A lista nao inclui modelos antigos fixos.
+
+Configure os valores em `.env.local` para desenvolvimento e nas variaveis de
+ambiente do projeto Vercel para producao. Reinicie o backend local ou publique
+um novo deploy para carregar os valores. Essa configuracao pertence ao backend
+MB Optical; o Electron instalado acessa o backend publicado.

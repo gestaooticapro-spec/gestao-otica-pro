@@ -1,3 +1,4 @@
+import { WHATSAPP_OPENAI_ORDER_STATUS_MODEL } from '@/lib/openai-models'
 import { postSaleFeedbackContinuation, needsPostSaleIaraIntroduction } from './post-sale-feedback-continuation'
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -1608,7 +1609,13 @@ async function loadPersistentPostSaleMemory(channel: ChannelRow, phone: string):
   }
 }
 
+const ACTIVE_CHANNEL_CACHE_MS = 60_000
+const activeChannelCache = new Map<string, { at: number, channel: ChannelRow | null }>()
+
 async function findActiveChannel(instanceKey: string): Promise<ChannelRow | null> {
+  const cached = activeChannelCache.get(instanceKey)
+  if (cached && Date.now() - cached.at < ACTIVE_CHANNEL_CACHE_MS) return cached.channel
+
   const supabase = createAdminClient()
   const { data, error } = await (supabase.from('whatsapp_store_channels') as any)
     .select('id, tenant_id, store_id, instance_key, phone_number, is_active')
@@ -1618,7 +1625,9 @@ async function findActiveChannel(instanceKey: string): Promise<ChannelRow | null
     .maybeSingle()
 
   if (error) throw error
-  return data ?? null
+  const channel = data ?? null
+  activeChannelCache.set(instanceKey, { at: Date.now(), channel })
+  return channel
 }
 
 async function findCustomerByPhone(storeId: number, phone: string): Promise<CustomerRow | null> {
@@ -1938,20 +1947,13 @@ async function findStoreOneOpenOsBySenderIdentifier(
   return findOpenOsByOrderNumberOnly(1, explicitNumber ? `OS ${explicitNumber}` : message, customer.id)
 }
 
-async function loadStoreWhatsAppSettings(storeId: number) {
-  const supabase = createAdminClient()
-  const { data, error } = await (supabase.from('stores') as any)
-    .select('settings')
-    .eq('id', storeId)
-    .single()
-
-  if (error) throw error
-
-  const settings = ((data?.settings || {}) as StoreSettings) || {}
-  return settings.whatsapp_automation
-}
+const STORE_PROFILE_CACHE_MS = 60_000
+const storeProfileCache = new Map<number, { at: number, profile: StoreProfileRow }>()
 
 async function loadStoreProfile(storeId: number): Promise<StoreProfileRow> {
+  const cached = storeProfileCache.get(storeId)
+  if (cached && Date.now() - cached.at < STORE_PROFILE_CACHE_MS) return cached.profile
+
   const supabase = createAdminClient()
   const { data, error } = await (supabase.from('stores') as any)
     .select('id, name, razao_social, whatsapp, phone, street, number, neighborhood, city, state, settings, pix_key, pix_city')
@@ -1959,7 +1961,15 @@ async function loadStoreProfile(storeId: number): Promise<StoreProfileRow> {
     .single()
 
   if (error) throw error
-  return data as StoreProfileRow
+  const profile = data as StoreProfileRow
+  storeProfileCache.set(storeId, { at: Date.now(), profile })
+  return profile
+}
+
+async function loadStoreWhatsAppSettings(storeId: number) {
+  const profile = await loadStoreProfile(storeId)
+  const settings = ((profile.settings || {}) as StoreSettings) || {}
+  return settings.whatsapp_automation
 }
 
 function isWhatsAppAutomationEnabled(settings: StoreSettings['whatsapp_automation'] | undefined) {
@@ -3192,7 +3202,7 @@ async function resolveCustomerStatusInternal(
     ? buildWhatsAppStatusContextLine(statusPublication)
     : null
   const option = optionFromMessage(effectiveMessageText || undefined)
-  let state = await findConversationState(channel.id, normalizedPhone)
+  let state = preferenceState
   const controlMode = await loadCustomerControlMode(channel.id, normalizedPhone)
   state = await normalizeLoadedHumanControlState({
     channel,
@@ -4377,7 +4387,7 @@ async function resolveCustomerStatusInternal(
       },
       executeLookup: executeOrderLookup,
       writeReply: (assistant, results, options) => writeWhatsAppToolAgentReply(
-        assistant, results, { ...options, model: 'gpt-4.1-mini' }
+        assistant, results, { ...options, model: WHATSAPP_OPENAI_ORDER_STATUS_MODEL }
       ),
     })
     for (let index = 0; index < agent.aiResults.length; index += 1) {

@@ -1,5 +1,10 @@
 import { z } from 'zod'
 import {
+  WHATSAPP_OPENAI_MODEL as OPENAI_MODEL,
+  WHATSAPP_OPENAI_ORDER_HANDOFF_MODEL as OPENAI_ORDER_HANDOFF_MODEL,
+  WHATSAPP_OPENAI_CLASSIFICATION_MODEL,
+} from '@/lib/openai-models'
+import {
   WhatsAppRedesignClassificationSchema,
   type WhatsAppConversationMemory,
   type WhatsAppConversationMessage,
@@ -12,8 +17,6 @@ const OPENAI_KEYS = [
   process.env.OPENAI_API_KEY,
 ].filter(Boolean) as string[]
 
-const OPENAI_MODEL = process.env.WHATSAPP_AI_OPENAI_MODEL || process.env.OPENAI_TEXT_MODEL || 'gpt-4.1-nano'
-const OPENAI_ORDER_HANDOFF_MODEL = process.env.WHATSAPP_AI_OPENAI_ORDER_HANDOFF_MODEL || 'gpt-4.1-mini'
 const REQUEST_TIMEOUT_MS = Number(process.env.WHATSAPP_AI_TIMEOUT_MS || 20000)
 
 const WHATSAPP_TOOL_AGENT_REPLY_JSON_SCHEMA = {
@@ -1055,7 +1058,7 @@ export async function classifyWhatsAppRedesignConversation(
     'redesign_classification',
     buildRedesignClassificationPrompt(input),
     WhatsAppRedesignClassificationSchema,
-    input.storeId === 1 ? 'gpt-4.1-mini' : undefined
+    input.storeId === 1 ? WHATSAPP_OPENAI_CLASSIFICATION_MODEL : undefined
   )
 }
 

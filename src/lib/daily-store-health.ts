@@ -1,3 +1,4 @@
+import { DAILY_STORE_HEALTH_OPENAI_MODEL } from '@/lib/openai-models'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isDailyHealthPaused } from '@/lib/daily-health-pause'
 import { getWhatsAppPendencias } from '@/lib/actions/consultas.actions'
@@ -1198,7 +1199,7 @@ async function createNarrative(metrics: DailyHealthMetrics, alerts: DailyHealthA
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'gpt-4.1-mini',
+        model: DAILY_STORE_HEALTH_OPENAI_MODEL,
         instructions: primaryAlerts.length
           ? `Inclua obrigatoriamente a propriedade JSON headline com uma única frase curta, em português brasileiro natural, com acentuação correta, tom humano e saudação inicial. Termine com “Veja mais detalhes abaixo.”. Cite exclusivamente estes alertas principais: ${primaryAlerts.map((alert) => `id=${alert.id}; titulo=${alert.title}; detalhe=${alert.detail}`).join(' | ')}. Para CADA alerta, mantenha na frase a quantidade exata e o problema concreto; não resuma como “alertas sobre montagem”, “parcelas” ou “cadastros”. Exemplo de densidade esperada: “2 óculos aguardam montagem há mais de 24 horas, 55 parcelas vencidas e 569 clientes parecem estar duplicados.” Reescreva os títulos técnicos em uma frase humana, sem copiar literalmente grafias sem acento. Não inclua recomendação, causa ou número que não esteja nesses fatos.`
           : 'Inclua obrigatoriamente a propriedade JSON headline com a frase: Olá. Nenhum ponto crítico foi identificado na última varredura.',

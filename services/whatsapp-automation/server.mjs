@@ -23,14 +23,17 @@ const MAX_INBOUND_VISION_BYTES = 3 * 1024 * 1024
 // A lista vem dos canais ativos do app; uma desconexao voluntaria desativa o
 // canal e o retira automaticamente do monitoramento.
 const WATCHDOG_ENABLED = process.env.WHATSAPP_WATCHDOG_ENABLED !== 'false'
-const WATCHDOG_INTERVAL_MS = Math.max(30000, Number(process.env.WHATSAPP_WATCHDOG_INTERVAL_MS || 60000))
+// 5 minutos. Uma queda curta continua sendo recuperada pela reconciliacao.
+const WATCHDOG_INTERVAL_MS = Math.max(30000, Number(process.env.WHATSAPP_WATCHDOG_INTERVAL_MS || 300000))
 const WATCHDOG_RESTART_COOLDOWN_MS = Math.max(60000, Number(process.env.WHATSAPP_WATCHDOG_RESTART_COOLDOWN_MS || 300000))
 const RECONCILIATION_ENABLED = process.env.WHATSAPP_RECONCILIATION_ENABLED !== 'false'
 // Rede de seguranca para evento perdido. O webhook continua imediato.
-// WHATSAPP_RECONCILIATION_INTERVAL_MS substitui este padrao; o piso segue 30s.
-const RECONCILIATION_INTERVAL_MS = Math.max(30000, Number(process.env.WHATSAPP_RECONCILIATION_INTERVAL_MS || 300000))
-const RECONCILIATION_LOOKBACK_MS = Math.max(60000, Number(process.env.WHATSAPP_RECONCILIATION_LOOKBACK_MS || 24 * 60 * 60 * 1000))
-const ACTIVE_CHANNELS_REFRESH_MS = Math.max(30000, Number(process.env.WHATSAPP_ACTIVE_CHANNELS_REFRESH_MS || 60000))
+// Padrao: a cada 30 minutos, olhando as ultimas 3 horas. A janela minima e o
+// dobro do intervalo, para uma mensagem nao cair fora da varredura.
+// WHATSAPP_RECONCILIATION_INTERVAL_MS substitui o intervalo; o piso segue 30s.
+const RECONCILIATION_INTERVAL_MS = Math.max(30000, Number(process.env.WHATSAPP_RECONCILIATION_INTERVAL_MS || 1800000))
+const RECONCILIATION_LOOKBACK_MS = Math.max(RECONCILIATION_INTERVAL_MS * 2, 60000, Number(process.env.WHATSAPP_RECONCILIATION_LOOKBACK_MS || 10800000))
+const ACTIVE_CHANNELS_REFRESH_MS = Math.max(30000, Number(process.env.WHATSAPP_ACTIVE_CHANNELS_REFRESH_MS || 300000))
 const INBOUND_FORWARD_RETRY_ATTEMPTS = Math.max(1, Number(process.env.WHATSAPP_INBOUND_FORWARD_RETRY_ATTEMPTS || 5))
 const INBOUND_FORWARD_RETRY_BASE_MS = Math.max(1000, Number(process.env.WHATSAPP_INBOUND_FORWARD_RETRY_BASE_MS || 5000))
 const WEBHOOK_REPLAY_MAX_AGE_MS = Math.max(60000, Number(process.env.WHATSAPP_WEBHOOK_REPLAY_MAX_AGE_MS || 15 * 60 * 1000))
@@ -482,6 +485,39 @@ async function processInboundWithRetry(instanceKey, inbound, payload, source = '
   let lastError = null
 
   for (let attempt = 1; attempt <= INBOUND_FORWARD_RETRY_ATTEMPTS; attempt += 1) {
+    if (attempt > 1) {
+      let outboundAlreadySaved = false
+      try {
+        const existing = await appRequest('/api/whatsapp/pending-reply', {
+          instanceKey,
+          providerMessageId: inbound.providerMessageId,
+        }, 10000)
+        if (existing.shouldReply) {
+          outboundAlreadySaved = true
+          const delivered = await deliverPendingReply(instanceKey, existing)
+          await auditWebhookEvent(instanceKey, inbound, source, 'forwarded')
+          rememberProviderMessage(instanceKey, inbound.providerMessageId)
+          if (delivered.skipped) return { ignored: true, duplicate: true, reason: 'outbound_already_claimed' }
+          return { sent: true, providerMessageId: delivered.providerMessageId, deliverySynced: delivered.deliverySynced }
+        }
+        if (existing.terminalFailure) {
+          throw new Error(`Existing outbound ${existing.outboundMessageId} is ${existing.outboundStatus}: ${existing.errorMessage || 'delivery not recoverable automatically'}`)
+        }
+      } catch (error) {
+        if (String(error?.message || error).includes('Existing outbound')) throw error
+        console.error(`[webhook] pending reply check before retry failed attempt=${attempt}:`, error)
+        // A resposta ja gravada nao pode reentrar no atendimento. Uma falha
+        // so da consulta de pendencia continua para o fluxo normal.
+        if (outboundAlreadySaved) {
+          lastError = error
+          if (attempt < INBOUND_FORWARD_RETRY_ATTEMPTS) {
+            await wait(INBOUND_FORWARD_RETRY_BASE_MS * attempt)
+          }
+          continue
+        }
+      }
+    }
+
     try {
       const result = await processInbound(instanceKey, inbound, payload)
       await auditWebhookEvent(instanceKey, inbound, source, 'forwarded')
