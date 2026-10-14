@@ -20,6 +20,7 @@ import {
 import { getReceiptReversalMetadata } from '@/lib/installment-reversal.server'
 import { closeOpenServiceOrdersForVenda } from '@/lib/actions/service-order-cancellation.actions'
 import { getInstallmentOutstanding } from '@/lib/installment-balance'
+import { shouldStampGroupedReceipt } from '@/lib/receipt-reprint'
 import { isSicrediPilotStoreCnpj } from '@/lib/pix/sicredi-availability'
 import { documentDigits } from '@/lib/customer-document'
 import { randomUUID, createHash } from 'node:crypto'
@@ -4562,6 +4563,17 @@ export async function getCustomerPrescriptionHistory(
 // ================================================================
 // 27. ACTION: MARCAR PAGAMENTOS COMO IMPRESSOS
 // ================================================================
+export async function shouldStampReceiptReprint(paymentIds: number[]): Promise<boolean> {
+  const ids = paymentIds.filter((id) => Number.isInteger(id) && id > 0)
+  if (ids.length === 0) return false
+  const supabaseAdmin = createAdminClient()
+  const { data, error } = await (supabaseAdmin.from('pagamentos') as any)
+    .select('parcela_id, receipt_printed_at')
+    .in('id', ids)
+  if (error) throw error
+  return shouldStampGroupedReceipt(data || [])
+}
+
 export async function markPaymentsAsPrinted(
   paymentIds: number[]
 ): Promise<{ success: boolean }> {

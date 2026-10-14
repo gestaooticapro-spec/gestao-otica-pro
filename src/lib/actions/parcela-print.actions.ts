@@ -1,6 +1,38 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { printedReceiptPaymentIds } from '@/lib/printed-receipt-payments'
+
+export async function getReceiptPrintPaymentIds(installmentId: number): Promise<number[]> {
+  const supabase = createAdminClient()
+  const { data: installmentPayments, error } = await (supabase.from('pagamentos') as any)
+    .select('id, receipt_operation_id, created_at')
+    .eq('parcela_id', installmentId)
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
+
+  if (error) throw error
+
+  const latestPayment = installmentPayments?.[installmentPayments.length - 1]
+  const operationId = latestPayment?.receipt_operation_id == null
+    ? null
+    : Number(latestPayment.receipt_operation_id)
+  let operationPayments: Array<{ id: number }> | null = null
+
+  if (operationId) {
+    const { data, error: operationError } = await (supabase.from('pagamentos') as any)
+      .select('id')
+      .eq('receipt_operation_id', operationId)
+      .order('id', { ascending: true })
+    if (operationError) throw operationError
+    operationPayments = data || []
+  }
+
+  return printedReceiptPaymentIds({
+    installmentPayments: installmentPayments || [],
+    operationPayments,
+  })
+}
 
 export async function getDadosReciboParcela(parcelaId: number) {
   // Usamos AdminClient para garantir acesso aos dados (Bypass RLS)

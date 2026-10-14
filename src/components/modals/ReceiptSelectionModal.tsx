@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { X, Printer, CheckSquare, Square, Loader2 } from 'lucide-react'
 import { Database } from '@/lib/database.types'
 import { markPaymentsAsPrinted } from '@/lib/actions/vendas.actions'
+import { shouldStampGroupedReceipt } from '@/lib/receipt-reprint'
 
 type Pagamento = Database['public']['Tables']['pagamentos']['Row']
 
@@ -49,10 +50,8 @@ export default function ReceiptSelectionModal({ isOpen, onClose, pagamentos, onR
         setIsProcessing(true)
         try {
             const idsString = selectedIds.join('-')
-            // Checa ANTES de marcar se já foi impresso alguma vez, para passar o param correto
             const selectedPagamentos = pagamentos.filter(p => selectedIds.includes(p.id))
-            const wasAlreadyPrinted = selectedPagamentos.some(p => p.receipt_printed_at)
-            const reprintParam = wasAlreadyPrinted ? '&reprint=true' : ''
+            const reprintParam = shouldStampGroupedReceipt(selectedPagamentos) ? '&reprint=true' : ''
             const allSelectedAreInstallments = selectedPagamentos.length > 0 && selectedPagamentos.every(p => p.parcela_id != null)
             const installmentReceiptParam = allSelectedAreInstallments ? '&installment_receipt=true' : ''
             window.open(`/print/recibo/${idsString}?t=${Date.now()}${reprintParam}${installmentReceiptParam}`, '_blank')

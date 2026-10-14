@@ -1,4 +1,5 @@
 import { Database } from '@/lib/database.types'
+import type { CarneReceiptSummary } from '@/lib/carne-receipt-summary'
 
 type Pagamento = Database['public']['Tables']['pagamentos']['Row']
 type Venda = Database['public']['Tables']['vendas']['Row']
@@ -17,6 +18,7 @@ interface ReceiptData {
         dataVencimento: string
     } | null
     hasInstallmentAmounts?: boolean
+    carneSummary?: CarneReceiptSummary | null
 }
 
 // --- AJUSTE FINO (Edite aqui se precisar mover tudo) ---
@@ -55,7 +57,7 @@ const Y_PIX = 96 + OFFSET_Y
 const formatMoney = (val: number) => val.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
 
 function Via({ data, isSegundaVia }: { data: ReceiptData, isSegundaVia: boolean }) {
-    const { pagamentos, cliente, isReprint, parcelaInfo, hasInstallmentAmounts } = data
+    const { pagamentos, cliente, isReprint, parcelaInfo, hasInstallmentAmounts, carneSummary } = data
     const valorTotalRecibo = pagamentos.reduce((acc, p) => acc + p.valor_pago, 0)
     
     // Data mais recente
@@ -136,6 +138,14 @@ function Via({ data, isSegundaVia }: { data: ReceiptData, isSegundaVia: boolean 
             <div style={getStyle(DATA_Y, DATA_X + 14)}>{mes}</div>
             <div style={getStyle(DATA_Y, DATA_X + 22)}>{ano}</div>
 
+            {carneSummary && (
+                <div style={getStyle(DATA_Y + 5.5, DATA_X, { width: '48mm', fontSize: '12px', lineHeight: '1.2' })}>
+                    <div>Valor do contrato: {formatMoney(carneSummary.contractAmount)}</div>
+                    <div>Valor pago: {formatMoney(carneSummary.paidAmount)}</div>
+                    <div>Ainda falta: {formatMoney(carneSummary.remainingAmount)}</div>
+                </div>
+            )}
+
             {/* 3. VALOR TOTAL NUMERICO */}
             <div style={getStyle(VALOR_NUMERICO_Y, VALOR_NUMERICO_X)}>
                 {formatMoney(valorTotalRecibo)}
@@ -147,7 +157,7 @@ function Via({ data, isSegundaVia }: { data: ReceiptData, isSegundaVia: boolean 
             </div>
 
             {/* 5. OBSERVAÇÕES */}
-            <div style={getStyle(OBS_Y, OBS_X, { width: '45mm', fontSize: '13px', lineHeight: '1.2' })}>
+            <div style={getStyle(carneSummary ? OBS_Y + 20 : OBS_Y, OBS_X, { width: '45mm', fontSize: '13px', lineHeight: '1.2' })}>
                 {obsTexto}
                 {hasInstallmentAmounts && (
                     <div style={{ marginTop: '2mm' }}>{rastreabilidadeTexto}</div>

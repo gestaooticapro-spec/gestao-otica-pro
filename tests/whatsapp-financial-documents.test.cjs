@@ -138,3 +138,24 @@ test('receipt PDFs preserve the allocation amounts of the current payment', asyn
     saveQa(`recibo-${amount}.pdf`, buffer)
   }
 })
+
+test('installment receipt PDFs include the contract summary inside the existing page', async () => {
+  const buffer = await generateInstallmentReceiptPDF({
+    customerName: data.customerName,
+    installmentNumber: 2,
+    totalInstallments: 5,
+    amount: 292,
+    dueDate: '2026-09-12',
+    paymentDate: '2026-10-14',
+    contractSummary: { contractAmount: 730, paidAmount: 292, remainingAmount: 438 },
+    store,
+  })
+  const text = await pdfText(buffer)
+  assert.match(text, /Contrato/)
+  assert.match(text, /R\$ 730,00/)
+  assert.match(text, /Pago/)
+  assert.match(text, /R\$ 292,00/)
+  assert.match(text, /Falta/)
+  assert.match(text, /R\$ 438,00/)
+  saveQa('recibo-resumo-carne.pdf', buffer)
+})

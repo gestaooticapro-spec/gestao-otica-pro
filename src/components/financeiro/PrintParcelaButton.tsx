@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Printer, Loader2 } from 'lucide-react'
 import jsPDF from 'jspdf'
-import { getDadosReciboParcela } from '@/lib/actions/parcela-print.actions'
+import { getDadosReciboParcela, getReceiptPrintPaymentIds } from '@/lib/actions/parcela-print.actions'
 
 const COORDS = {
   NOME: { x: 144, y: 56 },
@@ -16,7 +16,19 @@ const COORDS = {
   REIMPRESSAO: { x: 144, y: 50 }
 }
 
-export async function printParcela(parcelaId: number): Promise<void> {
+export async function printParcela(parcelaId: number, knownPaymentIds?: number[], options?: { reprint?: boolean }): Promise<void> {
+  const reprint = options?.reprint === true
+  const suppliedPaymentIds = (knownPaymentIds || []).filter((id) => Number.isInteger(id) && id > 0)
+  const paymentIds = suppliedPaymentIds.length > 0
+    ? suppliedPaymentIds
+    : await getReceiptPrintPaymentIds(parcelaId)
+
+  if (paymentIds.length > 0) {
+    const reprintParam = reprint ? '&reprint=true' : ''
+    window.open(`/print/recibo/${paymentIds.join('-')}?t=${Date.now()}${reprintParam}`, '_blank')
+    return
+  }
+
   const { success, data, error } = await getDadosReciboParcela(parcelaId)
 
   if (!success || !data) {
@@ -37,7 +49,7 @@ export async function printParcela(parcelaId: number): Promise<void> {
   const vencimentoTexto = dtVenc.toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: '2-digit', year: '2-digit' })
 
   const desenharPagina = () => {
-    if (data.is_reimpressao) {
+    if (data.is_reimpressao || reprint) {
       doc.text('*** REIMPRESSÃO ***', COORDS.REIMPRESSAO.x, COORDS.REIMPRESSAO.y)
     }
     doc.text(`${data.num_parcela}/${data.total_parcelas}`, COORDS.NUM_PARCELA.x, COORDS.NUM_PARCELA.y)

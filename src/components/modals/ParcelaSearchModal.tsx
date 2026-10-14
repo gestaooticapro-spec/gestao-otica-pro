@@ -128,6 +128,7 @@ export default function ParcelaSearchModal({
     const [selectedClientData, setSelectedClientData] = useState<any>(null)
     const [selectedParcela, setSelectedParcela] = useState<any>(null)
     const [paidParcelaIds, setPaidParcelaIds] = useState<number[]>([])
+    const [paidPaymentIds, setPaidPaymentIds] = useState<number[]>([])
     const [paidReceiptOperationId, setPaidReceiptOperationId] = useState<number | null>(null)
 
     const [valorTotalPagoStr, setValorTotalPagoStr] = useState('')
@@ -220,6 +221,7 @@ export default function ParcelaSearchModal({
             setNextCursor(null)
             setSearchError('')
             setPaidParcelaIds([])
+            setPaidPaymentIds([])
             setPaidReceiptOperationId(null)
             setIsSendingReceipt(false)
             setReceiptSent(false)
@@ -431,7 +433,11 @@ export default function ParcelaSearchModal({
                     const receiptInstallmentIds = Array.isArray((res as any).receipt_installment_ids)
                         ? (res as any).receipt_installment_ids.filter((id: unknown): id is number => typeof id === 'number')
                         : [parcelaId]
+                    const paymentIds = Array.isArray((res as any).payment_ids)
+                        ? (res as any).payment_ids.filter((id: unknown): id is number => typeof id === 'number')
+                        : []
                     setPaidParcelaIds(receiptInstallmentIds)
+                    setPaidPaymentIds(paymentIds)
                     setPaidReceiptOperationId(res.receipt_operation_id || null)
                     setStep('success')
                     await onPaymentRecorded?.()
@@ -441,9 +447,6 @@ export default function ParcelaSearchModal({
                     router.refresh()
                     window.dispatchEvent(new Event('installment-payment-recorded'))
                     setIsPrinting(true)
-                    const paymentIds = Array.isArray((res as any).payment_ids)
-                        ? (res as any).payment_ids.filter((id: unknown): id is number => typeof id === 'number')
-                        : []
                     if (paymentIds.length > 0) {
                         window.open(`/print/recibo/${paymentIds.join('-')}?t=${Date.now()}`, '_blank')
                     } else {
@@ -780,7 +783,7 @@ export default function ParcelaSearchModal({
                                                 {isSendingReceipt ? 'Enviando PDF...' : receiptSent ? 'Recibo enviado' : 'Enviar recibo por WhatsApp'}
                                             </button>
                                             <button
-                                                onClick={() => { setIsPrinting(true); printParcela(paidParcelaIds[0]).catch(console.error).finally(() => setIsPrinting(false)) }}
+                                                onClick={() => { setIsPrinting(true); printParcela(paidParcelaIds[0], paidPaymentIds, { reprint: true }).catch(console.error).finally(() => setIsPrinting(false)) }}
                                                 disabled={isPrinting || isSendingReceipt}
                                                 className="w-full py-3 text-slate-500 font-bold hover:bg-white/5 hover:text-slate-300 rounded-xl transition-colors flex items-center justify-center gap-2 text-sm"
                                             >

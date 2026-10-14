@@ -12,6 +12,7 @@ import {
     criarVendaParcialCarnê,
     searchCustomersByName,
     markPaymentsAsPrinted,
+    shouldStampReceiptReprint,
     type CustomerSearchResult
 } from '@/lib/actions/vendas.actions'
 import { getSaleData } from '@/lib/actions/fiscal-db.actions'
@@ -91,7 +92,9 @@ export default function PaymentModal({
 
     const triggerPrint = async (pagamentoId: number): Promise<boolean> => {
         try {
-            window.open(`/print/recibo/${pagamentoId}?t=${Date.now()}`, '_blank')
+            const reprint = await shouldStampReceiptReprint([pagamentoId])
+            const reprintParam = reprint ? '&reprint=true' : ''
+            window.open(`/print/recibo/${pagamentoId}?t=${Date.now()}${reprintParam}`, '_blank')
             await markPaymentsAsPrinted([pagamentoId])
             return true
         } catch (err) {

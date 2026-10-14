@@ -21,6 +21,7 @@ import {
   getCustomerPrescriptionSummary,
 } from '@/lib/actions/customer-history.actions'
 import { installmentReceiptAmount } from '@/lib/installment-receipt-amount'
+import { buildCarneReceiptSummary } from '@/lib/carne-receipt-summary'
 
 const ALLOWED_ROLES = ['admin', 'manager', 'store_operator', 'vendedor', 'tecnico']
 
@@ -930,7 +931,7 @@ export async function sendInstallmentReceiptWhatsApp(input: SendInstallmentRecei
 
     const [{ data: financing, error: financingError }, { count: totalInstallments, error: countError }] = await Promise.all([
       (supabaseAdmin.from('financiamento_loja') as any)
-        .select('id, venda_id, customer_id')
+        .select('id, venda_id, customer_id, valor_total_financiado')
         .eq('id', installment.financiamento_id)
         .eq('store_id', storeId)
         .maybeSingle(),
@@ -1029,6 +1030,16 @@ export async function sendInstallmentReceiptWhatsApp(input: SendInstallmentRecei
       }
     }
 
+    const { data: parcelasDoCarne, error: parcelasDoCarneError } = await (supabaseAdmin.from('financiamento_parcelas') as any)
+      .select('valor_parcela, valor_pago, valor_transferido_entrada, valor_transferido_saida, valor_renegociado_saida, status')
+      .eq('financiamento_id', financing.id)
+      .eq('store_id', storeId)
+    if (parcelasDoCarneError) throw parcelasDoCarneError
+    const contractSummary = buildCarneReceiptSummary({
+      contractAmount: Number(financing.valor_total_financiado || 0),
+      installments: parcelasDoCarne || [],
+    })
+
     const storeProfile = await getStoreDocumentProfile(supabaseAdmin, storeId)
     const pdfBuffer = await generateInstallmentReceiptPDF({
       customerName: customer.full_name,
@@ -1038,6 +1049,7 @@ export async function sendInstallmentReceiptWhatsApp(input: SendInstallmentRecei
       dueDate: installment.data_vencimento,
       paymentDate: latestReceiptPayment?.data_pagamento || latestReceiptPayment?.created_at || installment.data_pagamento || new Date().toISOString(),
       isReprint: Boolean(installment.receipt_printed_at),
+      contractSummary,
       store: storeProfile,
     })
     const firstName = String(customer.full_name || '').trim().split(/\s+/)[0] || 'cliente'

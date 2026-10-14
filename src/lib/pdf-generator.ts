@@ -2,6 +2,7 @@ import jsPDF from 'jspdf'
 import { Database } from '@/lib/database.types'
 import { loadStoreLogoDataUrl } from '@/lib/store-logo.server'
 import { getFinancialSummaryInstallmentStatus, getFinancialSummaryInstallmentTotals, type FinancialSummaryInstallment } from '@/lib/financial-summary-document'
+import type { CarneReceiptSummary } from '@/lib/carne-receipt-summary'
 
 type Pagamento = Database['public']['Tables']['pagamentos']['Row']
 type Venda = Database['public']['Tables']['vendas']['Row']
@@ -176,6 +177,7 @@ export interface InstallmentReceiptData {
   referenceValue?: string
   declarationText?: string
   footerNote?: string
+  contractSummary?: CarneReceiptSummary | null
   store: {
     name: string
     legalName?: string | null
@@ -726,6 +728,25 @@ export async function generateInstallmentReceiptPDF(data: InstallmentReceiptData
   doc.setFontSize(14)
   doc.setTextColor(30, 41, 59)
   doc.text(amount, 14, 58.8)
+
+  if (data.contractSummary) {
+    const summaryLines = [
+      ['Contrato', formatMoneyBR(data.contractSummary.contractAmount)],
+      ['Pago', formatMoneyBR(data.contractSummary.paidAmount)],
+      ['Falta', formatMoneyBR(data.contractSummary.remainingAmount)],
+    ]
+    summaryLines.forEach(([label, value], index) => {
+      const lineY = 52.4 + (index * 3.1)
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(5.2)
+      doc.setTextColor(100, 116, 139)
+      doc.text(label, pageWidth - 46, lineY)
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(6.2)
+      doc.setTextColor(30, 41, 59)
+      doc.text(value, pageWidth - 16, lineY, { align: 'right' })
+    })
+  }
 
   doc.setTextColor(51, 65, 85)
   doc.setFont('helvetica', 'normal')

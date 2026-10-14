@@ -1,4 +1,5 @@
 import { Database } from '@/lib/database.types'
+import type { CarneReceiptSummary } from '@/lib/carne-receipt-summary'
 
 type Pagamento = Database['public']['Tables']['pagamentos']['Row']
 type Venda = Database['public']['Tables']['vendas']['Row']
@@ -19,16 +20,20 @@ export interface ReceiptDataBlank {
         dataVencimento: string
     } | null
     hasInstallmentAmounts?: boolean
+    carneSummary?: CarneReceiptSummary | null
+    paidAt?: string | null
 }
 
 const formatMoney = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
 function Via({ data, label, isRight }: { data: ReceiptDataBlank, label: string, isRight?: boolean }) {
-    const { pagamentos, cliente, itens, store, isReprint, parcelaInfo, hasInstallmentAmounts } = data
+    const { pagamentos, cliente, itens, store, isReprint, parcelaInfo, hasInstallmentAmounts, carneSummary, paidAt } = data
     const valorTotalRecibo = pagamentos.reduce((acc, p) => acc + p.valor_pago, 0)
 
     const resumoItens = itens.map(i => `${i.quantidade}x ${i.descricao}`).join(', ')
-    const dataRef = new Date(pagamentos[0].created_at)
+    const dataRef = new Date(paidAt || pagamentos[0].created_at)
+    const dataTexto = dataRef.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+    const horaTexto = dataRef.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })
 
     const containerStyle = {
         position: 'relative' as const,
@@ -60,17 +65,15 @@ function Via({ data, label, isRight }: { data: ReceiptDataBlank, label: string, 
             {isReprint && (
                 <div style={{
                     position: 'absolute',
-                    top: '40mm',
-                    left: '10mm',
-                    fontSize: '30px',
-                    color: 'rgba(0,0,0,0.05)',
-                    border: '3px solid rgba(0,0,0,0.05)',
-                    padding: '5px',
-                    transform: 'rotate(-30deg)',
-                    pointerEvents: 'none',
-                    zIndex: 0
+                    top: '3mm',
+                    left: '6mm',
+                    fontSize: '11px',
+                    fontWeight: 'bold',
+                    letterSpacing: '0.5px',
+                    color: '#000',
+                    zIndex: 2
                 }}>
-                    REIMPRESSÃO
+                    *** REIMPRESSÃO ***
                 </div>
             )}
 
@@ -105,15 +108,22 @@ function Via({ data, label, isRight }: { data: ReceiptDataBlank, label: string, 
                 <div style={{ borderBottom: '1px solid black', marginBottom: '8px' }} />
 
                 {/* TÍTULO RECIBO E VALOR */}
-                <div style={{ textAlign: 'center', marginBottom: '12px' }}>
+                <div style={{ textAlign: 'center', marginBottom: carneSummary ? '6px' : '12px' }}>
                     <h2 style={{ margin: '0 0 5px 0', fontSize: '18px', fontWeight: 'bold', letterSpacing: '1px' }}>RECIBO</h2>
                     <div style={{ fontSize: '18px', fontWeight: 'bold', padding: '4px 10px', border: '1px solid black', display: 'inline-block', backgroundColor: '#f9f9f9' }}>
                         {formatMoney(valorTotalRecibo)}
                     </div>
+                    {carneSummary && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', marginTop: '8px', fontSize: '10px', lineHeight: '1.25', textAlign: 'left' }}>
+                            <div><strong>Valor do contrato</strong><div>{formatMoney(carneSummary.contractAmount)}</div></div>
+                            <div><strong>Valor pago</strong><div>{formatMoney(carneSummary.paidAmount)}</div></div>
+                            <div style={{ textAlign: 'right' }}><strong>Ainda falta</strong><div>{formatMoney(carneSummary.remainingAmount)}</div></div>
+                        </div>
+                    )}
                 </div>
 
                 {/* DADOS DO CLIENTE */}
-                <div style={{ marginBottom: '12px', fontSize: '10px', lineHeight: '1.4' }}>
+                <div style={{ marginBottom: carneSummary ? '6px' : '12px', fontSize: '10px', lineHeight: '1.4' }}>
                     <div><strong>Cliente:</strong> {cliente?.full_name?.toUpperCase()}</div>
                     {cliente?.cpf && <div><strong>CPF:</strong> {cliente.cpf}</div>}
                     <div><strong>Referente a:</strong> Venda #{pagamentos[0].venda_id}</div>
@@ -140,7 +150,7 @@ function Via({ data, label, isRight }: { data: ReceiptDataBlank, label: string, 
                     <div style={{ fontSize: '10px', marginBottom: '20px' }}>
                         <div><strong>Forma Pgto:</strong> {formasUnicas.toUpperCase()}</div>
                         <div style={{ marginTop: '2px' }}>
-                            <strong>Data:</strong> {dataRef.toLocaleDateString('pt-BR')} às {dataRef.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                            <strong>Data:</strong> {dataTexto} às {horaTexto}
                         </div>
                     </div>
                     

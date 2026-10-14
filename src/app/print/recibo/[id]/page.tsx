@@ -5,6 +5,7 @@ import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { ReceiptPhantom } from '@/components/print/ReceiptPhantom'
 import { ReceiptBlankHalfA4 } from '@/components/print/ReceiptBlankHalfA4'
+import { buildCarneReceiptSummary, type CarneReceiptSummary } from '@/lib/carne-receipt-summary'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -69,6 +70,7 @@ export default async function PrintReciboPage(
         totalParcelas: number
         dataVencimento: string
     } | null = null
+    let carneSummary: CarneReceiptSummary | null = null
 
     const parcelaIds = Array.from(new Set(
         pagamentos.map((pagamento: any) => Number(pagamento.parcela_id)).filter(Number.isFinite)
@@ -88,13 +90,23 @@ export default async function PrintReciboPage(
         if (parcelaRaw?.financiamento_id) {
             const { data: financiamentoRaw } = await (supabase
                 .from('financiamento_loja') as any)
-                .select('quantidade_parcelas')
+                .select('quantidade_parcelas, valor_total_financiado')
                 .eq('id', parcelaRaw.financiamento_id)
+                .eq('store_id', pagamentos[0].store_id)
                 .maybeSingle()
-            const { count: totalParcelasCount } = await (supabase
+            const { data: parcelasDoCarne, count: totalParcelasCount, error: parcelasDoCarneError } = await (supabase
                 .from('financiamento_parcelas') as any)
-                .select('*', { count: 'exact', head: true })
+                .select('valor_parcela, valor_pago, valor_transferido_entrada, valor_transferido_saida, valor_renegociado_saida, status', { count: 'exact' })
                 .eq('financiamento_id', parcelaRaw.financiamento_id)
+                .eq('store_id', pagamentos[0].store_id)
+            if (parcelasDoCarneError) throw parcelasDoCarneError
+
+            if (parcelasDoCarne) {
+                carneSummary = buildCarneReceiptSummary({
+                    contractAmount: Number(financiamentoRaw?.valor_total_financiado || 0),
+                    installments: parcelasDoCarne,
+                })
+            }
 
             if (parcelaRaw.numero_parcela && parcelaRaw.data_vencimento) {
                 parcelaInfo = {
@@ -116,6 +128,27 @@ export default async function PrintReciboPage(
     const store = storeRaw as any
     const receiptType = store?.settings?.receipt_type || 'pre_printed'
 
+    const operationIds = Array.from(new Set(
+        pagamentos.map((pagamento: any) => Number(pagamento.receipt_operation_id)).filter((id: number) => Number.isInteger(id) && id > 0)
+    ))
+    let paidAt = pagamentos.reduce((latest: string, pagamento: any) => {
+        return new Date(pagamento.created_at) > new Date(latest) ? pagamento.created_at : latest
+    }, pagamentos[0].created_at)
+    if (operationIds.length > 0) {
+        const { data: operations, error: operationsError } = await (supabase
+            .from('installment_receipt_operations') as any)
+            .select('created_at')
+            .in('id', operationIds)
+            .eq('store_id', pagamentos[0].store_id)
+        if (operationsError) throw operationsError
+        const operationPaidAt = (operations || []).reduce((latest: string | null, operation: any) => {
+            if (!operation.created_at) return latest
+            if (!latest || new Date(operation.created_at) > new Date(latest)) return operation.created_at
+            return latest
+        }, null)
+        if (operationPaidAt) paidAt = operationPaidAt
+    }
+
     const receiptData = {
         pagamentos,
         venda,
@@ -124,6 +157,8 @@ export default async function PrintReciboPage(
         store,
         isReprint,
         parcelaInfo,
+        carneSummary,
+        paidAt,
         // A primeira emissão de uma parcela é um recibo normal. A mensagem
         // serve apenas para identificar uma segunda via/reimpressão.
         hasInstallmentAmounts: isExperimentalInstallmentReceipt
