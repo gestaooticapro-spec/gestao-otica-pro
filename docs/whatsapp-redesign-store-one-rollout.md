@@ -89,12 +89,14 @@ do fim de `resolveCustomerStatusInternal`, também permanece.
 
 O ambiente efetivo do worker na VPS fica em `automation.env`, carregado pelo
 Compose do serviço `whatsapp-automation`. Esse arquivo prevalece sobre o padrão
-do código. Em 01/10/2026 o intervalo efetivo foi fixado em `300000`. Enquanto
-as chaves antigas continuarem nesse arquivo, publicar só a imagem não desacelera
-a varredura. Os dois passos são alterar `automation.env` e recriar o serviço
-com a imagem nova. O backup anterior desse ambiente é
-`automation.env.before-reconciliation-20261001T230748Z`. Antes de editar, leia
-o arquivo atual: só troque as quatro chaves abaixo.
+do código. Em 14/10/2026, às 19:01 no horário de São Paulo, as quatro chaves
+abaixo foram gravadas nesse arquivo e somente o container `whatsapp_automation`
+foi recriado, sem rebuild. O backup desse momento é
+`automation.env.before-log-cut-20261014T220155Z`. O backup de 01/10/2026,
+`automation.env.before-reconciliation-20261001T230748Z`, continua no mesmo
+diretório e ainda tem o intervalo de 5 minutos. A imagem em execução nessa
+recriação era a anterior; os intervalos novos entram por essas variáveis. O
+aviso sonoro e os caches de 60 segundos continuam dependendo do deploy do app.
 
 O aviso sonoro e os caches de 60 segundos entram com o deploy do app na Vercel.
 O worker da VPS não os aplica.
