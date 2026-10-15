@@ -206,6 +206,28 @@ let state = await findConversationState(channel.id, normalizedPhone)
    tentativa volta a entrar no atendimento. A recuperação que já existia dentro
    de `processInbound` e em `recoverPendingReply` permanece.
 
+## Pausa da resposta com a loja aberta
+
+Com a loja aberta, o atendimento automático não responde assunto geral. A
+mensagem recebida continua gravada. Continuam ativos o pedido de nota, a
+conversa de quem está nesse pós-venda, o lembrete de vencimento e o comando
+de sair ou voltar a receber lembrete. Fora do expediente o atendimento segue
+como antes. Loja sem horário configurado também segue como antes.
+
+A pausa acontece em `resolveCustomerStatusInternal`, em
+`src/lib/whatsapp/customer-status.ts`, depois de gravar a mensagem e de tratar
+o comando de lembrete. Se não há contexto de pós-venda na conversa nem um
+pedido de nota enviado nos últimos 30 dias, a função retorna sem capturar a
+memória do redesign. Se o turno seguinte seria o atendimento geral, ela
+também retorna, em `useStoreOnePilot` e em `continueWithoutHoursOverride`.
+
+### Como reverter
+
+Remover os três retornos com o motivo `store_open_general_reply_paused` e a
+função `hasRecentSentPostSaleFollowup`. Voltar a capturar a memória do
+redesign logo depois do evento `inbound`, antes de ler o estado da conversa.
+O envio do pedido de nota e o cron de vencimento não fazem parte desta pausa.
+
 `npm run typecheck` e `npm run test:whatsapp-redesign` cobrem o código.
 `supabase/tests/whatsapp_full_redesign_validation.sql` verifica a RPC em
 transação revertida: mudança de assunto, preservação de pendência, pausa manual

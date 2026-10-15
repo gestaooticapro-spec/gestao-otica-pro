@@ -9,6 +9,7 @@ export type Release = {
 // altera o Dashboard ou o modal de histórico.
 export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'Com a loja aberta, o WhatsApp deixa de responder assuntos gerais. O pedido de nota, a conversa desse pos-venda e o lembrete de vencimento continuam. Fora do horario o atendimento segue igual, e a mensagem recebida continua gravada.',
   'O aviso sonoro de nova mensagem do WhatsApp toca em ate tres minutos e somente com a aba do sistema visivel. A mensagem continua gravada na hora.',
   'A queda de conexao do WhatsApp passa a ser percebida em cerca de cinco minutos.',
   'Uma mudanca na configuracao do WhatsApp da loja ou do canal pode levar ate um minuto para valer no atendimento.',

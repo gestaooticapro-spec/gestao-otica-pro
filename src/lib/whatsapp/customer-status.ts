@@ -1498,6 +1498,21 @@ function inferPersistentPostSaleStage(status: string | null, interactions: Array
   return 'awaiting_feedback'
 }
 
+async function hasRecentSentPostSaleFollowup(channel: ChannelRow, phone: string) {
+  const supabase = createAdminClient()
+  const { data, error } = await (supabase.from('whatsapp_post_sale_followups') as any)
+    .select('id')
+    .eq('channel_id', channel.id)
+    .eq('store_id', channel.store_id)
+    .eq('tenant_id', channel.tenant_id)
+    .in('remote_phone', [...getPhoneVariants(phone)])
+    .eq('status', 'sent')
+    .gte('sent_at', new Date(Date.now() - POST_SALE_PERSISTENT_MEMORY_MS).toISOString())
+    .limit(1)
+  if (error) throw error
+  return Boolean(data?.length)
+}
+
 async function loadPersistentPostSaleMemory(channel: ChannelRow, phone: string): Promise<PersistentPostSaleMemory | null> {
   const customer = await findCustomerByPhone(channel.store_id, phone)
   if (!customer?.id) return null
@@ -3122,15 +3137,6 @@ async function resolveCustomerStatusInternal(
     outcome: insertedInbound ? 'stored' : 'resumed_existing',
   })
 
-  const shadowCapture = await captureWhatsAppShadowInbound({
-    channel,
-    remotePhone: normalizedPhone,
-    providerMessageId: input.providerMessageId,
-    messageText: effectiveMessageText,
-    providerCreatedAt: input.providerCreatedAt || null,
-    payload: input.payload,
-  })
-
   const preferenceCommand = installmentReminderPreferenceCommand(effectiveMessageText)
   const preferenceState = await findConversationState(channel.id, normalizedPhone)
   const preferenceReminderContext = readPaymentReminderContext(preferenceState?.metadata)
@@ -3184,6 +3190,34 @@ async function resolveCustomerStatusInternal(
       return { ...response, aiDiagnostics: [diagnostic] }
     }
   }
+
+  const openHoursProfile = await loadStoreProfile(channel.store_id)
+  const openHoursSettings = ((openHoursProfile.settings || {}) as StoreSettings) || {}
+  const openHoursFacts = openHoursSettings.store_hours
+    ? evaluateStoreHours(openHoursSettings.store_hours)
+    : null
+  if (openHoursFacts?.is_open_now === true) {
+    const liveOpenHoursPostSale = readPostSaleContext(preferenceState?.metadata)
+    const pendingOpenHoursPostSale = liveOpenHoursPostSale?.stage === 'completed'
+      ? null
+      : liveOpenHoursPostSale
+    if (!pendingOpenHoursPostSale && !(await hasRecentSentPostSaleFollowup(channel, normalizedPhone))) {
+      return ignoreInbound(inbound.id, {
+        stage: 'open_hours_reply_paused',
+        reason: 'store_open_general_reply_paused',
+        action: 'no_reply',
+      })
+    }
+  }
+
+  const shadowCapture = await captureWhatsAppShadowInbound({
+    channel,
+    remotePhone: normalizedPhone,
+    providerMessageId: input.providerMessageId,
+    messageText: effectiveMessageText,
+    providerCreatedAt: input.providerCreatedAt || null,
+    payload: input.payload,
+  })
 
   const automationSettings = await loadStoreWhatsAppSettings(channel.store_id)
   const fullRedesignEnabled = isStoreOneFullRedesignEnabled(channel.store_id, automationSettings)
@@ -3408,6 +3442,14 @@ async function resolveCustomerStatusInternal(
   let orderLookupPlan: StoreOneOrderLookupPlan | null = null
   let referencedOrderPersonName: string | null = null
   let redesignConversationHistory: string[] = []
+  if (hoursFacts?.is_open_now === true && useStoreOnePilot) {
+    return ignoreInbound(inbound.id, {
+      stage: 'open_hours_reply_paused',
+      reason: 'store_open_general_reply_paused',
+      action: 'no_reply',
+    })
+  }
+
   if (fullRedesignEnabled && useStoreOnePilot && !shadowCapture.captured) {
     return ignoreInbound(inbound.id, {
       stage: 'redesign_capture', reason: 'redesign_capture_unavailable',
@@ -3967,6 +4009,14 @@ async function resolveCustomerStatusInternal(
   }
   
   async function continueWithoutHoursOverride(action: () => Promise<CustomerStatusResponse>): Promise<CustomerStatusResponse> {
+    if (hoursFacts?.is_open_now === true) {
+      return ignoreInbound(inbound.id, {
+        stage: 'open_hours_reply_paused',
+        reason: 'store_open_general_reply_paused',
+        action: 'no_reply',
+      })
+    }
+
     // O novo comportamento sem resposta genérica de fechamento é somente da
     // Loja 1; as demais lojas conservam o atalho operacional anterior.
     if (channel!.store_id !== 1 && hoursFacts && !hoursFacts.is_open_now) {
