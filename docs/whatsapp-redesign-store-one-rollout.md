@@ -206,6 +206,19 @@ let state = await findConversationState(channel.id, normalizedPhone)
    tentativa volta a entrar no atendimento. A recuperação que já existia dentro
    de `processInbound` e em `recoverPendingReply` permanece.
 
+## Classificação do pós-venda em 16/10/2026
+
+Um sinal de pós-venda fora de `greeting` e `frame_adjustment` deixa de invalidar
+a classificação inteira. Esse campo vira `null` e a intenção permanece. O
+pedido à IA lista esses dois valores e manda usar `null` quando a intenção é
+`post_sale_positive`. Isso vale para toda loja que classifica mensagem.
+
+Na loja 1, se a etapa é aguardar a adaptação e a frase mostra adaptação boa,
+o silêncio por intenção pouco clara pede a nota com a frase fixa
+`postSaleRatingPromptText`. Reclamação, pergunta e assunto incerto continuam
+sem esse atalho. Para reverter, volte o `post_sale_signal` a um enum estrito,
+apague `isClearPositiveAdaptationReply` e o desvio `clearPositiveAdaptation`.
+
 ## Pausa da resposta com a loja aberta
 
 Com a loja aberta, o atendimento automático não responde assunto geral. A

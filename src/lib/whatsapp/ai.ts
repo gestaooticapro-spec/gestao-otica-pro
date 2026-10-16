@@ -94,7 +94,10 @@ export const WhatsAppIntentClassificationSchema = z.object({
   intent: z.enum(WHATSAPP_INTENTS),
   confidence: z.number().min(0).max(1),
   automation_candidate: z.boolean(),
-  post_sale_signal: z.enum(['greeting', 'frame_adjustment']).nullable().optional(),
+  post_sale_signal: z.preprocess((value) => {
+    if (value == null || value === 'greeting' || value === 'frame_adjustment') return value
+    return null
+  }, z.enum(['greeting', 'frame_adjustment']).nullable().optional()),
   entities: z.object({
     order_number: z.string().trim().min(1).max(80).nullish().transform(value => value ?? null),
     cpf: z.string().trim().min(1).max(20).nullish().transform(value => value ?? null),
@@ -469,7 +472,8 @@ function buildIntentPrompt(input: WhatsAppIntentClassificationInput) {
     'Nao invente dados ausentes.',
     'Inclua todas as chaves do schema. Para entidade ausente use null; para booleanos ausentes use false e para reasoning_tags use [].',
     'Se houver duvida comercial, clinica, reclamacao, anexo ou baixa confianca, seja conservador.',
-    'Se a resposta indicar claramente satisfacao, elogio ou adaptacao boa em um contexto de acompanhamento apos a entrega, use post_sale_positive.',
+    'Se a resposta indicar claramente satisfacao, elogio ou adaptacao boa em um contexto de acompanhamento apos a entrega, use post_sale_positive e post_sale_signal=null.',
+    'post_sale_signal so aceita greeting, frame_adjustment ou null. Nao invente outro valor.',
     'No pos-venda, Otimo seguido de Jeje e Solo falta ir a pagar continua post_sale_positive. Comentario sobre pagar sem pergunta ou solicitacao nao muda o assunto para financeiro ou OS. Perguntas de saldo, link ou pagamento continuam sendo pedidos financeiros reais.',
     'No acompanhamento de pos-venda, diferencie ajuste mecanico de armacao de reclamacao visual. Se o cliente diz que esta bom e so quer apertar ou ajustar a armacao, use post_sale_signal=frame_adjustment; nao rotule adaptacao ruim. Dor, tontura, visao ruim ou insatisfacao real continuam complaint_or_adaptation, com post_sale_signal=null.',
     'Se houver acompanhamento pendente e a mensagem for somente cumprimento ou conversa social (como Bom dia ou Tudo bom), use post_sale_signal=greeting, intent=unknown, automation_candidate=true e confianca coerente. Tudo bom sozinho nao avalia os oculos. Para outros assuntos e pedido explicito de humano, use post_sale_signal=null.',

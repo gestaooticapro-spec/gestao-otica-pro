@@ -550,7 +550,7 @@ export default function LaboratorioPage() {
                                                                         ? item.dt_montado_no_lab
                                                                         : item.dt_montado_em
                                                     const waitingLabel = formatStageElapsed(waitDate)
-                                                    const whatsappMessage = `Olá ${customerName.split(' ')[0]}! Tudo bem? Aqui é da Ótica. Os óculos de *${patientName}* ficaram prontos! Quando puder, passe aqui para retirar e ajustar.`
+                                                    const whatsappMessage = `Olá! Tudo bem? Aqui é da Ótica. Os óculos de ${patientName} ficaram prontos! Quando puder, passe aqui para retirar e ajustar.`
                                                     const whatsappMsgArmacao = `Olá ${customerName.split(' ')[0]}! Tudo bem? Aqui é da Ótica. As lentes de *${patientName}* chegaram. Quando puder, traga a armação para realizarmos a montagem.`
 
                                                     return (

@@ -14,9 +14,7 @@ import { sendManualWhatsAppFromClient } from '@/lib/whatsapp/manual-client'
 
 function buildReadyPickupMessage(os?: OSContext) {
   const patientName = os?.dependente_name || os?.customer_name || 'Consumidor'
-  const customerName = os?.customer_name || patientName
-  const firstName = customerName.trim().split(/\s+/)[0] || 'cliente'
-  return `Olá ${firstName}! Tudo bem? Aqui é da Ótica. Os óculos de *${patientName}* ficaram prontos! Quando puder, passe aqui para retirar e ajustar.`
+  return `Olá! Tudo bem? Aqui é da Ótica. Os óculos de ${patientName} ficaram prontos! Quando puder, passe aqui para retirar e ajustar.`
 }
 
 function ReadyPickupWhatsAppButton({

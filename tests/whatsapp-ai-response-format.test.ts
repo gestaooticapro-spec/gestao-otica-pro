@@ -48,6 +48,18 @@ test('classificacao aceita entidades opcionais omitidas e aplica valores neutros
   assert.deepEqual(parsed.reasoning_tags, [])
 })
 
+test('sinal de pos-venda fora da lista vira nulo e a intencao permanece', () => {
+  const parsed = WhatsAppIntentClassificationSchema.parse({
+    intent: 'post_sale_positive',
+    confidence: 0.91,
+    automation_candidate: true,
+    post_sale_signal: 'adaptacao_boa',
+    entities: {},
+  })
+  assert.equal(parsed.intent, 'post_sale_positive')
+  assert.equal(parsed.post_sale_signal, null)
+})
+
 test('redacao de pos-venda recebe acao e fatos confirmados sem exemplo generico', () => {
   const question = buildWhatsAppPostSaleActionReplyPrompt({
     action: 'request_rating', messageText: 'Estou me adaptando bem', storeName: 'Otica',

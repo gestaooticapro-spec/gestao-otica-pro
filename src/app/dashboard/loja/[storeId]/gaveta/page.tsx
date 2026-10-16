@@ -123,7 +123,7 @@ export default function GavetaPage(
               const telefoneRaw = item.customers?.fone_movel || item.customers?.phone || '';
 
               // Mensagem Personalizada
-              const whatsappMessage = `Olá ${nomeCliente.split(' ')[0]}! Tudo bem? Aqui é da Ótica. Os óculos de *${nomePaciente}* ficaram prontos! Quando puder, passe aqui para retirar e ajustar. 😎`
+              const whatsappMessage = `Olá! Tudo bem? Aqui é da Ótica. Os óculos de ${nomePaciente} ficaram prontos! Quando puder, passe aqui para retirar e ajustar.`
 
               return (
                 <div key={item.id} className={`bg-white/5 backdrop-blur-md rounded-2xl shadow-lg border overflow-hidden hover:shadow-xl hover:bg-white/10 transition-all group ${isAtrasado ? 'border-red-500/30' : 'border-white/10'}`}>

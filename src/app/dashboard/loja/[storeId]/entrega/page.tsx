@@ -240,7 +240,7 @@ export default function EntregaPage() {
                                     const patientName = item.dependente_name || item.customer_name || 'Consumidor'
                                     const customerName = item.customer_name || 'Cliente'
                                     const phone = item.customer_phone || ''
-                                    const whatsappMessage = `Olá ${customerName.split(' ')[0]}! Tudo bem? Aqui é da Ótica. Os óculos de *${patientName}* ficaram prontos e estão aguardando retirada.`
+                                    const whatsappMessage = `Olá! Tudo bem? Aqui é da Ótica. Os óculos de ${patientName} ficaram prontos! Quando puder, passe aqui para retirar e ajustar.`
 
                                     return (
                                         <div

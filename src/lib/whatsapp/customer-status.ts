@@ -1,5 +1,5 @@
 import { WHATSAPP_OPENAI_ORDER_STATUS_MODEL } from '@/lib/openai-models'
-import { postSaleFeedbackContinuation, needsPostSaleIaraIntroduction } from './post-sale-feedback-continuation'
+import { isClearPositiveAdaptationReply, postSaleFeedbackContinuation, needsPostSaleIaraIntroduction } from './post-sale-feedback-continuation'
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -3696,6 +3696,7 @@ async function resolveCustomerStatusInternal(
   }
   let recoveredPostSaleClassification: WhatsAppAiResult<WhatsAppIntentClassification> | null = null
   let postSaleTurnDisposition: PostSaleTurnDisposition | null = null
+  let clearPositiveAdaptation = false
   const persistedConversationHistory = isWhatsAppToolAgentEnabled(automationSettings)
     ? await loadPersistedConversationHistory(channel, normalizedPhone, inbound.id)
     : []
@@ -4549,6 +4550,11 @@ async function resolveCustomerStatusInternal(
       recoveredPostSaleClassification = postSaleTurnClassification
     }
 
+    clearPositiveAdaptation = postSaleTurnDisposition === 'suppress_preserving_context'
+      && pendingPostSaleContext.stage === 'awaiting_feedback'
+      && isClearPositiveAdaptationReply(effectiveMessageText)
+    if (clearPositiveAdaptation) postSaleTurnDisposition = 'handle_post_sale'
+
     if (postSaleTurnDisposition === 'suppress_preserving_context') {
       await setCurrentConversationState('ai_session', AI_SESSION_MS, mergeMetadata(baseMetadata, {
         reason: 'post_sale_message_suppressed_without_clear_intent',
@@ -4619,7 +4625,8 @@ async function resolveCustomerStatusInternal(
     ? getPostSaleForcedToolCall({
       context: pendingPostSaleContext,
       disposition: postSaleTurnDisposition,
-      intent: feedbackContinuation === 'positive' ? 'post_sale_positive'
+      intent: feedbackContinuation === 'positive' || clearPositiveAdaptation
+        ? 'post_sale_positive'
         : postSaleTurnClassification?.success ? postSaleTurnClassification.data.intent : null,
       explicitRating: explicitPostSaleRating,
     })
@@ -4635,24 +4642,29 @@ async function resolveCustomerStatusInternal(
     const isRatingRequest = storeOnePostSaleAction.name === 'request_post_sale_rating'
     const rating = isRatingRequest ? null : storeOnePostSaleAction.rating
     const mustIdentifyIara = needsPostSaleIaraIntroduction(aiReplyContext.conversationHistory || [])
-    const reply = await writeWhatsAppPostSaleActionReply({
-      mustIdentifyIara,
-      action: isRatingRequest ? 'request_rating' : 'confirm_rating',
-      rating,
-      messageText: effectiveMessageText || '',
-      storeName: storeProfile.name,
-    })
-    await recordAiResult('tool_agent_reply', reply)
-    if (!reply.success) {
-      logRoute('post_sale_action_suppressed', { reason: 'ai_generation_failed', action: storeOnePostSaleAction.name })
-      return withAiDiagnostics(await ignoreInbound(inbound.id, {
-        stage: 'post_sale_reply_validation', reason: 'ai_generation_failed',
-        route: 'post_sale_context', intent: 'post_sale_positive', action: 'suppress_reply',
-      }))
+    const fixedRatingPrompt = clearPositiveAdaptation && isRatingRequest
+    let replyText = fixedRatingPrompt ? postSaleRatingPromptText() : ''
+    if (!fixedRatingPrompt) {
+      const reply = await writeWhatsAppPostSaleActionReply({
+        mustIdentifyIara,
+        action: isRatingRequest ? 'request_rating' : 'confirm_rating',
+        rating,
+        messageText: effectiveMessageText || '',
+        storeName: storeProfile.name,
+      })
+      await recordAiResult('tool_agent_reply', reply)
+      if (!reply.success) {
+        logRoute('post_sale_action_suppressed', { reason: 'ai_generation_failed', action: storeOnePostSaleAction.name })
+        return withAiDiagnostics(await ignoreInbound(inbound.id, {
+          stage: 'post_sale_reply_validation', reason: 'ai_generation_failed',
+          route: 'post_sale_context', intent: 'post_sale_positive', action: 'suppress_reply',
+        }))
+      }
+      replyText = reply.data.reply_text
     }
     const validation = validatePostSaleActionReply({
-      text: reply.data.reply_text,
-      mustIdentifyIara,
+      text: replyText,
+      mustIdentifyIara: fixedRatingPrompt ? false : mustIdentifyIara,
       action: isRatingRequest ? 'request_rating' : 'confirm_rating',
       rating,
     })
@@ -4677,7 +4689,6 @@ async function resolveCustomerStatusInternal(
       })
     }
 
-    const replyText = reply.data.reply_text
     const outboundType = isRatingRequest ? 'post_sale_rating_prompt' : 'post_sale_rating_received'
     const action = isRatingRequest ? 'post_sale_request_rating' : 'post_sale_rating_received'
     const nextContext = transitionPostSaleContextAfterTurn(

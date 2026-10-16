@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { postSaleFeedbackContinuation, needsPostSaleIaraIntroduction } from '../src/lib/whatsapp/post-sale-feedback-continuation'
+import { isClearPositiveAdaptationReply, postSaleFeedbackContinuation, needsPostSaleIaraIntroduction } from '../src/lib/whatsapp/post-sale-feedback-continuation'
 import { getPostSaleForcedToolCall, validatePostSaleActionReply } from '../src/lib/whatsapp/post-sale-followup'
 import { buildWhatsAppPostSaleActionReplyPrompt } from '../src/lib/whatsapp/ai'
 const base={context:{postSalesId:1,stage:'awaiting_feedback' as const},hasAttachment:false,explicitHumanRequest:false,explicitOrderRequest:false}
@@ -23,6 +23,12 @@ test('continuidade exige contexto aberto, texto e ausencia de pedido humano ou O
  const messageText='Esta otimo\nSo falta pagar'
  for(const changes of [{context:null},{context:{postSalesId:1,stage:'completed' as const}},{context:{postSalesId:1,stage:'handoff' as const}},{hasAttachment:true},{explicitHumanRequest:true},{explicitOrderRequest:true}])
  assert.equal(postSaleFeedbackContinuation({...base,messageText,...changes}),null)
+})
+test('adaptacao boa em mais de uma frase pede nota mesmo fora da lista curta',()=>{
+ assert.equal(isClearPositiveAdaptationReply('Está ótima. Ela esta enxergando muito bem'),true)
+ assert.equal(isClearPositiveAdaptationReply('Otimo mas sinto dor'),false)
+ assert.equal(isClearPositiveAdaptationReply('Tudo bem'),false)
+ assert.equal(isClearPositiveAdaptationReply('Está ótima?'),false)
 })
 test('identificacao considera somente falas da IA e e validada antes do envio',()=>{
  assert.equal(needsPostSaleIaraIntroduction(['cliente: Sou a IAra']),true)

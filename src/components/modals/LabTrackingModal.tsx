@@ -108,7 +108,8 @@ export default function LabTrackingModal({ isOpen, onClose, storeId }: Props) {
 
     const handleSendReadyWhatsApp = async () => {
         if (!selectedOS || !currentPhone || sendingWhatsApp) return
-        const message = `Olá ${selectedOS.customer_name.split(' ')[0]}! 👋 Passando para avisar que seus óculos já ficaram prontos! Quando quiser, pode vir fazer a retirada. Ficamos à disposição!`
+        const patientName = selectedOS.dependente_name || selectedOS.customer_name || 'Consumidor'
+        const message = `Olá! Tudo bem? Aqui é da Ótica. Os óculos de ${patientName} ficaram prontos! Quando puder, passe aqui para retirar e ajustar.`
 
         setSendingWhatsApp(true)
         try {

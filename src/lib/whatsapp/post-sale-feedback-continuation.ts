@@ -21,6 +21,20 @@ export function postSaleFeedbackContinuation(input: {
   return input.context.stage === 'awaiting_rating' ? 'comment' : null
 }
 
+/** Adaptação claramente boa, além da lista curta de frases inteiras. */
+export function isClearPositiveAdaptationReply(messageText: string | null | undefined) {
+  if (!messageText?.trim() || /[?\u00bf]/u.test(messageText)) return false
+  const normalized = messageText.normalize('NFD').replace(/[\u0300-\u036f]/gu, '').toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim()
+  if (!normalized) return false
+  if (/\b(?:nao|nem|nunca|ruim|pessimo|horrivel|dor|tontura|enjoo|embac\w*|borr\w*|reclam\w*|aperto|folgado|caindo)\b/u.test(normalized)) {
+    return false
+  }
+  return /\b(?:otim[oa]s?|excelente|muito bem|muito bom|super bem|enxerg\w+\s+(?:muito\s+)?bem|me adaptei|adaptacao\s+(?:esta\s+)?(?:otima|boa|muito boa)|ficou\s+(?:otim[oa]|bom|boa|perfeit[oa]))\b/u.test(normalized)
+}
+
 export function needsPostSaleIaraIntroduction(history: string[]) {
   return !history.some(line => /^ia:\s.*\biara\b/iu.test(line))
 }
