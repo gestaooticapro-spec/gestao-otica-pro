@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useFormState, useFormStatus } from 'react-dom'
 import {
   updateVendaDesconto,
@@ -76,6 +76,9 @@ export default function ResumoFinanceiro({
 
   const descontoInitialState: UpdateDescontoResult = { success: false, message: '' }
   const [descontoState, dispatchDesconto] = useFormState(updateVendaDesconto, descontoInitialState)
+  const onUpdateRef = useRef(onUpdate)
+  const handledDiscountStateRef = useRef(descontoState)
+  onUpdateRef.current = onUpdate
 
   useEffect(() => {
     // Atualiza o input sempre que o desconto derivado mudar (ex: ao carregar ou recalcular)
@@ -83,10 +86,10 @@ export default function ResumoFinanceiro({
   }, [derivedDiscount])
 
   useEffect(() => {
-    if (descontoState.success) {
-      onUpdate()
-    }
-  }, [descontoState, onUpdate])
+    if (!descontoState.success || handledDiscountStateRef.current === descontoState) return
+    handledDiscountStateRef.current = descontoState
+    void onUpdateRef.current()
+  }, [descontoState])
 
   const handleDescontoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value.replace(/\D/g, '')

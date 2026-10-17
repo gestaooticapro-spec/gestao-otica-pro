@@ -309,6 +309,8 @@ function SingleServiceOrderCard({
 }) {
     const initialState: SaveSOResult = { success: false, message: '' }
     const [saveState, dispatch] = useFormState(saveServiceOrder, initialState)
+    const onDataReloadRef = useRef(onDataReload)
+    onDataReloadRef.current = onDataReload
     const [localDependentes, setLocalDependentes] = useState(dependentes)
     const [localOftalmos, setLocalOftalmos] = useState(oftalmologistas)
     const [isDepModalOpen, setIsDepModalOpen] = useState(false)
@@ -415,14 +417,14 @@ function SingleServiceOrderCard({
 
         if (saveState.success) {
             toast.success(saveState.message || 'OS salva')
-            void onDataReload()
+            void onDataReloadRef.current()
             return
         }
 
         if (saveState.message) {
             toast.error(saveState.message)
         }
-    }, [saveState, onDataReload])
+    }, [saveState])
 
     const itensLente = vendaItens.filter((item) => item.item_tipo === 'Lente')
     const itensArmacao = vendaItens.filter((item) => item.item_tipo === 'Armacao' || item.item_tipo === 'Solar')
