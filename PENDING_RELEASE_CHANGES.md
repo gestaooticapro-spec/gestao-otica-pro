@@ -34,3 +34,4 @@
 - Respostas sobre o horário da loja informam o horário perguntado, seja a abertura, o fechamento ou o expediente completo.
 - A Loja 1 pode enviar uma mensagem unica, identificada como teste, para validar o contexto de conversa do lembrete de cobranca da parcela reservada; o disparo confirma telefone, elegibilidade, opt-out e pausa humana sem alterar o registro normal do lembrete.
 - A memória do redesign usa o horário do WhatsApp em cada mensagem agrupada, sem depender do relógio da VPS.
+- Todas as chamadas de IA via API da OpenAI passam a usar o GPT-5.4 mini.

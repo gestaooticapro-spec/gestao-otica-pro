@@ -223,7 +223,7 @@ test('resposta sem numero da OS e refeita com os mesmos fatos antes do envio', a
         return fakeWriter('Esta em producao no laboratorio.')()
       }
       assert.equal(input.rejectedOrderReply?.reason, 'missing_order')
-      assert.equal(options?.model, 'gpt-4.1-mini')
+      assert.equal(options?.model, 'gpt-5.4-mini')
       return fakeWriter('A OS 1041 esta em producao no laboratorio.')()
     },
   })

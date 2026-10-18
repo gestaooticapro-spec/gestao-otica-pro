@@ -1,6 +1,6 @@
 // Configuracao compartilhada dos modelos OpenAI usados pelo backend.
 // Variaveis especificas herdam o modelo geral quando nao estao definidas.
-export const OPENAI_TEXT_MODEL = process.env.OPENAI_TEXT_MODEL?.trim() || 'gpt-5.6-luna'
+export const OPENAI_TEXT_MODEL = process.env.OPENAI_TEXT_MODEL?.trim() || 'gpt-5.4-mini'
 export const OPENAI_VISION_MODEL = process.env.OPENAI_VISION_MODEL?.trim() || OPENAI_TEXT_MODEL
 export const WHATSAPP_OPENAI_MODEL = process.env.WHATSAPP_AI_OPENAI_MODEL?.trim() || OPENAI_TEXT_MODEL
 export const WHATSAPP_OPENAI_ORDER_HANDOFF_MODEL =

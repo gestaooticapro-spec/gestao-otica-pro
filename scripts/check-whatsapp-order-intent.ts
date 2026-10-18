@@ -65,7 +65,7 @@ async function main() {
       data: { customerName: 'Cliente de teste', multipleOpenOrders: true, tooManyOpenOrders: false, orders },
     }),
     writeReply: (assistant, results, options) => writeWhatsAppToolAgentReply(
-      assistant, results, { ...options, model: 'gpt-4.1-mini' }
+      assistant, results, { ...options, model: 'gpt-5.4-mini' }
     ),
   })
   const replyValid = statusTurn.disposition.kind === 'send'
