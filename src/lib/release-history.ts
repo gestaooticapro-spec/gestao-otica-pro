@@ -9,6 +9,7 @@ export type Release = {
 // altera o Dashboard ou o modal de histórico.
 export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'Um recebimento parcial de parcela passa a mostrar Reverter na consulta por cliente e na venda, mesmo com a parcela ainda em aberto.',
   'Aplicar um desconto na venda atualiza os valores uma vez e deixa de recarregar a tela sem parar.',
   'Salvar a OS unica da venda atualiza a tela uma vez e deixa de repetir esse recarregamento.',
   'O aviso de óculos pronto enviado pelo WhatsApp passa a dizer: Olá! Tudo bem? Aqui é da Ótica. Os óculos de {paciente} ficaram prontos! Quando puder, passe aqui para retirar e ajustar.',

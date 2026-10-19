@@ -624,9 +624,9 @@ export default function FinanciamentoBox({
                                         )) : <span className="text-slate-600">—</span>}
                                     </div>
                                     <div className="flex justify-end">
-                                        {isPago ? (
-                                            <div className="flex items-center justify-end gap-2">
-                                                {whatsappReceiptEnabled ? (
+                                        <div className="flex items-center justify-end gap-2">
+                                            {isPago ? (
+                                                whatsappReceiptEnabled ? (
                                                     <button
                                                         type="button"
                                                         onClick={() => void handleSendInstallmentReceipt(p.id)}
@@ -640,41 +640,41 @@ export default function FinanciamentoBox({
                                                         )}
                                                         {sentReceiptInstallmentIds.includes(p.id) ? 'ENVIADO' : 'RECIBO'}
                                                     </button>
-                                                ) : null}
-                                                {p.reversible_receipt_operation ? (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setReceiptToReverse({
-                                                            installmentNumber: p.numero_parcela,
-                                                            operation: p.reversible_receipt_operation as ReversibleReceiptOperation,
-                                                        })}
-                                                        className="inline-flex items-center gap-1 rounded-lg border border-rose-500/20 bg-rose-500/10 px-2 py-1 text-[10px] font-bold text-rose-300 transition-all hover:bg-rose-500/20"
-                                                        title="Reverter esta operacao de recebimento"
-                                                    >
-                                                        <RotateCcw className="h-3 w-3" /> REVERTER
-                                                    </button>
-                                                ) : null}
-                                            </div>
-                                        ) : (
-                                            <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                    e.stopPropagation()
-                                                    if (shouldOpenPixCharge) {
-                                                        setPixInstallment(p)
-                                                    } else if (pixProvider === 'sicredi') {
-                                                        setPaymentChoiceParcela(p)
-                                                    } else {
-                                                        setParcelaAtalho(p)
-                                                        setIsParcelaSearchModalOpen(true)
-                                                    }
-                                                }}
-                                                disabled={disabled || isQuitado}
-                                                className="px-3 py-1.5 bg-amber-500/20 text-amber-400 text-[10px] font-bold rounded-lg hover:bg-amber-500/30 border border-amber-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-amber-900/20"
-                                            >
-                                                {installmentActionLabel.toUpperCase()}
-                                            </button>
-                                        )}
+                                                ) : null
+                                            ) : (
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation()
+                                                        if (shouldOpenPixCharge) {
+                                                            setPixInstallment(p)
+                                                        } else if (pixProvider === 'sicredi') {
+                                                            setPaymentChoiceParcela(p)
+                                                        } else {
+                                                            setParcelaAtalho(p)
+                                                            setIsParcelaSearchModalOpen(true)
+                                                        }
+                                                    }}
+                                                    disabled={disabled || isQuitado}
+                                                    className="px-3 py-1.5 bg-amber-500/20 text-amber-400 text-[10px] font-bold rounded-lg hover:bg-amber-500/30 border border-amber-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-amber-900/20"
+                                                >
+                                                    {installmentActionLabel.toUpperCase()}
+                                                </button>
+                                            )}
+                                            {p.reversible_receipt_operation ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setReceiptToReverse({
+                                                        installmentNumber: p.numero_parcela,
+                                                        operation: p.reversible_receipt_operation as ReversibleReceiptOperation,
+                                                    })}
+                                                    className="inline-flex items-center gap-1 rounded-lg border border-rose-500/20 bg-rose-500/10 px-2 py-1 text-[10px] font-bold text-rose-300 transition-all hover:bg-rose-500/20"
+                                                    title="Reverter esta operacao de recebimento"
+                                                >
+                                                    <RotateCcw className="h-3 w-3" /> REVERTER
+                                                </button>
+                                            ) : null}
+                                        </div>
                                     </div>
                                 </div>
                             )

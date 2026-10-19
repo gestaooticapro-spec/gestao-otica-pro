@@ -463,8 +463,9 @@ export default function ParcelasInterface({ storeId, reportMode = false }: { sto
                                                                                     {p.valor_recebido_relatorio != null ? <div className="flex flex-col items-end"><span className="text-[11px] font-bold text-emerald-400">{formatCurrency(Number(p.valor_recebido_relatorio))}</span>{p.pix_charge?.status === 'PAID' && p.pix_charge.settlement_status === 'COMPLETED' ? <span className="mt-0.5 text-[9px] font-bold text-cyan-300">Pix Sicredi</span> : null}</div> : '-'}
                                                                                 </td>
                                                                                 <td className="px-4 py-2 text-right whitespace-nowrap">
-                                                                                    {isPago ? (
+                                                                                    {isPago || p.reversible_receipt_operation ? (
                                                                                         <div className="flex flex-nowrap justify-end gap-2">
+                                                                                        {isPago ? (
                                                                                         <button
                                                                                             type="button"
                                                                                             onClick={() => handleSendReceipt(p.id)}
@@ -477,6 +478,7 @@ export default function ParcelasInterface({ storeId, reportMode = false }: { sto
                                                                                                 {isSendingReceipt ? 'Enviando' : receiptSent ? 'Reenviar' : 'Enviar'}
                                                                                             </span>
                                                                                         </button>
+                                                                                        ) : null}
                                                                                         {p.reversible_receipt_operation ? (
                                                                                             <button
                                                                                                 type="button"
