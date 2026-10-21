@@ -962,6 +962,9 @@ Regras:
 - Diferenca de cobertura do mapa mede aderencia ao comportamento visual deste cliente; nao afirme que ela prova, sozinha, que uma lente possui campo visual intrinsecamente mais amplo.
 - Quando houver requiredFeatures, mencione claramente como cada opcao atende o pedido. Se o payload registrar uma ausencia, declare a limitacao sem disfarca-la.
 - Diferencas de preco devem usar apenas os valores e deltas de structuredComparison.
+- Explique somente os diferenciais documentados no payload e pertinentes as necessidades deste cliente. Um preco maior, tier premium ou score maior nao comprova superioridade tecnica nem beneficio proporcional ao investimento.
+- Quando os dados nao sustentarem uma justificativa para o preco adicional, reconheca isso em linguagem simples: "Com os dados disponiveis, nao e possivel afirmar que o valor adicional corresponde a um ganho proporcional para o seu uso." Nao invente desempenho, conforto ou qualidade para justificar a diferenca.
+- A terceira opcao pode ter preco maior; isso, por si so, nao exige critica nem mudanca da selecao. Apresente seus diferenciais documentados e o investimento sem tratar seu papel comercial como beneficio tecnico.
 - A IA nao altera a ordem, nao ranqueia novamente e nao cria vantagens. Ela apenas explica as opcoes recebidas.
 - Motivos internos como preferencia_lab, preferencia_marca, laboratorio primario ou politica da loja jamais podem aparecer no texto mostrado ao cliente.
 - Se uma opcao trouxer commercialRole, use isso apenas como contexto interno de venda. Nao diga ao cliente termos como "alvo", "ancora" ou "estrategia comercial".
