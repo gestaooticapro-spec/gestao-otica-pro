@@ -30,6 +30,23 @@ test('adaptacao boa em mais de uma frase pede nota mesmo fora da lista curta',()
  assert.equal(isClearPositiveAdaptationReply('Tudo bem'),false)
  assert.equal(isClearPositiveAdaptationReply('Está ótima?'),false)
 })
+test('resposta informal no pos-venda pede nota mesmo com cumprimento ou pergunta citada',()=>{
+ for (const text of [
+  'Está td certo',
+  'ta de boa',
+  'Bom dia\nEstá td certo',
+  'Bom dia\nVocê\nOlá! Já faz 6 dias que seus óculos foi retirado e queríamos saber como está a adaptação?\nEstá td certo',
+  'suave',
+  'show de bola',
+  'firmeza',
+  'os óculos tão uma beleza',
+  'tá sim 🙏',
+ ]) assert.equal(postSaleFeedbackContinuation({...base,messageText:text}),'positive',text)
+ assert.equal(postSaleFeedbackContinuation({...base,messageText:'Bom dia'}),null)
+ assert.equal(isClearPositiveAdaptationReply('Bom dia'),false)
+ assert.equal(isClearPositiveAdaptationReply('Não gostei, está doendo'),false)
+ assert.equal(isClearPositiveAdaptationReply('Quero pagar o restante'),false)
+})
 test('identificacao considera somente falas da IA e e validada antes do envio',()=>{
  assert.equal(needsPostSaleIaraIntroduction(['cliente: Sou a IAra']),true)
  assert.equal(needsPostSaleIaraIntroduction(['ia: Sou a IAra, assistente virtual da otica.']),false)

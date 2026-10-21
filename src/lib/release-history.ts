@@ -28,6 +28,7 @@ export const PENDING_RELEASE_CHANGES: readonly string[] = [
   'Os recibos de parcela passam a mostrar o valor do contrato, o valor pago e o que ainda falta do carnê.',
   'O recibo completo mostra o horário de São Paulo em que o pagamento foi lançado.',
   'O pos-venda reconhece boa adaptacao acompanhada de comentarios casuais sobre pagar, pede a nota sem abrir consulta de OS ou divida e identifica a IAra na primeira resposta.',
+  'O pos-venda trata resposta afirmativa informal, mesmo junto com cumprimento ou citando a pergunta da otica, como adaptacao boa e pede a nota.',
   'A venda passa a ser marcada como NFC-e emitida no momento em que a nota de produção é autorizada, mesmo se a tela não confirmar o retorno da emissão.',
   'O WhatsApp aguarda mais tempo quando chegam apenas cumprimentos, reunindo a continuacao do cliente antes de responder; perguntas e explicacoes mantem a espera normal.',
   'A consulta de OS na Loja 1 reconhece nomes completos informados pelo cliente, localiza pedidos de outro cadastro sem trocar o titular do WhatsApp e pede identificacao quando houver ambiguidade.',
