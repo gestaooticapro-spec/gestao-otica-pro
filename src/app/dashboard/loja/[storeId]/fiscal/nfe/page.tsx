@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {browserFiscalDraftId} from '@/lib/fiscal-recovery-draft';
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -1576,6 +1577,7 @@ export default function EmitirNFePage(props: { params: { storeId: string } }) {
         setSuccess(null);
 
         const result = await emitirNFe({
+            recoveryDraftId:storeId===1&&environment==='production'?browserFiscalDraftId():undefined,
             storeId,
             environment,
             saleId: operation === "sale" ? selectedSale?.id : undefined,

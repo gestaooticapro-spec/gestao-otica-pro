@@ -1,7 +1,7 @@
 const SEFAZ_COMMUNICATION_USER_MESSAGE = [
-    "Não foi possível falar com a SEFAZ neste momento.",
-    "A nota não foi autorizada.",
-    "Tente novamente mais tarde.",
+    "Houve uma falha de comunicação na emissão.",
+    "O resultado da emissão ainda não foi confirmado.",
+    "Consulte esta nota antes de tentar emitir novamente.",
 ].join("\n");
 
 const SEFAZ_INTERNAL_USER_MESSAGE = [
@@ -23,6 +23,10 @@ function isSefazCommunicationFailure(message: string) {
         "econnrefused",
         "econnreset",
         "etimedout",
+        "fetch failed",
+        "failed to fetch",
+        "tempo esgotado",
+        "timeout",
         "could not connect to server",
         "winhttp operation",
         "nfeautorizacao4",

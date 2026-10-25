@@ -9,6 +9,15 @@ export type Release = {
 // altera o Dashboard ou o modal de histórico.
 export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'No piloto da loja 1, excluir uma OS devolve as reservas e remove os vinculos na mesma operacao; uma tentativa fiscal vinculada impede a exclusao antes de alterar o estoque.',
+  'As operacoes especiais de NF-e do piloto preservam a nota de origem e impedem reservar duas vezes a mesma referencia ou ultrapassar a quantidade de devolucao.',
+  'As notificacoes fiscais antigas passam a exigir autenticacao e deixam de sobrescrever notas do piloto ou restaurar um status anterior de nota finalizada.',
+  'No piloto fiscal, o cancelamento e registrado antes do envio e acompanhado sem repetir o pedido; a nota e a venda so mudam apos a confirmacao com o evento correspondente.',
+  'No piloto fiscal da loja 1, uma tentativa incerta preserva o numero e passa a ser consultada pelo mesmo identificador; a tela distingue acompanhamento de autorizacao confirmada.',
+  'No piloto da loja 1, o botao de consulta respeita os intervalos da recuperacao; validacoes internas aguardam correcao com o mesmo numero e mostram a origem do diagnostico.',
+  'A retomada explicita de uma validacao anterior ao envio preserva a tentativa e o numero, inclusive depois de corrigir o certificado sem mudar os dados da nota.',
+  'Falhas de comunicacao fiscal passam a informar que o resultado ainda precisa ser consultado, sem afirmar que a nota nao foi autorizada.',
+  'A autenticacao fiscal exige o endereco da Nuvem Local e deixa de recorrer ao provedor publico quando a configuracao falta ou esta invalida.',
   'A explicacao das lentes compara os diferenciais documentados e esclarece quando os dados nao permitem justificar um ganho proporcional ao preco adicional.',
   'Um recebimento parcial de parcela passa a mostrar Reverter na consulta por cliente e na venda, mesmo com a parcela ainda em aberto.',
   'Aplicar um desconto na venda atualiza os valores uma vez e deixa de recarregar a tela sem parar.',
