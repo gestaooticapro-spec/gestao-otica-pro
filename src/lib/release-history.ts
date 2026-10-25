@@ -9,6 +9,7 @@ export type Release = {
 // altera o Dashboard ou o modal de histórico.
 export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'O piloto da loja 1 confere a autorizacao das notas antigas antes de associa-las ao acompanhamento de cancelamento, preservando numero, chave e XML.',
   'No piloto da loja 1, excluir uma OS devolve as reservas e remove os vinculos na mesma operacao; uma tentativa fiscal vinculada impede a exclusao antes de alterar o estoque.',
   'As operacoes especiais de NF-e do piloto preservam a nota de origem e impedem reservar duas vezes a mesma referencia ou ultrapassar a quantidade de devolucao.',
   'As notificacoes fiscais antigas passam a exigir autenticacao e deixam de sobrescrever notas do piloto ou restaurar um status anterior de nota finalizada.',
