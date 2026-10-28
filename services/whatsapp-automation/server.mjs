@@ -13,7 +13,7 @@ const config = {
 // "Boa tarde" e, alguns segundos depois, "Esta otima"). Vinte segundos
 // preservam o bloco de conteudo; cumprimentos isolados aguardam a continuacao.
 const INBOUND_AGGREGATION_WINDOW_MS = Number(process.env.WHATSAPP_INBOUND_AGGREGATION_WINDOW_MS || 20000)
-const INBOUND_GREETING_WINDOW_MS = Math.max(INBOUND_AGGREGATION_WINDOW_MS, Number(process.env.WHATSAPP_INBOUND_GREETING_WINDOW_MS || 60000))
+const INBOUND_GREETING_WINDOW_MS = Math.max(INBOUND_AGGREGATION_WINDOW_MS, Number(process.env.WHATSAPP_INBOUND_GREETING_WINDOW_MS || 120000))
 const APP_REQUEST_TIMEOUT_MS = Number(process.env.WHATSAPP_APP_REQUEST_TIMEOUT_MS || 65000)
 const PENDING_REPLY_RECOVERY_ATTEMPTS = 4
 const PENDING_REPLY_RECOVERY_DELAY_MS = 1500

@@ -30,7 +30,7 @@ export const PENDING_RELEASE_CHANGES: readonly string[] = [
   'O pos-venda reconhece boa adaptacao acompanhada de comentarios casuais sobre pagar, pede a nota sem abrir consulta de OS ou divida e identifica a IAra na primeira resposta.',
   'O pos-venda trata resposta afirmativa informal, mesmo junto com cumprimento ou citando a pergunta da otica, como adaptacao boa e pede a nota.',
   'A venda passa a ser marcada como NFC-e emitida no momento em que a nota de produção é autorizada, mesmo se a tela não confirmar o retorno da emissão.',
-  'O WhatsApp aguarda mais tempo quando chegam apenas cumprimentos, reunindo a continuacao do cliente antes de responder; perguntas e explicacoes mantem a espera normal.',
+  'O WhatsApp aguarda ate dois minutos quando chegam apenas cumprimentos, reunindo a continuacao do cliente antes de responder; perguntas e explicacoes mantem a espera normal.',
   'A consulta de OS na Loja 1 reconhece nomes completos informados pelo cliente, localiza pedidos de outro cadastro sem trocar o titular do WhatsApp e pede identificacao quando houver ambiguidade.',
   'Os lembretes automaticos de parcelas a vencer retomam o agendamento com a credencial vigente, preservando a antecedencia configurada e as preferencias dos clientes.',
   'Reacoes a mensagens no WhatsApp deixam de acionar novas respostas ou pausas humanas, incluindo troca e remocao da reacao; emojis enviados como mensagem continuam sendo recebidos normalmente.',
