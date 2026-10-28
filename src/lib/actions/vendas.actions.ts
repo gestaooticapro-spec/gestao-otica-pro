@@ -892,6 +892,24 @@ export async function saveServiceOrder(
 export async function deleteServiceOrder(id: number, storeId: number, vendaId: number): Promise<SaveSOResult> {
   const supabaseAdmin = createAdminClient()
   try {
+    if(process.env.FISCAL_RECOVERY_PILOT_ENABLED==='true'&&storeId===1){
+      const session=createClient();const {data:{user},error:authError}=await session.auth.getUser();
+      if(authError||!user)return {success:false,message:'Usuario nao autenticado.',timestamp:Date.now()};
+      const {data,error}=await (supabaseAdmin as any).rpc('gop_recovery_delete_order_v1',
+        {p_sale:vendaId,p_order:id,p_store:storeId,p_actor:user.id});
+      if(error||data!==true){
+        const message=String(error?.message??'');
+        return {success:false,message:message.includes('RECOVERY_FISCAL_ORIGIN_OWNED')?
+          'Esta venda possui tentativa fiscal registrada. Preserve a OS e o vinculo da nota.':
+          message.includes('RECOVERY_DELETE_STOCK_BLOCKED')?'Esta OS possui movimentacao de estoque que impede exclusao automatica.':
+          message.includes('RECOVERY_DELETE_POST_SALE')?'Esta OS possui pos-venda vinculado.':
+          'Nao foi possivel excluir a OS. Nenhuma alteracao dessa operacao foi salva.',timestamp:Date.now()};
+      }
+      revalidatePath(`/dashboard/loja/${storeId}/vendas/${vendaId}/os`)
+      revalidatePath(`/dashboard/loja/${storeId}/vendas/${vendaId}`)
+      revalidatePath(`/dashboard/loja/${storeId}/avaliacao`)
+      return {success:true,message:'OS excluida.',timestamp:Date.now()};
+    }
     const { data: venda } = await (supabaseAdmin.from('vendas') as any)
       .select('is_historical_import')
       .eq('id', vendaId)
@@ -923,6 +941,19 @@ export async function deleteServiceOrder(id: number, storeId: number, vendaId: n
         message: 'Esta OS possui registro de pos-venda vinculado e nao pode ser excluida automaticamente.',
         timestamp: Date.now()
       }
+    }
+
+    // The fiscal source is a venda in the emission UI, while older records may
+    // refer to the service order. Check both before releasing any stock.
+    const { data: managedFiscal, error: managedFiscalError } = await (supabaseAdmin.from('fiscal_invoices') as any)
+      .select('id')
+      .eq('store_id', storeId)
+      .in('work_order_id', [id, vendaId])
+      .like('nuvemfiscal_uuid', 'rv1\\_%')
+      .limit(1)
+    if (managedFiscalError) throw managedFiscalError
+    if (managedFiscal?.length) {
+      return { success: false, message: 'Esta OS pertence a uma venda com tentativa fiscal registrada. Preserve o vinculo fiscal.', timestamp: Date.now() }
     }
 
     const reservationRelease = await releaseReservationsForServiceOrder(id, vendaId)

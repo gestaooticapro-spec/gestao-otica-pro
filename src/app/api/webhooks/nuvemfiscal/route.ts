@@ -1,81 +1,24 @@
-import { createClient } from "@/lib/supabase/server";
-import { NextResponse } from "next/server";
+﻿import {createAdminClient} from '@/lib/supabase/admin';
+import {handleLegacyFiscalWebhook} from '@/lib/fiscal-legacy-webhook';
 
-export async function POST(request: Request) {
-    try {
-        // 1. Validação de Segurança
-        const authHeader = request.headers.get('authorization');
-        const webhookSecret = process.env.NUVEMFISCAL_WEBHOOK_SECRET;
-
-        if (webhookSecret && authHeader !== `Bearer ${webhookSecret}`) {
-            console.warn("[Webhook] Tentativa não autorizada.");
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
-
-        const body = await request.json();
-        console.log("[Webhook NuvemLocal] Recebido:", JSON.stringify(body, null, 2));
-
-        // Mantem a rota legada por compatibilidade; o webhook e da Nuvem Local.
-        // Geralmente vem: { id: "...", status: "autorizado", ... } ou dentro de um objeto "data"
-
-        const nuvemFiscalId = body.id || body.data?.id;
-        const statusNuvem = body.status || body.data?.status;
-        const motivo =
-            body.autorizacao?.motivo_status ||
-            body.data?.autorizacao?.motivo_status ||
-            body.motivo_status ||
-            body.data?.motivo_status;
-
-        if (!nuvemFiscalId) {
-            return NextResponse.json({ message: "ID não encontrado no payload" }, { status: 400 });
-        }
-
-        const supabase = createClient();
-
-        // 2. Mapear Status
-        let novoStatus = 'processing';
-        let errorMessage = null;
-
-        if (statusNuvem === 'autorizado') novoStatus = 'authorized';
-        else if (statusNuvem === 'rejeitado') {
-            novoStatus = 'rejected';
-            errorMessage = motivo || "Rejeicao reportada via Webhook";
-        }
-        else if (['erro', 'negado'].includes(statusNuvem)) {
-            novoStatus = 'error';
-            errorMessage = motivo || "Erro reportado via Webhook";
-        }
-        else if (statusNuvem === 'cancelado') novoStatus = 'cancelled';
-        else {
-            // Status desconhecido ou intermediário, ignorar ou manter processing
-            console.log("[Webhook] Status ignorado:", statusNuvem);
-            return NextResponse.json({ message: "Status ignorado" });
-        }
-
-        // 3. Atualizar Banco
-        const { error } = await supabase
-            .from("fiscal_invoices")
-            .update({
-                status: novoStatus,
-                error_message: errorMessage,
-                // Se o webhook trouxer URL do PDF/XML, atualizar também
-                pdf_url: body.pdf_url || body.data?.pdf_url,
-                xml_url: body.xml_url || body.data?.xml_url,
-                numero: body.numero || body.data?.numero,
-                serie: body.serie || body.data?.serie,
-                chave_acesso: body.chave || body.data?.chave
-            })
-            .eq("nuvemfiscal_uuid", nuvemFiscalId);
-
-        if (error) {
-            console.error("[Webhook] Erro ao atualizar banco:", error);
-            return NextResponse.json({ error: error.message }, { status: 500 });
-        }
-
-        return NextResponse.json({ message: "Status atualizado com sucesso" });
-
-    } catch (error: any) {
-        console.error("[Webhook] Erro interno:", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+export const runtime='nodejs';
+export async function POST(request:Request) {
+    return handleLegacyFiscalWebhook(request,{secret:process.env.NUVEMFISCAL_WEBHOOK_SECRET,database:()=>{
+        const database=createAdminClient() as any;
+        return {
+            async find(id){
+                const {data,error}=await database.from('fiscal_invoices')
+                    .select('id,organization_id,store_id,environment,nuvemfiscal_uuid,status,numero,serie,chave_acesso')
+                    .eq('nuvemfiscal_uuid',id).limit(2);
+                if(error)throw Error('WEBHOOK_STORAGE_UNAVAILABLE');return data??[];
+            },
+            async update(record,patch){
+                // CAS plus the database ownership barrier prevent stale writes.
+                const {data,error}=await database.from('fiscal_invoices').update(patch).eq('id',record.id)
+                    .eq('organization_id',record.organization_id).eq('store_id',record.store_id).eq('environment',record.environment)
+                    .eq('nuvemfiscal_uuid',record.nuvemfiscal_uuid).eq('status',record.status).select('id');
+                if(error)throw Error('WEBHOOK_STORAGE_UNAVAILABLE');return data?.length===1;
+            }
+        };
+    }});
 }

@@ -80,6 +80,25 @@ export async function getFiscalInvoices(storeId: number) {
     return data;
 }
 
+/** Visible-screen refresh reads only these local records. It never asks the
+ * central worker/SEFAZ for a new query and never downloads fiscal XML. */
+export async function getFiscalRecoveryUpdates(storeId:number,invoiceIds:Array<string|number>) {
+    if(!Number.isSafeInteger(storeId)||storeId!==1||invoiceIds.length<1||invoiceIds.length>100||
+        invoiceIds.some(id=>!/^[1-9]\d{0,15}$/.test(String(id))))throw new Error('RECOVERY_REFRESH_INVALID');
+    const session=createClient();const {data:{user},error:authError}=await session.auth.getUser();
+    if(authError||!user)throw new Error('RECOVERY_USER_REQUIRED');
+    const database=createAdminClient() as any;
+    const {data:profile,error:profileError}=await database.from('profiles').select('tenant_id,store_id,role').eq('id',user.id).single();
+    if(profileError||!profile?.tenant_id||(profile.role!=='admin'&&profile.store_id!==storeId))throw new Error('RECOVERY_REFRESH_ACCESS_DENIED');
+    const {data,error}=await database.from('fiscal_invoices')
+        .select('id,status,recovery_phase,recovery_version,error_origin,external_status_code,error_message,chave_acesso,xml_url,pdf_url,recovery_cancel_phase')
+        .eq('organization_id',profile.tenant_id).eq('store_id',storeId).eq('environment','production')
+        .in('id',[...new Set(invoiceIds.map(String))]).like('nuvemfiscal_uuid','rv1\\_%');
+    if(error)throw new Error('RECOVERY_REFRESH_UNAVAILABLE');
+    return data as Array<{id:number;status:string;recovery_phase:string;recovery_version:number;error_origin:string;
+      external_status_code:string|null;error_message:string|null;chave_acesso:string|null;xml_url:string|null;pdf_url:string|null;recovery_cancel_phase:string|null}>;
+}
+
 export async function getNFeInvoiceWithItemsAction(params: {
     storeId: number;
     invoiceId: number;
@@ -1192,13 +1211,14 @@ export async function getEmissoesByVenda(vendaId: number) {
     const supabase = createAdminClient() as any;
     const { data, error } = await supabase
         .from("fiscal_invoices")
-        .select("id, environment, status, tipo_documento")
+        .select(process.env.FISCAL_RECOVERY_PILOT_ENABLED==='true'?
+            "id, environment, status, tipo_documento, recovery_phase":"id, environment, status, tipo_documento")
         .eq("work_order_id", vendaId)
         .in("status", ["authorized", "processing"])
         .order("created_at", { ascending: false });
 
     if (error) return [];
-    return data as { id: number; environment: string; status: string; tipo_documento: string }[];
+    return data as { id: number; environment: string; status: string; tipo_documento: string;recovery_phase?:string|null }[];
 }
 
 export async function updateCustomerCpf(customerId: number, cpf: string) {

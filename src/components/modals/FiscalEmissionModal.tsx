@@ -61,7 +61,7 @@ export default function FiscalEmissionModal({
     const [error, setError] = useState<string | null>(null)
     const [successMsg, setSuccessMsg] = useState<string | null>(null)
     const [mounted, setMounted] = useState(false)
-    const [emissoesExistentes, setEmissoesExistentes] = useState<{ id: number; environment: string; status: string }[]>([])
+    const [emissoesExistentes, setEmissoesExistentes] = useState<{ id: number; environment: string; status: string;recovery_phase?:string|null }[]>([])
 
     const personType: 'PF' | 'PJ' = customer?.person_type === 'PJ' ? 'PJ' : 'PF'
     const existingCpf = personType === 'PJ' ? (customer?.cnpj || customer?.cpf_cnpj || '') : (customer?.cpf || customer?.cpf_cnpj || '')
@@ -81,7 +81,8 @@ export default function FiscalEmissionModal({
 
     if (!isOpen || !mounted) return null
 
-    const temProducaoEmitida = emissoesExistentes.some(e => e.environment === 'production')
+    const temProducaoEmitida = emissoesExistentes.some(e => e.environment === 'production'&&e.recovery_phase!=='blocked_local')
+    const temCorrecaoLocal = environment==='production'&&emissoesExistentes.some(e=>e.environment==='production'&&e.recovery_phase==='blocked_local')
     const temHomologacaoEmitida = emissoesExistentes.some(e => e.environment === 'homologation')
 
     // Produção emitida → bloqueia tudo. Homologação emitida → bloqueia só homologação.
@@ -210,8 +211,13 @@ export default function FiscalEmissionModal({
             })
 
             if (result.success) {
-                setSuccessMsg("NFC-e emitida com sucesso!")
-                await onSuccess(environment)
+                if ('status' in result && result.status === 'processing') {
+                    setSuccessMsg("NFC-e em acompanhamento. A autorização ainda não foi confirmada.")
+                    setEmissoesExistentes(await getEmissoesByVenda(venda.id))
+                } else {
+                    setSuccessMsg("NFC-e emitida com sucesso!")
+                    await onSuccess(environment)
+                }
             } else {
                 setError(result.error || "Erro desconhecido na emissão.")
             }
@@ -335,6 +341,9 @@ export default function FiscalEmissionModal({
                                     ? 'Nota de produção já emitida para esta venda. Não é possível emitir novamente.'
                                     : 'Nota de homologação já emitida. Selecione Produção para emitir a nota oficial.'}
                             </div>
+                        )}
+                        {temCorrecaoLocal&&!emissaoBloqueada&&(
+                            <p className="text-xs text-amber-300 mt-2">Há uma validação interna aguardando correção. Ao continuar, o sistema retoma a mesma tentativa e preserva o número.</p>
                         )}
                     </div>
 

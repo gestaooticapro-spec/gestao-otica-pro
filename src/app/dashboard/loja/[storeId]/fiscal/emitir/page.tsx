@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { emitirNFCe } from "@/lib/actions/fiscal.actions";
+import {browserFiscalDraftId} from '@/lib/fiscal-recovery-draft';
 import { getPendingSales, searchProducts, getProductFiscalData, getSaleData, getTenantIdByStore } from "@/lib/actions/fiscal-db.actions";
 import {
     ArrowLeft, FileText, Loader2, CheckCircle,
@@ -154,6 +155,7 @@ export default function EmitirNotaPage(props: { params: { storeId: string } }) {
             if (!tenantId) throw new Error("Organização não encontrada para esta loja.");
 
             const resNFCe = await emitirNFCe({
+                recovery_draft_id:storeId===1&&environment==='production'?browserFiscalDraftId():undefined,
                 organization_id: tenantId,
                 store_id: storeId, // Necessário para buscar a série NFCe da loja
                 work_order_id: selectedSale?.id, // Mapeado para work_order_id no banco, mas é venda_id
@@ -182,7 +184,7 @@ export default function EmitirNotaPage(props: { params: { storeId: string } }) {
             });
 
             if (resNFCe.success) {
-                alert("Emissão realizada com sucesso!");
+                alert('status' in resNFCe&&resNFCe.status==='processing'?'Nota em acompanhamento. A autorização ainda não foi confirmada.':"Emissão realizada com sucesso!");
                 router.push(`/dashboard/loja/${storeId}/fiscal`);
             } else {
                 alert(`Erro na emissão: ${resNFCe.error}`);

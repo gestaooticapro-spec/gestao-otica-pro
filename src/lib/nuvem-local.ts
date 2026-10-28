@@ -1,4 +1,5 @@
 // Mantem as variaveis NUVEMFISCAL_* por compatibilidade com o ambiente legado.
+import { resolveNuvemLocalEndpoints } from './nuvem-local-endpoints';
 
 type CachedToken = {
     token: string;
@@ -6,49 +7,29 @@ type CachedToken = {
 };
 
 const TOKEN_EXPIRY_SAFETY_MS = 60_000;
-const OFFICIAL_AUTH_URL = "https://auth.nuvemfiscal.com.br/oauth/token";
 const tokenCache: Record<string, CachedToken | undefined> = {};
 const tokenRequests: Record<string, Promise<string> | undefined> = {};
 
 function resolveAuthUrl(environment: 'production' | 'homologation') {
-    const explicitAuthUrl = environment === 'production'
-        ? process.env.NUVEMFISCAL_PROD_AUTH_URL
-        : process.env.NUVEMFISCAL_HOM_AUTH_URL;
-
-    if (explicitAuthUrl) {
-        return explicitAuthUrl.replace(/\/$/, '');
-    }
-
-    const baseUrl = environment === 'production'
-        ? process.env.NUVEMFISCAL_PROD_URL
-        : process.env.NUVEMFISCAL_HOM_URL;
-
-    const isLocalOverride = Boolean(
-        baseUrl && /(^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(?:\/|$))|fiscal\.mentebinaria\.com/i.test(baseUrl)
-    );
-
-    if (isLocalOverride) {
-        return `${baseUrl!.replace(/\/$/, '')}/oauth/token`;
-    }
-
-    return OFFICIAL_AUTH_URL;
+    return resolveNuvemLocalEndpoints(environment).authUrl;
 }
 
 export async function getNuvemLocalToken(
     environment: 'production' | 'homologation' = 'production',
     scope = 'empresa nfce nfe nfse'
 ) {
-    const cacheKey = `${environment}:${scope}`;
+    // Validate before consulting the cache as well: removed/changed configuration
+    // must not keep using a token issued for a previous authority.
+    const authUrl = resolveAuthUrl(environment);
+    const cacheKey = `${environment}:${authUrl}:${scope}`;
     const now = Date.now();
     const cached = tokenCache[cacheKey];
 
     if (cached && cached.expiresAt > now + TOKEN_EXPIRY_SAFETY_MS) {
-        console.log(`[NuvemLocal] Utilizando token cacheado para ${environment.toUpperCase()}.`);
         return cached.token;
     }
 
     if (tokenRequests[cacheKey]) {
-        console.log(`[NuvemLocal] Aguardando token em andamento para ${environment.toUpperCase()}.`);
         return tokenRequests[cacheKey]!;
     }
 
@@ -98,25 +79,21 @@ async function fetchNuvemLocalToken(
                 'Content-Type': 'application/x-www-form-urlencoded',
             },
             body: params,
+            redirect: 'error',
+            signal: AbortSignal.timeout(20_000),
         });
 
         console.log('[NuvemLocal] Status da resposta:', response.status, response.statusText);
 
         if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`[NuvemLocal] Erro ao autenticar (Status: ${response.status}):`, errorText);
-
-            let errorData;
-            try {
-                errorData = JSON.parse(errorText);
-            } catch {
-                errorData = { message: errorText };
-            }
-
-            throw new Error(`Falha na autenticacao (${response.status}): ${errorData.error_description || errorData.message || response.statusText}`);
+            throw new Error(`Falha na autenticacao da Nuvem Local (HTTP ${response.status}).`);
         }
 
         const data = await response.json();
+        if (typeof data.access_token !== 'string' || !data.access_token.trim() ||
+            !Number.isFinite(Number(data.expires_in)) || Number(data.expires_in) <= 0) {
+            throw new Error('Resposta OAuth invalida da Nuvem Local.');
+        }
         console.log('[NuvemLocal] Token obtido com sucesso!');
 
         const expiresInSeconds = Number(data.expires_in || 3600);

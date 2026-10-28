@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { getFiscalInvoices } from "@/lib/actions/fiscal-db.actions";
+import { getFiscalInvoices, getFiscalRecoveryUpdates } from "@/lib/actions/fiscal-db.actions";
 import { consultarNFCe, consultarNFe, cancelarNota } from "@/lib/actions/fiscal.actions";
 import { createFiscalPublicPrintLink } from "@/lib/actions/fiscal-public-link.actions";
 import BackButton from "@/components/ui/BackButton";
@@ -33,7 +33,20 @@ type Invoice = {
     work_order_id: number | null;
     destinatario_nome: string | null;
     valor_total: number | null;
+    nuvemfiscal_uuid?: string | null;
+    recovery_phase?: string | null;
+    recovery_version?: number | null;
+    error_origin?: string | null;
+    external_status_code?: string | null;
+    recovery_cancel_phase?:string|null;
 };
+
+function hasActiveRecovery(invoice:Invoice,environment:string) {
+    if(invoice.environment===environment&&invoice.status==='authorized'&&
+        ['prepared','possibly_sent','delegated'].includes(invoice.recovery_cancel_phase??''))return true;
+    return invoice.status==='processing'&&invoice.environment===environment&&
+        !['blocked_local','manual_review'].includes(invoice.recovery_phase??'');
+}
 
 function invoiceErrorText(invoice: Pick<Invoice, "error_message" | "motivo_rejeicao">, includeTechnicalDetail = false) {
     return formatFiscalUserMessage(invoice.motivo_rejeicao || invoice.error_message, { includeTechnicalDetail });
@@ -64,15 +77,32 @@ export default function FiscalDashboard(props: { params: { storeId: string } }) 
     // Smart polling para notas em processamento
     useEffect(() => {
         if (!modules.fiscal) return;
+        let stopped=false;
 
         const checkForUpdates = async () => {
+            if (document.visibilityState !== 'visible') return;
             const processingInvoices = invoicesRef.current.filter(
-                (inv) => inv.status === "processing" && inv.environment === environment
+                (inv) => hasActiveRecovery(inv,environment)
             );
             if (processingInvoices.length === 0) return;
 
             let updated = false;
-            for (const inv of processingInvoices) {
+            const managed = processingInvoices.filter(inv=>inv.nuvemfiscal_uuid?.startsWith('rv1_'));
+            if (managed.length) {
+                try {
+                    for(let offset=0;offset<managed.length&&!stopped;offset+=100){
+                        const updates = await getFiscalRecoveryUpdates(storeId,managed.slice(offset,offset+100).map(inv=>inv.id));
+                        if(stopped)return;
+                        setInvoices(current=>current.map(inv=>{
+                            const row=updates.find(item=>String(item.id)===String(inv.id));
+                            if(!row)return inv;
+                            return {...inv,...row,id:inv.id};
+                        }));
+                    }
+                } catch { /* Keep saved pending state; retry while visible. */ }
+            }
+            for (const inv of processingInvoices.filter(inv=>!inv.nuvemfiscal_uuid?.startsWith('rv1_'))) {
+                if(stopped)return;
                 if (inv.tipo_documento === "NFCe") {
                     const res = await consultarNFCe(inv.id);
                     if (res.success && res.status !== "processing") updated = true;
@@ -86,7 +116,7 @@ export default function FiscalDashboard(props: { params: { storeId: string } }) 
 
         const getInterval = () => {
             const processing = invoicesRef.current.filter(
-                (inv) => inv.status === "processing" && inv.environment === environment
+                (inv) => hasActiveRecovery(inv,environment)
             );
             if (processing.length === 0) return null;
             const hasRecent = processing.some((inv) => {
@@ -97,9 +127,16 @@ export default function FiscalDashboard(props: { params: { storeId: string } }) 
 
         const intervalMs = getInterval();
         if (!intervalMs) return;
-        const intervalId = setInterval(checkForUpdates, intervalMs);
-        return () => clearInterval(intervalId);
-    }, [invoices.filter((inv) => inv.status === "processing").length, environment, modules.fiscal]);
+        let timer:ReturnType<typeof setTimeout>;
+        const tick=async()=>{
+            try{await checkForUpdates();}catch{/* Preserve pending state on refresh failure. */}finally{
+                const next=getInterval();
+                if(!stopped&&next)timer=setTimeout(tick,next);
+            }
+        };
+        timer=setTimeout(tick,intervalMs);
+        return () => {stopped=true;clearTimeout(timer);};
+    }, [invoices.filter(inv=>hasActiveRecovery(inv,environment)).length, environment, modules.fiscal, storeId]);
 
     useEffect(() => {
         if (storeId && modules.fiscal) fetchInvoices();
@@ -123,10 +160,21 @@ export default function FiscalDashboard(props: { params: { storeId: string } }) 
             const invoice = invoices.find((inv) => inv.id === invoiceId);
             const tipo = invoice?.tipo_documento;
             const res = tipo === "NFe"
-                ? await consultarNFe(invoiceId)
-                : await consultarNFCe(invoiceId);
+                ? await consultarNFe(invoiceId,true)
+                : await consultarNFCe(invoiceId,true);
             if (res.success) {
-                if (res.status === "error" || res.status === "rejected") {
+                if ('recoveryPhase' in res) {
+                    const text=res.cancellationPhase==='manual_review'?'O cancelamento exige conferência. A nota permanece autorizada.':
+                        res.cancellationPhase==='rejected'?'Cancelamento rejeitado pela SEFAZ. A nota permanece autorizada.':
+                        res.cancellationPhase==='blocked_local'?'Cancelamento bloqueado por validação interna antes do envio.':
+                        ['prepared','possibly_sent','delegated'].includes(res.cancellationPhase??'')?'Cancelamento em acompanhamento. A nota permanece autorizada até confirmação.':
+                        res.recoveryPhase==='blocked_local'?'Validação interna: corrija esta tentativa. O número foi preservado.':
+                        res.recoveryPhase==='manual_review'?'A nota exige conferência. O número continua reservado.':
+                        res.status==='rejected'?`Rejeição confirmada pela SEFAZ (${res.recoveryCode}).`:
+                        res.status==='authorized'?'Nota autorizada.':res.status==='cancelled'?'Nota cancelada.':
+                        res.queryScheduled?'Consulta agendada, respeitando o intervalo e o limite de consultas.':'Nota continua em acompanhamento.';
+                    alert(text);
+                } else if (res.status === "error" || res.status === "rejected") {
                     let msg = res.data?.autorizacao?.motivo_status || res.data?.motivo_status || res.data?.error?.message;
                     if (res.data?.mensagens && Array.isArray(res.data.mensagens)) {
                         const detalhes = res.data.mensagens.map((m: any) => `${m.codigo}: ${m.descricao}`).join("\n");
@@ -154,7 +202,7 @@ export default function FiscalDashboard(props: { params: { storeId: string } }) 
         try {
             const res = await cancelarNota(invoiceId, justificativa);
             if (res.success) {
-                alert("Nota cancelada: " + res.message);
+                alert('status' in res&&res.status!=='cancelled'?res.message:"Nota cancelada: " + res.message);
                 fetchInvoices();
             } else {
                 alert("Erro: " + res.error);
@@ -197,7 +245,9 @@ export default function FiscalDashboard(props: { params: { storeId: string } }) 
         window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
     };
 
-    const getStatusBadge = (status: string) => {
+    const getStatusBadge = (status: string,phase?:string|null) => {
+        if(phase==='blocked_local')return <span className="bg-amber-100 text-amber-800 px-2 py-1 rounded-md text-xs font-bold">Corrigir dados</span>;
+        if(phase==='manual_review')return <span className="bg-amber-100 text-amber-800 px-2 py-1 rounded-md text-xs font-bold">Conferência necessária</span>;
         switch (status) {
             case "authorized":
                 return <span className="bg-green-100 text-green-700 px-2 py-1 rounded-md text-xs font-bold flex items-center gap-1 w-fit"><CheckCircle size={12} /> Autorizada</span>;
@@ -219,7 +269,9 @@ export default function FiscalDashboard(props: { params: { storeId: string } }) 
     const filteredInvoices = invoices.filter((inv) => {
         if (inv.environment !== environment) return false;
 
-        const matchesStatus = statusFilter === "all" || inv.status === statusFilter;
+        const matchesStatus = statusFilter === "all" ||
+            (statusFilter==='error'&&inv.recovery_phase==='blocked_local')||
+            (inv.status === statusFilter&&!(statusFilter==='processing'&&inv.recovery_phase==='blocked_local'));
 
         const invDate = new Date(displayDate(inv));
         let matchesDate = true;
@@ -238,7 +290,7 @@ export default function FiscalDashboard(props: { params: { storeId: string } }) 
     const authorizedInvoices = filteredInvoices.filter((i) => i.status === "authorized");
     const countAuthorized = authorizedInvoices.length;
     const sumAuthorized = authorizedInvoices.reduce((acc, inv) => acc + (inv.valor_total || 0), 0);
-    const countError = filteredInvoices.filter((i) => i.status === "error" || i.status === "rejected").length;
+    const countError = filteredInvoices.filter((i) => i.status === "error" || i.status === "rejected"||i.recovery_phase==='blocked_local').length;
     const countPending = filteredInvoices.filter((i) => i.status === "processing" || i.status === "draft").length;
 
     if (!modules.fiscal) {
@@ -419,7 +471,15 @@ export default function FiscalDashboard(props: { params: { storeId: string } }) 
                                                     : "—"}
                                             </td>
                                             <td className="px-5 py-4">
-                                                {getStatusBadge(inv.status)}
+                                                {getStatusBadge(inv.status,inv.recovery_phase)}
+                                                {inv.recovery_cancel_phase&&inv.status!=='cancelled'&&(
+                                                    <p className="text-[10px] text-amber-300 mt-1">{inv.recovery_cancel_phase==='rejected'?'Cancelamento rejeitado pela SEFAZ':
+                                                        inv.recovery_cancel_phase==='blocked_local'?'Cancelamento: corrigir validação interna':
+                                                        inv.recovery_cancel_phase==='manual_review'?'Cancelamento: conferência necessária':'Cancelamento em acompanhamento'}</p>
+                                                )}
+                                                {inv.error_origin&&inv.status!=='authorized'&&inv.status!=='cancelled'&&(
+                                                    <p className="text-[10px] text-slate-400 mt-1">Origem: {({consumer:'programa',central:'Nuvem Local',transport:'comunicação',sefaz:'SEFAZ'} as Record<string,string>)[inv.error_origin]??'em conferência'}</p>
+                                                )}
                                                 {(inv.error_message || inv.motivo_rejeicao) && (
                                                     <p className="text-[10px] text-red-400 mt-1 max-w-[180px] truncate" title={invoiceErrorText(inv)}>
                                                         {invoiceErrorText(inv)}

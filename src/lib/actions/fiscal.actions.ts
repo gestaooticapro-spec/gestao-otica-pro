@@ -3,6 +3,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getNuvemLocalToken } from "@/lib/nuvem-local";
+import { isGopRecoveryCandidate } from '@/lib/fiscal-recovery-client';
+import {reserveGopPilot,completeGopPilot,pilotActionResult,consultGopPilotInvoice,cancelGopPilotInvoice,cancelGopLegacyInvoice,type GopPilotContext} from '@/lib/fiscal-recovery.server';
 import { Database } from "@/lib/database.types";
 import { isStoreModuleEnabledForStore } from "@/lib/store-modules.server";
 import { documentDigits, isValidCnpj, isValidCpf } from "@/lib/customer-document";
@@ -40,6 +42,7 @@ type ClienteEnderecoPayload = {
 };
 
 type EmissionPayload = {
+    recovery_draft_id?: string;
     organization_id: string;
     store_id?: number; // NecessÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡rio para buscar a sÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©rie NFCe configurada na loja
     work_order_id?: number;
@@ -578,6 +581,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
     const supabase = createClient();
     const adminSupabase = createAdminClient() as any;
     let invoiceId: number | null = null;
+    let pilot:GopPilotContext|null=null;
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     console.log("[emitirNFCe] User ID:", user?.id, "Auth Error:", authError?.message);
@@ -597,7 +601,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
         }
 
         // 1. Validar duplicidade antes de qualquer operaÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o
-        const duplicateError = await ensureNoActiveInvoiceForWorkOrder(adminSupabase, payload, "NFCe", env);
+        const duplicateError = isGopRecoveryCandidate(payload.store_id,env) ? null : await ensureNoActiveInvoiceForWorkOrder(adminSupabase, payload, "NFCe", env);
         if (duplicateError) {
             return { success: false, error: duplicateError };
         }
@@ -651,7 +655,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
         company = await hydrateStoreFiscalDataFromNuvemLocal(company, env, token);
 
-        console.log("[emitirNFCe] Dados da loja:", JSON.stringify(company, null, 2));
+        if(!isGopRecoveryCandidate(payload.store_id,env)) console.log('[emitirNFCe] Cadastro fiscal carregado.');
 
         const cnpj = company.cnpj;
         if (!cnpj) {
@@ -678,11 +682,17 @@ export async function emitirNFCe(payload: EmissionPayload) {
             };
         }
         const currentSerie = store.nfce_serie || 1;
+        if(isGopRecoveryCandidate(payload.store_id,env)) {
+            pilot=await reserveGopPilot({organizationId:payload.organization_id,storeId:payload.store_id!,cnpj:String(cnpj),
+                model:'NFCe',series:currentSerie,workOrderId:payload.work_order_id??null,kind:'sale',draftId:payload.recovery_draft_id});
+            invoiceId=pilot.attempt.invoiceId;
+            if(pilot.attempt.postStartedAt&&pilot.attempt.state!=='blocked_local') return pilotActionResult(await pilot.client.consult(pilot.attempt));
+        }
 
         // 5. Obter prÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³xima numeraÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o sequencial de forma atÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â´mica via RPC
         // Usa admin client para garantir permissÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o de execuÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o independente de RLS
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data: nextNumber, error: rpcError } = await (adminSupabase as any).rpc("get_next_nfce_number", {
+        const { data: nextNumber, error: rpcError } = pilot ? {data:pilot.attempt.number,error:null} : await (adminSupabase as any).rpc("get_next_nfce_number", {
             p_org_id: payload.organization_id,
             p_store_id: payload.store_id,
             p_serie: currentSerie,
@@ -883,6 +893,8 @@ export async function emitirNFCe(payload: EmissionPayload) {
         };
 
         // 7. Salvar Rascunho no Banco (Status: Processing)
+        if(pilot) return await completeGopPilot(pilot,nfePayload,buildOutputInvoiceSnapshot(payload,company,issuedAt));
+
         const { data: invoice, error: dbError } = await adminSupabase
             .from("fiscal_invoices")
             .insert({
@@ -1057,6 +1069,10 @@ export async function emitirNFCe(payload: EmissionPayload) {
         return { success: true, invoiceId: invoice.id, message: "Nota em processamento" };
 
     } catch (error: any) {
+        if(pilot) {
+            const attempt=await pilot.client.failure(pilot.attempt,'RECOVERY_CONSUMER_EMISSION_FAILURE');
+            return pilotActionResult(attempt);
+        }
         console.error("Erro na emissÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£o:", error);
 
         if (invoiceId) {
@@ -1077,6 +1093,7 @@ export async function emitirNFe(payload: EmissionPayload) {
     const supabase = createClient();
     const adminSupabase = createAdminClient() as any;
     let invoiceId: number | null = null;
+    let pilot:GopPilotContext|null=null;
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     console.log("[emitirNFe] User ID:", user?.id, "Auth Error:", authError?.message);
@@ -1084,7 +1101,7 @@ export async function emitirNFe(payload: EmissionPayload) {
     try {
         const env = payload.environment || 'production';
 
-        const duplicateError = await ensureNoActiveInvoiceForWorkOrder(adminSupabase, payload, "NFe", env);
+        const duplicateError = isGopRecoveryCandidate(payload.store_id,env) ? null : await ensureNoActiveInvoiceForWorkOrder(adminSupabase, payload, "NFe", env);
         if (duplicateError) {
             return { success: false, error: duplicateError };
         }
@@ -1133,7 +1150,13 @@ export async function emitirNFe(payload: EmissionPayload) {
             throw new Error("C?digo IBGE do munic?pio n?o configurado na loja. Preencha nas configura??es.");
         }
 
-        const currentSerie = store.nfce_serie || 1;
+        const currentSerie = isGopRecoveryCandidate(payload.store_id,env) ? Number(store.nfe_serie || 1) : store.nfce_serie || 1;
+        if(isGopRecoveryCandidate(payload.store_id,env)) {
+            pilot=await reserveGopPilot({organizationId:payload.organization_id,storeId:payload.store_id!,cnpj:String(cnpj),
+                model:'NFe',series:currentSerie,workOrderId:payload.work_order_id??null,kind:'operation',draftId:payload.recovery_draft_id});
+            invoiceId=pilot.attempt.invoiceId;
+            if(pilot.attempt.postStartedAt&&pilot.attempt.state!=='blocked_local') return pilotActionResult(await pilot.client.consult(pilot.attempt));
+        }
         const { data: lastInvoice } = await adminSupabase
             .from("fiscal_invoices")
             .select("numero")
@@ -1144,7 +1167,7 @@ export async function emitirNFe(payload: EmissionPayload) {
             .order("created_at", { ascending: false })
             .limit(1)
             .maybeSingle();
-        const nextNumber = Math.max(1, Number(lastInvoice?.numero || 0) + 1);
+        const nextNumber = pilot?.attempt.number ?? Math.max(1, Number(lastInvoice?.numero || 0) + 1);
 
         const issuedAt = new Date().toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' }).replace(' ', 'T') + '-03:00';
         const naturezaOperacao = payload.natureza_operacao?.trim() || 'REMESSA EM GARANTIA';
@@ -1290,6 +1313,8 @@ export async function emitirNFe(payload: EmissionPayload) {
             }
         };
 
+        if(pilot) return await completeGopPilot(pilot,nfePayload,buildOutputInvoiceSnapshot(payload,company,issuedAt));
+
         const { data: invoice, error: dbError } = await adminSupabase
             .from("fiscal_invoices")
             .insert({
@@ -1423,6 +1448,10 @@ export async function emitirNFe(payload: EmissionPayload) {
         return { success: true, invoiceId: invoice.id, message: "Nota em processamento" };
 
     } catch (error: any) {
+        if(pilot) {
+            const attempt=await pilot.client.failure(pilot.attempt,'RECOVERY_CONSUMER_EMISSION_FAILURE');
+            return pilotActionResult(attempt);
+        }
         console.error("Erro na emiss?o NF-e:", error);
 
         if (invoiceId) {
@@ -1604,7 +1633,7 @@ export async function emitirNFSe(payload: EmissionPayload) {
     }
 }
 
-export async function consultarNFCe(invoiceId: string) {
+export async function consultarNFCe(invoiceId: string, requestRecoveryQuery = false) {
     const supabase = createAdminClient() as any;
 
     try {
@@ -1613,6 +1642,8 @@ export async function consultarNFCe(invoiceId: string) {
             .select("*")
             .eq("id", invoiceId)
             .single();
+
+        if(invoice?.nuvemfiscal_uuid?.startsWith('rv1_')) return await consultGopPilotInvoice(invoice,requestRecoveryQuery);
 
         if (!invoice || !invoice.nuvemfiscal_uuid) {
             return { success: false, error: "Nota nao encontrada ou sem ID da Nuvem Local." };
@@ -1716,7 +1747,7 @@ export async function consultarNFCe(invoiceId: string) {
     }
 }
 
-export async function consultarNFe(invoiceId: string) {
+export async function consultarNFe(invoiceId: string, requestRecoveryQuery = false) {
     const supabase = createAdminClient() as any;
 
     try {
@@ -1725,6 +1756,8 @@ export async function consultarNFe(invoiceId: string) {
             .select("*")
             .eq("id", invoiceId)
             .single();
+
+        if(invoice?.nuvemfiscal_uuid?.startsWith('rv1_')) return await consultGopPilotInvoice(invoice,requestRecoveryQuery);
 
         if (!invoice || !invoice.nuvemfiscal_uuid) {
             return { success: false, error: "Nota não encontrada ou sem ID da Nuvem Local." };
@@ -2266,7 +2299,10 @@ export async function cancelarNota(invoiceId: string, justificativa: string = "E
             return { success: false, error: "Modulo fiscal desativado para esta loja." };
         }
 
+        if(invoice.nuvemfiscal_uuid.startsWith('rv1_'))return await cancelGopPilotInvoice(invoice,justificativa);
         const env = (invoice.environment as 'production' | 'homologation') || 'production';
+        if(isGopRecoveryCandidate(invoice.store_id,env)&&Number(invoice.serie)===2&&['NFe','NFCe'].includes(invoice.tipo_documento))
+            return await cancelGopLegacyInvoice(invoice,justificativa);
         const token = await getNuvemLocalToken(env);
 
         // Verificar prazo de cancelamento por modelo:
