@@ -69,8 +69,9 @@ export type WhatsAppAiResponderSettings = {
 }
 
 export type WhatsAppAiRedesignSettings = {
+  /** Historico de rollout; nao seleciona mais o fluxo de atendimento. */
   mode?: 'legacy' | 'shadow' | 'redesign'
-  /** Piloto da Loja 1: desativar restaura integralmente o roteador anterior. */
+  /** Historico do piloto; nao habilita nem desabilita o redesign padrao. */
   safe_replies_enabled?: boolean
 }
 

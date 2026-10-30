@@ -14,6 +14,10 @@ async function main() {
     throw new Error('uso: status | enable | disable | check-recent')
   }
 
+  if (command === 'enable' || command === 'disable') {
+    throw new Error('O redesign e o padrao do programa; este comando antigo nao altera mais o atendimento. Use as configuracoes de WhatsApp da loja.')
+  }
+
   loadEnvConfig(process.cwd())
   const admin = createAdminClient()
   const { data: store, error } = await (admin.from('stores') as any)
@@ -40,7 +44,7 @@ async function main() {
   )
 
   if (command === 'status') {
-    console.log(JSON.stringify({ modeShadow, enabled, automationEnabled: automation.enabled !== false,
+    console.log(JSON.stringify({ attendanceEngine: 'redesign', historicalModeShadow: modeShadow, historicalPilotEnabled: enabled, automationEnabled: automation.enabled !== false,
       channelConnected, hasHours, hasAddress, hasPix }))
     return
   }
@@ -120,41 +124,7 @@ async function main() {
     return
   }
 
-  if (command === 'enable' && (!modeShadow || automation.enabled === false
-    || !channelConnected || !hasHours || !hasAddress || !hasPix)) {
-    throw new Error('precondicoes_do_piloto_nao_atendidas')
-  }
-  if (command === 'disable' && !enabled) {
-    console.log('pilot_already_disabled')
-    return
-  }
-  if (command === 'enable' && enabled) {
-    console.log('pilot_already_enabled')
-    return
-  }
 
-  const nextSettings = {
-    ...settings,
-    whatsapp_automation: {
-      ...automation,
-      ai_redesign: { ...redesign, safe_replies_enabled: command === 'enable' },
-    },
-  }
-  const { data: updated, error: updateError } = await (admin.from('stores') as any)
-    .update({ settings: nextSettings })
-    .eq('id', 1)
-    .select('id')
-    .single()
-  if (updateError || updated?.id !== 1) throw new Error('falha_ao_atualizar_piloto')
-
-  const { data: check, error: checkError } = await (admin.from('stores') as any)
-    .select('settings')
-    .eq('id', 1)
-    .single()
-  if (checkError || !check) throw new Error('falha_ao_conferir_piloto')
-  const actual = object(object(object(check.settings).whatsapp_automation).ai_redesign).safe_replies_enabled
-  if (actual !== (command === 'enable')) throw new Error('piloto_nao_confirmado')
-  console.log(command === 'enable' ? 'pilot_enabled_store_1' : 'pilot_disabled_store_1')
 }
 
 main().catch(() => {

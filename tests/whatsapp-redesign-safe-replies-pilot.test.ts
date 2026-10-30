@@ -14,7 +14,7 @@ import {
   shouldUseOrderStatusToolAgent,
 } from '../src/lib/whatsapp/redesign/safe-replies-pilot'
 import { buildWhatsAppRedesignReplyPrompt } from '../src/lib/whatsapp/ai'
-import { isStoreOneFullRedesignEnabled } from '../src/lib/whatsapp/redesign/rollout-policy'
+import { isWhatsAppFullRedesignEnabled } from '../src/lib/whatsapp/redesign/rollout-policy'
 import {
   enforceWhatsAppIntentEvidence,
   isExplicitOrderReadinessQuestion,
@@ -36,14 +36,14 @@ const decision = WhatsAppSystemDecisionSchema.parse({
   },
 })
 
-test('modo completo exige ativacao e permanece isolado na Loja 1', () => {
+test('modo completo e padrao em todas as lojas sem ativacao separada', () => {
   const settings = { ai_redesign: { mode: 'redesign' as const, safe_replies_enabled: true } }
-  assert.equal(isStoreOneFullRedesignEnabled(1, settings), true)
+  assert.equal(isWhatsAppFullRedesignEnabled(1, settings), true)
   assert.equal(isStoreOneSafeRepliesPilotEnabled(1, settings), true)
-  assert.equal(isStoreOneFullRedesignEnabled(2, settings), false)
-  assert.equal(isStoreOneSafeRepliesPilotEnabled(2, settings), false)
-  assert.equal(isStoreOneFullRedesignEnabled(1, { ai_redesign: { mode: 'redesign' } }), false)
-  assert.equal(isStoreOneFullRedesignEnabled(1, { ai_redesign: { mode: 'shadow', safe_replies_enabled: true } }), false)
+  assert.equal(isWhatsAppFullRedesignEnabled(2, settings), true)
+  assert.equal(isStoreOneSafeRepliesPilotEnabled(2, settings), true)
+  assert.equal(isWhatsAppFullRedesignEnabled(1, { ai_redesign: { mode: 'redesign' } }), true)
+  assert.equal(isWhatsAppFullRedesignEnabled(1, { ai_redesign: { mode: 'shadow', safe_replies_enabled: true } }), true)
 })
 
 test('modo completo resolve saudacao sem depender do roteador legado', () => {
@@ -59,12 +59,12 @@ test('modo completo resolve saudacao sem depender do roteador legado', () => {
     classification: { ...greeting, confidence: 0.1 } }), null)
 })
 
-test('piloto exige Loja 1, modo sombra e ativacao explicita', () => {
+test('flags antigos de sombra e legado nao desativam o redesign padrao', () => {
   const settings = { ai_redesign: { mode: 'shadow' as const, safe_replies_enabled: true } }
   assert.equal(isStoreOneSafeRepliesPilotEnabled(1, settings), true)
-  assert.equal(isStoreOneSafeRepliesPilotEnabled(2, settings), false)
-  assert.equal(isStoreOneSafeRepliesPilotEnabled(1, { ai_redesign: { mode: 'shadow' } }), false)
-  assert.equal(isStoreOneSafeRepliesPilotEnabled(1, { ai_redesign: { mode: 'legacy', safe_replies_enabled: true } }), false)
+  assert.equal(isStoreOneSafeRepliesPilotEnabled(2, settings), true)
+  assert.equal(isStoreOneSafeRepliesPilotEnabled(1, { ai_redesign: { mode: 'shadow' } }), true)
+  assert.equal(isStoreOneSafeRepliesPilotEnabled(1, { ai_redesign: { mode: 'legacy', safe_replies_enabled: true } }), true)
 })
 
 test('extrai identificador explicito de OS sem confundir pergunta de status', () => {

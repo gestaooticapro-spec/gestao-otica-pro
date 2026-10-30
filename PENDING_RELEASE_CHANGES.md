@@ -22,7 +22,7 @@
 
 - Na Loja 1, decisões de WhatsApp ainda em processamento permanecem pendentes para retomada, respeitando mensagens mais recentes e o atendimento humano. Perguntas intercaladas durante um acompanhamento seguem o redesign sem perder a pendência anterior. Se a redação da IA falhar em uma resposta de horário, o cliente recebe o horário oficial confirmado pelo sistema.
 
-- A Loja 1 pode usar o redesign como roteador completo do WhatsApp, preservando a memória da conversa, os tratamentos já implantados e a pausa de duas horas após a última mensagem manual do lojista. A ativação é exclusiva dessa loja.
+- O novo atendimento do WhatsApp passa a ser o padrão de todas as lojas. Cada loja continua decidindo se usa a automação e a IA, com seus próprios dados, horários e pausas de atendimento.
 
 - O pagamento da mensalidade exibe o QR Code no celular e informa com clareza quando os dados Pix ainda não estão disponíveis.
 - Os recibos de parcela enviados pelo WhatsApp mostram somente o valor recebido naquela operação, sem incluir pagamentos anteriores da mesma parcela.

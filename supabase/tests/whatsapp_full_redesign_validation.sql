@@ -1,4 +1,4 @@
--- Run after 20261003150000. Disposable data, no AI or WhatsApp sending.
+-- Run after 20261030120000. Disposable data, no AI or WhatsApp sending.
 begin;
 do $$
 declare
@@ -84,13 +84,37 @@ begin
       'full-validation-other-' || gen_random_uuid(),'redesign',v_summary) returning id into v_other_conversation;
     insert into public.whatsapp_conversation_turns(id,conversation_id,turn_key,status,opened_at,closes_at)
     values(v_other_turn,v_other_conversation,'test:other','processing',v_now,v_now);
+    -- The second store now processes full routing, with its own memory.
+    update public.whatsapp_conversation_memory
+    set remote_phone=(select remote_phone from public.whatsapp_conversation_memory where id=v_conversation),
+      summary=summary || '{"humanControl":"ai_active","humanActiveUntil":null,"pendingAction":"none","subject":"other_store"}'::jsonb
+    where id=v_other_conversation;
+    insert into public.whatsapp_conversation_messages
+      (conversation_id,source_key,role,message_kind,message_text,occurred_at)
+    values(v_other_conversation,'test:address','customer','text','Endereco da outra loja?',v_now)
+    returning id into v_message;
+    insert into public.whatsapp_conversation_turn_messages(turn_id,message_id,position)
+    values(v_other_turn,v_message,0);
+    v_summary := public.finish_whatsapp_redesign_shadow_turn(v_other_turn,v_metadata);
+    if v_summary->>'activeTopic' is distinct from 'store_location'
+      or v_summary->>'humanControl' is distinct from 'ai_active'
+      or v_summary->>'subject' is distinct from 'other_store' then
+      raise exception 'Second store lost its own memory';
+    end if;
+    if not exists(select 1 from public.whatsapp_conversation_memory where id=v_conversation
+      and summary->>'humanControl'='human_active' and summary->>'subject'='preserve_pending_installment') then
+      raise exception 'Second store changed the first store memory';
+    end if;
+    -- Legacy conversations remain outside the decision processor.
+    update public.whatsapp_conversation_memory set mode='legacy' where id=v_other_conversation;
+    update public.whatsapp_conversation_turns set status='processing' where id=v_other_turn;
     v_rejected:=false;
     begin
       perform public.finish_whatsapp_redesign_shadow_turn(v_other_turn,v_metadata);
     exception when others then
       if sqlerrm='conversa fora do escopo de processamento do redesign' then v_rejected:=true; else raise; end if;
     end;
-    if not v_rejected then raise exception 'Full routing escaped Store 1'; end if;
+    if not v_rejected then raise exception 'Legacy conversation accepted full routing'; end if;
   else
     raise exception 'No second store channel available for isolation validation';
   end if;

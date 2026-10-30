@@ -1,16 +1,22 @@
 import type { WhatsAppAutomationSettings } from '@/lib/store-modules'
 import type { WhatsAppRedesignMode } from './contracts'
 
-/** Full routing is deliberately restricted to the first production store. */
-export function isStoreOneFullRedesignEnabled(
+/** The redesign is the program default, independent of historical rollout flags. */
+export function isWhatsAppFullRedesignEnabled(
   storeId: number,
-  settings: WhatsAppAutomationSettings | null | undefined
+  _settings?: WhatsAppAutomationSettings | null
 ) {
-  return storeId === 1 && settings?.ai_redesign?.mode === 'redesign'
-    && settings.ai_redesign.safe_replies_enabled === true
+  return Number.isInteger(storeId) && storeId > 0
 }
 
-/** Both modes compute decisions; only the inbound orchestrator sends replies. */
-export function canProcessWhatsAppRedesignMode(storeId: number, mode: WhatsAppRedesignMode) {
-  return mode === 'shadow' || (storeId === 1 && mode === 'redesign')
+/** Store controls decide whether automatic AI attendance runs, not which engine it uses. */
+export function canUseWhatsAppAiAttendance(settings: WhatsAppAutomationSettings | null | undefined) {
+  return settings?.enabled !== false && settings?.ai_responder?.enabled === true
 }
+
+/** Historical shadow turns remain processable; the processor itself never sends. */
+export function canProcessWhatsAppRedesignMode(storeId: number, mode: WhatsAppRedesignMode) {
+  return isWhatsAppFullRedesignEnabled(storeId) && (mode === 'shadow' || mode === 'redesign')
+}
+
+export const usesWhatsAppRedesignPolicies = isWhatsAppFullRedesignEnabled

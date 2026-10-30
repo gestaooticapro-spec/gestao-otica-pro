@@ -1,5 +1,9 @@
 # Redesign completo — Loja 1
 
+> Documento historico do piloto. A partir da ampliacao de 30/10/2026, consultar
+> [redesign padrao em todas as lojas](whatsapp-redesign-all-stores-rollout.md).
+> Os comandos antigos de ativacao/reversao foram descontinuados; a loja escolhe somente usar ou nao o atendimento de WhatsApp.
+
 ## Escopo
 
 O modo `redesign`, com `safe_replies_enabled=true`, usa a decisão do redesign

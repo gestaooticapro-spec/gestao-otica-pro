@@ -113,6 +113,24 @@ Documentacao especifica desse servico:
 Observacao:
 detalhes operacionais sensiveis da VPS, acessos e cron devem ficar em documentacao local nao versionada.
 
+### Redesign como padrao do WhatsApp
+
+O redesign completo e o fluxo padrao do programa em todas as lojas. A loja
+continua decidindo se usa o WhatsApp, a automacao e a IA pelas configuracoes
+existentes; nao existe uma ativacao separada para escolher o redesign.
+Os campos antigos `ai_redesign.mode` e `safe_replies_enabled` ficam preservados
+como historico e nao selecionam mais o motor de atendimento. Configuracao ausente,
+`legacy`, `shadow` ou flag antiga desativada nao levam ao fluxo anterior.
+
+Automacao e IA desativadas continuam respeitadas. Agenda, consulta de OS,
+lembretes, pos-venda, controles humanos, endereco e Pix continuam individuais.
+Nenhuma configuracao da Loja 1 e copiada para outra loja.
+
+A publicacao exige a migration `20261030120000_whatsapp_full_redesign_all_stores.sql`
+e o scheduler de decisoes/retomadas abrangendo as lojas que usam o atendimento.
+Nao e preciso executar comando de ativacao por loja. O procedimento completo esta em
+[docs/whatsapp-redesign-all-stores-rollout.md](docs/whatsapp-redesign-all-stores-rollout.md).
+
 ### Continuidade do pos-venda no WhatsApp
 
 O atendimento da Loja 1 recupera pos-vendas ainda abertos por ate 30 dias,
@@ -308,7 +326,7 @@ As variaveis opcionais abaixo sobrescrevem somente sua tarefa:
 - `OPENAI_VISION_MODEL`: localizacao de pontos nas fotos de medidas.
 - `DAILY_STORE_HEALTH_OPENAI_MODEL`: leitura diaria da loja.
 - `WHATSAPP_AI_OPENAI_ORDER_HANDOFF_MODEL`: texto de encaminhamento humano.
-- `WHATSAPP_AI_OPENAI_CLASSIFICATION_MODEL`: classificacao do redesign da Loja 1.
+- `WHATSAPP_AI_OPENAI_CLASSIFICATION_MODEL`: classificacao do redesign do WhatsApp.
 - `WHATSAPP_AI_OPENAI_ORDER_STATUS_MODEL`: resposta e revisao de consulta de OS.
 - `USAGE_ASSISTANT_OPENAI_MODEL`: fallback OpenAI da ajuda por IA; por padrao `gpt-6-luna`.
 

@@ -4,8 +4,9 @@ export type CustomerLinkEvidence = 'phone_match' | 'status_lookup' | 'identifier
 export function shouldPersistCustomerLink(
   storeId: number,
   evidence: CustomerLinkEvidence,
-  hasCanonicalPhoneMatch = false
+  hasCanonicalPhoneMatch = false,
+  fullRouting = false
 ) {
-  if (storeId !== 1) return true
+  if (storeId !== 1 && !fullRouting) return true
   return evidence === 'manual' || (evidence === 'phone_match' && hasCanonicalPhoneMatch)
 }

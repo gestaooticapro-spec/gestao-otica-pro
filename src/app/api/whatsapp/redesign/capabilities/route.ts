@@ -9,7 +9,7 @@ export async function GET(request: Request) {
   if (!isWhatsAppRedesignInternalRequestAuthorized(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  return NextResponse.json({ decisionProcessorVersion: 2, fullRoutingStoreIds: [1] }, {
+  return NextResponse.json({ decisionProcessorVersion: 3, fullRoutingScope: 'all_stores', defaultAttendanceEngine: 'redesign', requiresStoreRedesignActivation: false }, {
     headers: { 'Cache-Control': 'no-store' },
   })
 }

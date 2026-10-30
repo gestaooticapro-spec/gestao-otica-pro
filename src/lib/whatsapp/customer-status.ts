@@ -87,7 +87,7 @@ import {
 } from './redesign/shadow-ingestion'
 import { WhatsAppRedesignConversationStore } from './redesign/store'
 import { processWhatsAppRedesignShadowTurns } from './redesign/shadow-processor'
-import { isStoreOneFullRedesignEnabled } from './redesign/rollout-policy'
+import { isWhatsAppFullRedesignEnabled, usesWhatsAppRedesignPolicies } from './redesign/rollout-policy'
 import {
   enforceWhatsAppIntentEvidence,
   isExplicitHumanHandoffRequest,
@@ -1659,7 +1659,7 @@ async function findCustomerByPhone(storeId: number, phone: string): Promise<Cust
 
   if (error) throw error
 
-  if (storeId === 1) return findUniqueCustomerPhoneMatch(phone, (data ?? []) as CustomerRow[])
+  if (usesWhatsAppRedesignPolicies(storeId)) return findUniqueCustomerPhoneMatch(phone, (data ?? []) as CustomerRow[])
 
   const strictMatch = (data ?? []).find((customer: CustomerRow) =>
     phonesMatch(phone, customer.fone_movel) || phonesMatch(phone, customer.phone)
@@ -1944,22 +1944,23 @@ async function findOpenOsByIdentifier(
   return null
 }
 
-async function findStoreOneOpenOsBySenderIdentifier(
+async function findOpenOsBySenderIdentifier(
+  storeId: number,
   phone: string,
   message: string | undefined
 ): Promise<{ customer: CustomerRow; serviceOrder: OpenOsRow } | null> {
-  const customer = await findCustomerByPhone(1, phone)
+  const customer = await findCustomerByPhone(storeId, phone)
   if (!customer) return null
 
   const explicitNumber = extractExplicitOrderNumber(message)
   const digits = digitsOnly(message)
   if (!explicitNumber && digits.length === 11) {
     if (digitsOnly(customer.cpf) !== digits) return null
-    const serviceOrder = await findLatestOpenOs(1, customer.id)
+    const serviceOrder = await findLatestOpenOs(storeId, customer.id)
     return serviceOrder ? { customer, serviceOrder } : null
   }
 
-  return findOpenOsByOrderNumberOnly(1, explicitNumber ? `OS ${explicitNumber}` : message, customer.id)
+  return findOpenOsByOrderNumberOnly(storeId, explicitNumber ? `OS ${explicitNumber}` : message, customer.id)
 }
 
 const STORE_PROFILE_CACHE_MS = 60_000
@@ -2305,7 +2306,8 @@ async function upsertCustomerLink(
   customerPhones: Array<string | null | undefined> = []
 ) {
   const hasCanonicalPhoneMatch = customerPhones.some((customerPhone) => phonesMatch(phone, customerPhone))
-  if (!shouldPersistCustomerLink(channel.store_id, source, hasCanonicalPhoneMatch)) return
+  if (!shouldPersistCustomerLink(channel.store_id, source, hasCanonicalPhoneMatch,
+    isWhatsAppFullRedesignEnabled(channel.store_id))) return
 
   const supabase = createAdminClient()
   const values = {
@@ -2438,6 +2440,7 @@ async function createOutbound(
   payload: Json = {},
   sourceInboundMessageId?: number | null
 ): Promise<CustomerStatusResponse> {
+  const redesignPoliciesEnabled = usesWhatsAppRedesignPolicies(channel.store_id)
   const supabase = createAdminClient()
   if (sourceInboundMessageId && !(await isInboundStillLatest(channel.id, phone, sourceInboundMessageId))) {
     return ignoreInbound(inboundMessageId, {
@@ -2449,7 +2452,7 @@ async function createOutbound(
   }
 
   const attachmentCanonical = extractWhatsAppCanonicalReply(payload)
-  if (channel.store_id === 1 && attachmentCanonical?.intent === 'attachment'
+  if (redesignPoliciesEnabled && attachmentCanonical?.intent === 'attachment'
     && ['human_handoff', 'repeat_handoff', 'acknowledge_attachment'].includes(attachmentCanonical.action)) {
     // The turn snapshot can precede confirmation of the previous reply. Check
     // the live queue as well, including a handoff that is still being sent.
@@ -2677,14 +2680,15 @@ async function createStatusReply(
   intentConfidence: number | null = null,
   finalWriter?: WhatsAppFinalWriterContext
 ): Promise<CustomerStatusResponse> {
-  if (channel.store_id === 1 && finalWriter?.enabled !== true) {
+  const redesignPoliciesEnabled = usesWhatsAppRedesignPolicies(channel.store_id)
+  if (redesignPoliciesEnabled && finalWriter?.enabled !== true) {
     return ignoreInbound(inboundMessageId, {
       stage: 'final_reply_generation', reason: 'ai_final_writer_disabled',
       route: 'order_status', intent: 'order_status', action: 'suppress_reply',
     })
   }
 
-  if (channel.store_id === 1) {
+  if (redesignPoliciesEnabled) {
     const phoneCustomer = await findCustomerByPhone(channel.store_id, phone)
     if (!phoneCustomer || phoneCustomer.id !== customer.id) {
       return ignoreInbound(inboundMessageId, {
@@ -2694,9 +2698,9 @@ async function createStatusReply(
     }
   }
 
-  // Loja 1: buscar uma OS por número/CPF/nome não vincula a identidade do
-  // remetente ao titular da OS. Nas demais lojas, preserva-se o fluxo legado.
-  if (channel.store_id !== 1) {
+  // No redesign, consultar uma OS nao vincula o remetente ao titular.
+  // Lojas fora desse modo preservam o fluxo anterior.
+  if (!redesignPoliciesEnabled) {
     await upsertCustomerLink(channel, phone, customer.id, 'status_lookup')
   }
 
@@ -2766,7 +2770,7 @@ async function createStatusReply(
       outboundType: 'os_status',
     }),
   }), 'assistant', status.replyText)
-  if (channel.store_id !== 1) {
+  if (!redesignPoliciesEnabled) {
     await setConversationState(channel, phone, 'silent', AFTER_STATUS_SILENCE_MS, statusMetadata, inboundMessageId)
   }
   const rendered = await maybeHumanizeOutboundFromCanonical(
@@ -2775,7 +2779,7 @@ async function createStatusReply(
     finalWriter?.storeName,
     finalWriter,
     finalWriter?.enabled === true,
-    channel.store_id === 1
+    redesignPoliciesEnabled
   )
   if (rendered.aiResult && finalWriter?.onResult) await finalWriter.onResult(rendered.aiResult)
   if (!rendered.shouldSend) {
@@ -2789,7 +2793,7 @@ async function createStatusReply(
     })
   }
 
-  if (channel.store_id === 1) {
+  if (redesignPoliciesEnabled) {
     await setConversationState(channel, phone, 'silent', AFTER_STATUS_SILENCE_MS, appendAiSessionMessage(mergeMetadata(baseMetadata, {
       reason: 'status_sent',
       lastKnownCustomerId: customer.id,
@@ -2822,19 +2826,20 @@ async function handleStatusByPhone(
   intentConfidence: number | null = null,
   finalWriter?: WhatsAppFinalWriterContext
 ): Promise<CustomerStatusResponse> {
+  const redesignPoliciesEnabled = usesWhatsAppRedesignPolicies(channel.store_id)
   async function createAutomatedStatusOutbound(
     text: string,
     messageType: string,
     payload: ConversationMetadataRecord,
     pendingState?: { state: ConversationState; timeoutMs: number; metadata: Json }
   ) {
-    if (channel.store_id === 1 && finalWriter?.enabled !== true) {
+    if (redesignPoliciesEnabled && finalWriter?.enabled !== true) {
       return ignoreInbound(inboundMessageId, {
         stage: 'final_reply_generation', reason: 'ai_final_writer_disabled',
         route: 'order_status', intent: 'order_status', action: 'suppress_reply',
       })
     }
-    if (pendingState && channel.store_id !== 1) {
+    if (pendingState && !redesignPoliciesEnabled) {
       await setConversationState(channel, phone, pendingState.state, pendingState.timeoutMs, pendingState.metadata, inboundMessageId)
     }
 
@@ -2844,7 +2849,7 @@ async function handleStatusByPhone(
       finalWriter?.storeName,
       finalWriter,
       finalWriter?.enabled === true,
-      channel.store_id === 1
+      redesignPoliciesEnabled
     )
     if (rendered.aiResult && finalWriter?.onResult) await finalWriter.onResult(rendered.aiResult)
     if (!rendered.shouldSend) {
@@ -2857,7 +2862,7 @@ async function handleStatusByPhone(
         route: 'order_status', intent: 'order_status', action: messageType,
       })
     }
-    if (pendingState && channel.store_id === 1) {
+    if (pendingState && redesignPoliciesEnabled) {
       await setConversationState(channel, phone, pendingState.state, pendingState.timeoutMs, pendingState.metadata, inboundMessageId)
     }
     return createOutbound(channel, inboundMessageId, phone, rendered.text, messageType, rendered.payload)
@@ -3191,6 +3196,19 @@ async function resolveCustomerStatusInternal(
     }
   }
 
+  const automationSettings = await loadStoreWhatsAppSettings(channel.store_id)
+  const fullRedesignEnabled = isWhatsAppFullRedesignEnabled(channel.store_id, automationSettings)
+  const redesignPoliciesEnabled = usesWhatsAppRedesignPolicies(channel.store_id, automationSettings)
+  if (!isWhatsAppAutomationEnabled(automationSettings)) {
+    return ignoreInbound(inbound.id)
+  }
+  if (fullRedesignEnabled && !isWhatsAppAiResponderEnabled(automationSettings)) {
+    return ignoreInbound(inbound.id, {
+      stage: 'control_gate', reason: 'ai_responder_disabled',
+      route: 'whatsapp_redesign', action: 'no_reply',
+    })
+  }
+
   const openHoursProfile = await loadStoreProfile(channel.store_id)
   const openHoursSettings = ((openHoursProfile.settings || {}) as StoreSettings) || {}
   const openHoursFacts = openHoursSettings.store_hours
@@ -3218,18 +3236,6 @@ async function resolveCustomerStatusInternal(
     providerCreatedAt: input.providerCreatedAt || null,
     payload: input.payload,
   })
-
-  const automationSettings = await loadStoreWhatsAppSettings(channel.store_id)
-  const fullRedesignEnabled = isStoreOneFullRedesignEnabled(channel.store_id, automationSettings)
-  if (!isWhatsAppAutomationEnabled(automationSettings)) {
-    return ignoreInbound(inbound.id)
-  }
-  if (fullRedesignEnabled && !isWhatsAppAiResponderEnabled(automationSettings)) {
-    return ignoreInbound(inbound.id, {
-      stage: 'control_gate', reason: 'ai_responder_disabled',
-      route: 'store_one_redesign', action: 'no_reply',
-    })
-  }
 
   const statusPublication = await findWhatsAppStatusPublication(channel.id, input.statusReferenceId)
   const statusContextLine = statusPublication
@@ -3284,7 +3290,7 @@ async function resolveCustomerStatusInternal(
     }
     return ignoreInbound(inbound.id, {
       stage: 'control_gate', reason: 'status_requires_human',
-      route: 'store_one_redesign', action: 'no_reply',
+      route: 'whatsapp_redesign', action: 'no_reply',
     })
   }
   if (immediateReminderContext
@@ -3331,7 +3337,7 @@ async function resolveCustomerStatusInternal(
   }
 
   const storeOnePilotEnabled = isStoreOneSafeRepliesPilotEnabled(channel.store_id, automationSettings)
-  const redesignRoute = fullRedesignEnabled ? 'store_one_redesign' : 'store_one_safe_reply_pilot'
+  const redesignRoute = fullRedesignEnabled ? 'whatsapp_redesign' : 'store_one_safe_reply_pilot'
   const livePostSaleContext = readPostSaleContext(state?.metadata)
   const prePilotPersistentPostSaleMemory = storeOnePilotEnabled && !livePostSaleContext
     ? await loadPersistentPostSaleMemory(channel, normalizedPhone)
@@ -3385,7 +3391,7 @@ async function resolveCustomerStatusInternal(
     return response
   }
 
-  const feedbackContinuation = channel.store_id === 1 ? postSaleFeedbackContinuation({
+  const feedbackContinuation = redesignPoliciesEnabled ? postSaleFeedbackContinuation({
     context: pendingPrePilotPostSaleContext, messageText: effectiveMessageText,
     hasAttachment: inboundPayloadMeta.hasAttachment,
     explicitHumanRequest: isExplicitHumanHandoffRequest(effectiveMessageText), explicitOrderRequest,
@@ -3525,7 +3531,9 @@ async function resolveCustomerStatusInternal(
           && turnContext.memory.summary.activeTopic === 'order_status'
         orderLookupPlan = planStoreOneOrderLookup({
           storeId: channel.store_id,
-          enabled: isWhatsAppAiResponderEnabled(automationSettings),
+          fullRouting: fullRedesignEnabled,
+          enabled: isWhatsAppAiResponderEnabled(automationSettings)
+            && automationSettings?.os_on_demand?.enabled !== false,
           classification,
           decision,
           messageText: effectiveMessageText,
@@ -3548,7 +3556,7 @@ async function resolveCustomerStatusInternal(
         if (decision.action === 'lookup_order_status' && !orderLookupPlan) {
           return ignoreInbound(inbound.id, {
             stage: 'redesign_decision', reason: 'order_lookup_unavailable',
-            route: 'store_one_order_status', intent: 'order_status', action: 'suppress_reply',
+            route: 'redesign_order_status', intent: 'order_status', action: 'suppress_reply',
           })
         }
         if (!orderLookupPlan) {
@@ -3689,7 +3697,7 @@ async function resolveCustomerStatusInternal(
   const pendingPostSaleContext = activePostSaleContext?.stage === 'completed'
     ? null
     : activePostSaleContext
-  if (channel.store_id === 1 && recoveredPostSaleContext) {
+  if (redesignPoliciesEnabled && recoveredPostSaleContext) {
     baseMetadata = mergeMetadata(baseMetadata, {
       postSaleContext: recoveredPostSaleContext as unknown as Json,
     })
@@ -3874,7 +3882,7 @@ async function resolveCustomerStatusInternal(
     afterSuccessfulSend?: (sentText: string) => Promise<void>
   ) {
     if (typeof text !== 'string' || !text.trim()) {
-      return channel!.store_id === 1
+      return redesignPoliciesEnabled
         ? ignoreInbound(inbound.id, {
             stage: 'final_reply_validation', reason: 'empty_canonical_reply',
             route: messageType, action: 'suppress_reply',
@@ -3883,9 +3891,9 @@ async function resolveCustomerStatusInternal(
     }
 
     async function send(textToSend: string, payloadToSend: ConversationMetadataRecord) {
-      if (channel!.store_id !== 1 && afterSuccessfulSend) await afterSuccessfulSend(textToSend)
+      if (!redesignPoliciesEnabled && afterSuccessfulSend) await afterSuccessfulSend(textToSend)
       const response = await createOutbound(channel!, inbound.id, normalizedPhone, textToSend, messageType, payloadToSend, inbound.id)
-      if (channel!.store_id === 1 && response.shouldReply && afterSuccessfulSend) {
+      if (redesignPoliciesEnabled && response.shouldReply && afterSuccessfulSend) {
         await afterSuccessfulSend(textToSend)
       }
       return response
@@ -3894,7 +3902,7 @@ async function resolveCustomerStatusInternal(
     const payloadRecord = toMetadataRecord(payload)
     const previousHumanization = payloadRecord.humanization as unknown as { enabled?: boolean; success?: boolean } | undefined
     if (previousHumanization?.enabled === true) {
-      if (previousHumanization.success !== true && channel!.store_id === 1) {
+      if (previousHumanization.success !== true && redesignPoliciesEnabled) {
         return ignoreInbound(inbound.id, {
           stage: 'final_reply_validation',
           reason: 'canonical_humanization_failed',
@@ -3918,7 +3926,7 @@ async function resolveCustomerStatusInternal(
         } satisfies ConversationMetadataRecord
     const finalWriterEnabled = WHATSAPP_AI_FINAL_WRITER_ENABLED
       && isWhatsAppAiResponderEnabled(automationSettings)
-    if (!finalWriterEnabled && channel!.store_id === 1) {
+    if (!finalWriterEnabled && redesignPoliciesEnabled) {
       console.warn('[WhatsApp IA] Resposta suprimida: redação por IA desativada.')
       return ignoreInbound(inbound.id, {
         stage: 'final_reply_generation', reason: 'ai_final_writer_disabled',
@@ -3933,7 +3941,7 @@ async function resolveCustomerStatusInternal(
       storeProfile.name,
       aiReplyContext,
       finalWriterEnabled,
-      channel!.store_id === 1
+      redesignPoliciesEnabled
     )
 
     logRoute('outbound_humanization', {
@@ -3992,8 +4000,8 @@ async function resolveCustomerStatusInternal(
     && state?.state !== 'human_pause'
     && !isWhatsAppToolAgentEnabled(automationSettings)
     && !orderLookupPlan) {
-    const orderMatch = channel.store_id === 1
-      ? await findStoreOneOpenOsBySenderIdentifier(normalizedPhone, `OS ${explicitOrderNumber}`)
+    const orderMatch = redesignPoliciesEnabled
+      ? await findOpenOsBySenderIdentifier(channel.store_id, normalizedPhone, `OS ${explicitOrderNumber}`)
       : await findOpenOsByOrderNumberOnly(channel.store_id, `OS ${explicitOrderNumber}`)
     if (orderMatch) {
       return createStatusReply(
@@ -4018,9 +4026,9 @@ async function resolveCustomerStatusInternal(
       })
     }
 
-    // O novo comportamento sem resposta genérica de fechamento é somente da
-    // Loja 1; as demais lojas conservam o atalho operacional anterior.
-    if (channel!.store_id !== 1 && hoursFacts && !hoursFacts.is_open_now) {
+    // O redesign usa a decisao e a agenda da propria loja. Fora desse modo,
+    // preserva-se o atalho operacional anterior de fechamento.
+    if (!redesignPoliciesEnabled && hoursFacts && !hoursFacts.is_open_now) {
       const isExceptionalClosure = hoursFacts.is_exceptional_closure
       const text = buildClosedStoreText(hoursFacts)
       const outboundType = isExceptionalClosure ? 'exceptional_closure' : 'store_hours'
@@ -4071,7 +4079,7 @@ async function resolveCustomerStatusInternal(
 
   if (!fullRedesignEnabled && statusPublication) {
     return continueWithoutHoursOverride(async () => {
-      if (channel!.store_id !== 1) {
+      if (!redesignPoliciesEnabled) {
         const fallbackText = 'Que bom que você se interessou por essa publicação! O que você gostaria de saber sobre ela?'
         let text = fallbackText
         if (isWhatsAppAiResponderEnabled(automationSettings)) {
@@ -4314,7 +4322,10 @@ async function resolveCustomerStatusInternal(
   }
 
   async function executeOrderLookup(call: WhatsAppToolCall): Promise<WhatsAppToolResult> {
-    if (channel!.store_id === 1 && call.name === 'lookup_open_orders_by_identifier'
+    if (fullRedesignEnabled && automationSettings?.os_on_demand?.enabled === false) {
+      return { tool: call.name, ok: false, data: { code: 'os_responder_disabled' } }
+    }
+    if (redesignPoliciesEnabled && call.name === 'lookup_open_orders_by_identifier'
       && orderLookupPlan?.personName) {
       const name = orderLookupPlan.personName
       const limit = 10
@@ -4336,10 +4347,10 @@ async function resolveCustomerStatusInternal(
             patientName: order.dependente_name, status: status.statusCode, statusText: status.replyText }
         })) } }
     }
-    const phoneCustomer = channel!.store_id === 1
+    const phoneCustomer = redesignPoliciesEnabled
       ? await findCustomerByPhone(channel!.store_id, normalizedPhone) : null
     if (call.name === 'lookup_open_orders') {
-      const customer = channel!.store_id === 1
+      const customer = redesignPoliciesEnabled
         ? phoneCustomer : await findCustomerByPhone(channel!.store_id, normalizedPhone)
       if (!customer) return { tool: call.name, ok: false, data: { code: 'customer_not_found' } }
 
@@ -4361,12 +4372,12 @@ async function resolveCustomerStatusInternal(
       }
     }
 
-    if (channel!.store_id === 1 && !phoneCustomer) {
+    if (redesignPoliciesEnabled && !phoneCustomer) {
       return { tool: call.name, ok: false, data: { code: 'order_not_found_for_identifier' } }
     }
     const explicitNumber = extractExplicitOrderNumber(effectiveMessageText)
     const cpfDigits = digitsOnly(effectiveMessageText)
-    if (!explicitNumber && channel!.store_id === 1 && cpfDigits.length === 11) {
+    if (!explicitNumber && redesignPoliciesEnabled && cpfDigits.length === 11) {
       if (digitsOnly(phoneCustomer!.cpf) !== cpfDigits) {
         return { tool: call.name, ok: false, data: { code: 'order_not_found_for_identifier' } }
       }
@@ -4388,7 +4399,7 @@ async function resolveCustomerStatusInternal(
       return { tool: call.name, ok: true,
         data: { customerName: customer.full_name, ...prepareOpenOrdersForAgent(orderFacts) } }
     }
-    const result = channel!.store_id === 1
+    const result = redesignPoliciesEnabled
       ? await findOpenOsByOrderNumberOnly(
         channel!.store_id, explicitNumber ? `OS ${explicitNumber}` : effectiveMessageText || undefined,
         phoneCustomer!.id
@@ -4421,7 +4432,7 @@ async function resolveCustomerStatusInternal(
     if (!WHATSAPP_AI_FINAL_WRITER_ENABLED) {
       return ignoreInbound(inbound.id, {
         stage: 'order_status', reason: 'ai_final_writer_disabled',
-        route: 'store_one_order_status', intent: 'order_status', action: 'suppress_reply',
+        route: 'redesign_order_status', intent: 'order_status', action: 'suppress_reply',
       })
     }
     const { agent, disposition, replyValidationAttempts } = await runStoreOneOrderStatusTurn({
@@ -4485,7 +4496,7 @@ async function resolveCustomerStatusInternal(
       aiToolCalls: agent.toolCalls as unknown as Json,
       aiToolResults: agent.toolResults as unknown as Json,
       automationTrace: {
-        route: 'store_one_order_lookup', lookupTool: orderLookupPlan.tool,
+        route: 'redesign_order_lookup', lookupTool: orderLookupPlan.tool,
         planSource: orderLookupPlan.source, semanticValidation: 'accepted',
         writerAttempts: agent.aiResults.length,
       },
@@ -4518,11 +4529,11 @@ async function resolveCustomerStatusInternal(
     && !isExplicitHumanHandoffRequest(effectiveMessageText)) {
     return ignoreInbound(inbound.id, {
       stage: 'order_status', reason: 'redesign_order_decision_unavailable',
-      route: 'store_one_order_status', intent: 'order_status', action: 'suppress_reply',
+      route: 'redesign_order_status', intent: 'order_status', action: 'suppress_reply',
     })
   }
 
-  if (channel.store_id === 1 && pendingPostSaleContext) {
+  if (redesignPoliciesEnabled && pendingPostSaleContext) {
     if (explicitPostSaleRating) {
       postSaleTurnDisposition = 'handle_post_sale'
     } else {
@@ -4576,7 +4587,7 @@ async function resolveCustomerStatusInternal(
     }
   }
 
-  if (channel.store_id === 1 && pendingPostSaleContext && contextualPostSaleSignal) {
+  if (redesignPoliciesEnabled && pendingPostSaleContext && contextualPostSaleSignal) {
     const isAdjustment = contextualPostSaleSignal === 'frame_adjustment'
     const action = isAdjustment ? 'human_handoff' as const : 'conservative_fallback' as const
     const replyInput = {
@@ -4621,7 +4632,7 @@ async function resolveCustomerStatusInternal(
     return withAiDiagnostics(response)
   }
 
-  const storeOnePostSaleAction = channel.store_id === 1
+  const storeOnePostSaleAction = redesignPoliciesEnabled
     ? getPostSaleForcedToolCall({
       context: pendingPostSaleContext,
       disposition: postSaleTurnDisposition,
@@ -4631,7 +4642,7 @@ async function resolveCustomerStatusInternal(
       explicitRating: explicitPostSaleRating,
     })
     : null
-  if (channel.store_id === 1 && pendingPostSaleContext) {
+  if (redesignPoliciesEnabled && pendingPostSaleContext) {
     logRoute('post_sale_disposition', {
       postSaleStage: pendingPostSaleContext.stage ?? null,
       disposition: postSaleTurnDisposition,
@@ -4714,7 +4725,7 @@ async function resolveCustomerStatusInternal(
       channel, inbound.id, normalizedPhone, replyText, outboundType, {
         ...payload,
         automationTrace: {
-          route: 'store_one_post_sale_action', postSaleStage: pendingPostSaleContext.stage ?? null,
+          route: 'redesign_post_sale_action', postSaleStage: pendingPostSaleContext.stage ?? null,
           forcedAction: storeOnePostSaleAction.name, replyWriter: 'specialized_writer',
           semanticValidation: 'accepted',
         },
@@ -5043,7 +5054,7 @@ async function resolveCustomerStatusInternal(
 
     const isDisambiguatingOpenOrders = toMetadataRecord(state?.metadata).reason === 'multiple_open_orders_identifier_requested'
     const result = channel.store_id === 1
-      ? await findStoreOneOpenOsBySenderIdentifier(normalizedPhone, effectiveMessageText || undefined)
+      ? await findOpenOsBySenderIdentifier(channel.store_id, normalizedPhone, effectiveMessageText || undefined)
       : isDisambiguatingOpenOrders
         ? await findOpenOsByOrderNumberOnly(channel.store_id, effectiveMessageText || undefined)
         : await findOpenOsByIdentifier(channel.store_id, effectiveMessageText || undefined)
@@ -5084,7 +5095,7 @@ async function resolveCustomerStatusInternal(
     }
 
     const result = channel.store_id === 1
-      ? await findStoreOneOpenOsBySenderIdentifier(normalizedPhone, effectiveMessageText || undefined)
+      ? await findOpenOsBySenderIdentifier(channel.store_id, normalizedPhone, effectiveMessageText || undefined)
       : isDisambiguatingOpenOrders
         ? await findOpenOsByOrderNumberOnly(channel.store_id, effectiveMessageText || undefined)
         : await findOpenOsByIdentifier(channel.store_id, effectiveMessageText || undefined)
@@ -6341,6 +6352,7 @@ export async function simulateCustomerStatus(
   const inboundPayloadMeta = extractWhatsAppInboundPayloadMeta(input.payload)
   const effectiveMessageText = normalizeDisplayText(input.messageText) || inboundPayloadMeta.caption || inboundPayloadMeta.text
   const automationSettings = await loadStoreWhatsAppSettings(channel.store_id)
+  const redesignPoliciesEnabled = usesWhatsAppRedesignPolicies(channel.store_id, automationSettings)
   const persistedState = await findConversationState(channel.id, normalizedPhone)
   const controlMode = await loadCustomerControlMode(channel.id, normalizedPhone)
   const aiDiagnostics: WhatsAppAiDiagnostic[] = []
@@ -6430,7 +6442,7 @@ export async function simulateCustomerStatus(
     toolAgentEnabled: isWhatsAppToolAgentEnabled(automationSettings),
   })
 
-  if (channel.store_id !== 1 && isExceptionalClosure) {
+  if (!redesignPoliciesEnabled && isExceptionalClosure) {
     const text = buildClosedStoreText(hoursFacts!)
     return buildResult({ shouldReply: true, phone: normalizedPhone, replyText: text }, {
       overrideMode: controlMode,
@@ -6445,7 +6457,7 @@ export async function simulateCustomerStatus(
     })
   }
 
-  if (channel.store_id !== 1 && isNormalClosed) {
+  if (!redesignPoliciesEnabled && isNormalClosed) {
     const text = buildClosedStoreText(hoursFacts!)
     return buildResult({ shouldReply: true, phone: normalizedPhone, replyText: text }, {
       overrideMode: controlMode,
@@ -6554,8 +6566,8 @@ export async function simulateCustomerStatus(
       })
     }
 
-    const result = channel.store_id === 1
-      ? await findStoreOneOpenOsBySenderIdentifier(normalizedPhone, effectiveMessageText || undefined)
+    const result = redesignPoliciesEnabled
+      ? await findOpenOsBySenderIdentifier(channel.store_id, normalizedPhone, effectiveMessageText || undefined)
       : await findOpenOsByIdentifier(channel.store_id, effectiveMessageText || undefined)
     if (result) {
       const automationSettingsForStatus = await loadStoreWhatsAppSettings(channel.store_id)
@@ -6581,7 +6593,7 @@ export async function simulateCustomerStatus(
     }
 
     if (preAiRoute === 'waiting_identifier_lookup') {
-      if (channel.store_id !== 1) {
+      if (!redesignPoliciesEnabled) {
         const text = notFoundHandoffText()
         return buildResult({ shouldReply: true, phone: normalizedPhone, replyText: text }, {
           overrideMode: controlMode,
@@ -6649,7 +6661,7 @@ export async function simulateCustomerStatus(
         hasStoreHoursText: Boolean(storeHoursText),
         hasStoreLocationText: Boolean(storeLocationText),
       })
-    const evidenceGuardedClassification = channel.store_id === 1
+    const evidenceGuardedClassification = redesignPoliciesEnabled
       ? enforceWhatsAppIntentEvidence({
         route: routedClassification,
         intent: classification.success ? classification.data.intent : null,
@@ -6697,7 +6709,7 @@ export async function simulateCustomerStatus(
         ? await findLatestOpenOs(channel.store_id, customerByPhone.id)
         : null
 
-      if (channel.store_id !== 1
+      if (!redesignPoliciesEnabled
         && shouldRequestThirdPartyIdentifier(classification.data, customerByPhone, serviceOrderByPhone)) {
         const text = thirdPartyIdentifierPromptText()
         return buildResult({ shouldReply: true, phone: normalizedPhone, replyText: text }, {
@@ -6851,7 +6863,7 @@ export async function simulateCustomerStatus(
     }
   }
 
-  if (channel.store_id === 1) return buildResult({}, {
+  if (redesignPoliciesEnabled) return buildResult({}, {
     overrideMode: controlMode,
     preAiRoute,
     postClassificationRoute: 'fallback',

@@ -22,9 +22,7 @@ async function run(request: Request) {
 
   try {
     const startedAt = Date.now()
-    const deferredReplies = storeId === undefined || storeId === 1
-      ? await resumeDeferredWhatsAppRedesignReplies(resolveCustomerStatus, 1)
-      : { resumed: 0, skipped: 0 }
+    const deferredReplies = await resumeDeferredWhatsAppRedesignReplies(resolveCustomerStatus, 1, storeId)
     const result = await processWhatsAppRedesignShadowTurns({ limit, storeId, deadlineAt: startedAt + 20_000 })
     return NextResponse.json({ ...result, deferredReplies })
   } catch (error) {

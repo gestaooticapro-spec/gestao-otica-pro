@@ -1,3 +1,4 @@
+import { isWhatsAppFullRedesignEnabled, canUseWhatsAppAiAttendance } from './rollout-policy'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { recordWhatsAppInboundProcessingEvent } from '../inbound-processing-trace'
 import type { CustomerStatusRequest, CustomerStatusResponse } from '../customer-status'
@@ -45,18 +46,24 @@ export async function deferWhatsAppRedesignReply(inboundId: number, turnId: stri
 export async function resumeDeferredWhatsAppRedesignReplies(
   resolve: (input: CustomerStatusRequest, options: { deferredInboundId: number }) => Promise<CustomerStatusResponse>,
   limit = 2,
+  storeId?: number,
+  db: any = createAdminClient(),
 ) {
-  const db = createAdminClient() as any
   const now = new Date().toISOString()
-  const { data: settings, error: settingsError } = await db.from('stores').select('settings').eq('id', 1).single()
+  let storesQuery = db.from('stores').select('id,tenant_id,settings')
+  if (storeId !== undefined) storesQuery = storesQuery.eq('id', storeId)
+  const { data: stores, error: settingsError } = await storesQuery
   if (settingsError) throw settingsError
-  const automation = settings.settings?.whatsapp_automation
-  if (automation?.ai_redesign?.mode !== 'redesign' || automation.ai_redesign.safe_replies_enabled !== true) {
-    return { resumed: 0, skipped: 0 }
-  }
+  const eligibleStores = new Map<number, string>((stores || []).flatMap((store: any) => {
+    const automation = store.settings?.whatsapp_automation
+    return isWhatsAppFullRedesignEnabled(Number(store.id), automation)
+      && canUseWhatsAppAiAttendance(automation)
+      ? [[Number(store.id), store.tenant_id] as [number, string]] : []
+  }))
+  if (!eligibleStores.size) return { resumed: 0, skipped: 0 }
   const { data: rows, error } = await db.from('whatsapp_inbound_messages')
     .select('id,tenant_id,store_id,channel_id,remote_phone,provider_message_id,message_text,provider_created_at,payload')
-    .eq('store_id', 1).eq('status', 'received')
+    .in('store_id', [...eligibleStores.keys()]).eq('status', 'received')
     .lte('payload->redesignDeferred->>nextAttemptAt', now)
     .lte('payload->redesignDeferred->>leaseUntil', now)
     .order('id').limit(Math.min(2, Math.max(1, limit)))
@@ -64,6 +71,7 @@ export async function resumeDeferredWhatsAppRedesignReplies(
   let resumed = 0
   let skipped = 0
   for (const row of rows || []) {
+    if (eligibleStores.get(Number(row.store_id)) !== row.tenant_id) { skipped++; continue }
     const payload = record(row.payload)
     const marker = record(payload.redesignDeferred) as DeferredMarker
     // Atomic compare-and-set lease prevents simultaneous schedulers resuming the same inbound.
@@ -91,7 +99,8 @@ export async function resumeDeferredWhatsAppRedesignReplies(
         skipped++; continue
       }
       const { data: channel, error: channelError } = await db.from('whatsapp_store_channels')
-        .select('instance_key').eq('id', row.channel_id).eq('is_active', true).maybeSingle()
+        .select('instance_key').eq('id', row.channel_id)
+        .eq('store_id', row.store_id).eq('tenant_id', row.tenant_id).eq('is_active', true).maybeSingle()
       if (channelError) throw channelError
       if (!channel) throw new Error('deferred_channel_unavailable')
       await resolve({

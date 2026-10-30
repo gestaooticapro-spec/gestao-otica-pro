@@ -1063,7 +1063,7 @@ export async function classifyWhatsAppRedesignConversation(
     'redesign_classification',
     buildRedesignClassificationPrompt(input),
     WhatsAppRedesignClassificationSchema,
-    input.storeId === 1 ? WHATSAPP_OPENAI_CLASSIFICATION_MODEL : undefined
+    WHATSAPP_OPENAI_CLASSIFICATION_MODEL
   )
 }
 

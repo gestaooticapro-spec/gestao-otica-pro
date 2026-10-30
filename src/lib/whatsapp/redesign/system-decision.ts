@@ -59,6 +59,7 @@ function handoffDraft(
 
 export type WhatsAppShadowDecisionInput = {
   storeId?: number
+  fullRouting?: boolean
   classification: WhatsAppRedesignClassification
   memory: WhatsAppConversationMemory
   now: string
@@ -184,7 +185,7 @@ export function buildWhatsAppShadowDecision(
     }
   }
 
-  if (input.storeId === 1 && isExplicitOrderStatusOrReadinessQuestion(currentTurnText)) {
+  if ((input.storeId === 1 || input.fullRouting === true) && isExplicitOrderStatusOrReadinessQuestion(currentTurnText)) {
     return {
       reason: 'explicit_order_status_precedes_other_intents',
       draft: WhatsAppSystemDecisionDraftSchema.parse({
@@ -201,7 +202,7 @@ export function buildWhatsAppShadowDecision(
   }
 
   if (classification.intent === 'store_hours'
-    && (input.storeId !== 1 || isExplicitStoreHoursQuestion(currentTurnText))
+    && (!(input.storeId === 1 || input.fullRouting === true) || isExplicitStoreHoursQuestion(currentTurnText))
     && input.hoursFacts
     && classification.confidence >= WHATSAPP_REDESIGN_MIN_CONFIDENCE) {
     const requestedDay = requestedHoursDay(input.currentTurnTexts ?? [])
@@ -261,7 +262,7 @@ export function buildWhatsAppShadowDecision(
     }
   }
 
-  const continuation = input.storeId === 1
+  const continuation = (input.storeId === 1 || input.fullRouting === true)
     && classification.confidence >= WHATSAPP_REDESIGN_MIN_CONFIDENCE
     && ['greeting', 'order_status', 'unknown'].includes(classification.intent)
     && !classification.entities.orderNumber && !classification.entities.cpf

@@ -1,6 +1,5 @@
 import type { Json } from '@/lib/database.types'
-import { createAdminClient } from '@/lib/supabase/admin'
-import type { StoreSettings, WhatsAppAutomationSettings } from '@/lib/store-modules'
+import type { WhatsAppAutomationSettings } from '@/lib/store-modules'
 import { extractWhatsAppInboundPayloadMeta } from '../inbound-payload'
 import {
   WhatsAppConversationMessageKindSchema,
@@ -87,10 +86,10 @@ function normalizedKind(value: unknown): WhatsAppConversationMessageKind {
 }
 
 export function resolveWhatsAppRedesignMode(
-  settings: WhatsAppAutomationSettings | null | undefined
+  _settings: WhatsAppAutomationSettings | null | undefined
 ): WhatsAppRedesignMode {
-  const parsed = WhatsAppRedesignModeSchema.safeParse(settings?.ai_redesign?.mode)
-  return parsed.success ? parsed.data : 'legacy'
+  // Old rollout settings no longer select the attendance engine.
+  return 'redesign'
 }
 
 export function extractShadowInboundMessages(
@@ -200,16 +199,8 @@ export function buildShadowInboundTurn(
   }
 }
 
-async function loadMode(storeId: number): Promise<WhatsAppRedesignMode> {
-  const supabase = createAdminClient()
-  const { data, error } = await (supabase.from('stores') as any)
-    .select('settings')
-    .eq('id', storeId)
-    .single()
-  if (error) throw error
-
-  const settings = ((data?.settings || {}) as StoreSettings) || {}
-  return resolveWhatsAppRedesignMode(settings.whatsapp_automation)
+async function loadMode(_storeId: number): Promise<WhatsAppRedesignMode> {
+  return 'redesign'
 }
 
 function rememberMode(storeId: number, mode: WhatsAppRedesignMode, now: number) {
@@ -235,9 +226,10 @@ export async function resolveCachedWhatsAppRedesignMode(
 
   const loadPromise = loader(storeId)
     .then((mode) => {
-      const scopedMode = mode === 'redesign' && storeId !== 1 ? 'legacy' : mode
-      rememberMode(storeId, WhatsAppRedesignModeSchema.parse(scopedMode), now)
-      return scopedMode
+      WhatsAppRedesignModeSchema.parse(mode)
+      const parsedMode = 'redesign' as const
+      rememberMode(storeId, parsedMode, now)
+      return parsedMode
     })
     .finally(() => {
       pendingModeLoads.delete(storeId)

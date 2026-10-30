@@ -7,7 +7,6 @@ import {
 import { evaluateNextLocalDayStoreHours, evaluateStoreHours } from '../store-hours-logic'
 import { detectWhatsAppRedesignReplyLanguage, localizeWhatsAppRedesignDecision } from './reply-language'
 import {
-  WhatsAppRedesignModeSchema,
   WhatsAppRedesignClassificationSchema,
   WhatsAppSystemDecisionSchema,
   type WhatsAppRedesignClassification,
@@ -15,7 +14,7 @@ import {
 import { applyStoreAvailabilityToDecision } from './store-availability-policy'
 import { proposeWhatsAppConversationSummary } from './memory-consolidation'
 import { WhatsAppRedesignConversationStore, type WhatsAppRedesignTurnContext } from './store'
-import { canProcessWhatsAppRedesignMode } from './rollout-policy'
+import { canProcessWhatsAppRedesignMode, isWhatsAppFullRedesignEnabled, canUseWhatsAppAiAttendance } from './rollout-policy'
 import {
   buildOfficialStoreLocationReply,
   buildWhatsAppShadowDecision,
@@ -70,12 +69,9 @@ function errorMessage(error: unknown) {
   return message.slice(0, 500)
 }
 
-function isStoreCurrentlyInDecisionMode(storeId: number, settings: Json | null) {
-  const root = jsonRecord(settings)
-  const automation = jsonRecord(root.whatsapp_automation as Json | null)
-  const redesign = jsonRecord(automation.ai_redesign as Json | null)
-  const mode = WhatsAppRedesignModeSchema.safeParse(redesign.mode)
-  return mode.success && canProcessWhatsAppRedesignMode(storeId, mode.data)
+function canProcessStoreAttendance(storeId: number, settings: Json | null) {
+  const root = jsonRecord(settings) as StoreSettings
+  return isWhatsAppFullRedesignEnabled(storeId) && canUseWhatsAppAiAttendance(root.whatsapp_automation)
 }
 
 async function processClaimedTurn(input: {
@@ -87,7 +83,7 @@ async function processClaimedTurn(input: {
   const { context } = input
   const existingMetadata = jsonRecord(context.turn.metadata)
   const storeProfile = await input.store.loadStore(context.conversation.store_id)
-  if (!isStoreCurrentlyInDecisionMode(context.conversation.store_id, storeProfile.settings)) return 'inactive'
+  if (!canProcessStoreAttendance(context.conversation.store_id, storeProfile.settings)) return 'inactive'
 
   const decisionAt = new Date(context.turn.closes_at)
   if (Number.isNaN(decisionAt.getTime())) throw new Error('fechamento_do_turno_invalido')
@@ -115,10 +111,11 @@ async function processClaimedTurn(input: {
     .filter(Boolean)
   const rawClassification = WhatsAppRedesignClassificationSchema.parse(classificationResult.data)
   const hasCurrentTurnAttachment = context.turnMessages.some((message) => message.kind !== 'text')
-  // Protege a Loja 1 de uma confusao semantica conhecida: mencionar "oculos"
-  // em uma pergunta explicita de status/prontidao nao significa exame de vista.
-  // Mantem pedido humano e anexos sob as regras normais de handoff.
-  const classification = context.conversation.store_id === 1
+  // No piloto original e no modo completo, uma pergunta explicita de status
+  // nao vira exame de vista apenas por mencionar oculos. Pedido humano e
+  // anexos continuam sob as regras normais de encaminhamento.
+  const fullRouting = isWhatsAppFullRedesignEnabled(context.conversation.store_id, settings.whatsapp_automation)
+  const classification = (context.conversation.store_id === 1 || fullRouting)
     && !rawClassification.requestsHuman
     && !rawClassification.mentionsAttachment
     && !hasCurrentTurnAttachment
@@ -134,6 +131,7 @@ async function processClaimedTurn(input: {
   )
   const decisionResult = buildWhatsAppShadowDecision({
     storeId: context.conversation.store_id,
+    fullRouting,
     classification,
     memory: context.memory,
     now: decisionAt.toISOString(),

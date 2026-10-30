@@ -6,7 +6,7 @@ import {
   type WhatsAppSystemDecisionDraft,
 } from './contracts'
 import { isExplicitOfficialPixRequest } from './system-decision'
-import { isStoreOneFullRedesignEnabled } from './rollout-policy'
+import { isWhatsAppFullRedesignEnabled } from './rollout-policy'
 import {
   isExplicitHumanHandoffRequest,
   isExplicitOrderStatusOrReadinessQuestion,
@@ -33,9 +33,7 @@ export function isStoreOneSafeRepliesPilotEnabled(
   storeId: number,
   settings: WhatsAppAutomationSettings | undefined
 ) {
-  return isStoreOneFullRedesignEnabled(storeId, settings) || (storeId === 1
-    && settings?.ai_redesign?.mode === 'shadow'
-    && settings.ai_redesign.safe_replies_enabled === true)
+  return isWhatsAppFullRedesignEnabled(storeId, settings)
 }
 
 export function shouldLookupOrderStatusInStoreOnePilot(input: {

@@ -445,7 +445,7 @@ test('store finaliza turno processado por RPC e registra evento humano por RPC',
   assert.equal(calls[1].args.p_message_id, '00000000-0000-4000-8000-000000000102')
 })
 
-test('store recupera turnos shadow e redesign da Loja 1 apos dez minutos', async () => {
+test('store recupera turnos shadow e redesign de qualquer loja apos dez minutos', async () => {
   const calls: Array<{ table: string; method: string; args: unknown[] }> = []
   const client = {
     from: (table: string) => {
@@ -473,7 +473,8 @@ test('store recupera turnos shadow e redesign da Loja 1 apos dez minutos', async
 
   assert.equal(recovered, 2)
   assert.ok(calls.some((call) => call.table === 'whatsapp_conversation_memory'
-    && call.method === 'or' && call.args[0] === 'mode.eq.shadow,and(mode.eq.redesign,store_id.eq.1)'))
+    && call.method === 'in' && call.args[0] === 'mode'
+    && JSON.stringify(call.args[1]) === JSON.stringify(['shadow', 'redesign'])))
   assert.ok(calls.some((call) => call.table === 'whatsapp_conversation_turns'
     && call.method === 'update'
     && (call.args[0] as { status: string }).status === 'ready'))
@@ -1095,8 +1096,8 @@ test('endereco oficial produz link de mapa sem depender da IA', () => {
   assert.match(reply || '', /query=Rua\+Principal/)
 })
 
-for (const mode of ['shadow', 'redesign'] as const) {
-test(`processador corrige status explicito sem enviar no modo ${mode}`, async () => {
+for (const [storeId, mode] of [[1, 'shadow'], [1, 'redesign'], [2, 'redesign'], [3, 'redesign']] as const) {
+test(`processador corrige status explicito sem enviar na loja ${storeId}, modo ${mode}`, async () => {
   const turnId = '00000000-0000-4000-8000-000000000101'
   const customerMessage = {
     ...message(1),
@@ -1124,7 +1125,7 @@ test(`processador corrige status explicito sem enviar no modo ${mode}`, async ()
       conversation: {
         id: 1,
         tenant_id: '00000000-0000-4000-8000-000000000001',
-        store_id: 1,
+        store_id: storeId,
         channel_id: 1,
         remote_phone: '5511999999999',
         mode,
@@ -1137,12 +1138,12 @@ test(`processador corrige status explicito sem enviar no modo ${mode}`, async ()
       turnMessages: [customerMessage],
     }),
     loadStore: async () => ({
-      id: 1,
-      name: 'Loja 1',
+      id: storeId,
+      name: `Loja ${storeId}`,
       tenant_id: '00000000-0000-4000-8000-000000000001',
       settings: {
         whatsapp_automation: {
-          ai_redesign: { mode },
+          ai_responder: { enabled: true }, ai_redesign: { mode, safe_replies_enabled: true },
         },
         store_hours: {
           timezone: 'America/Sao_Paulo',
@@ -1170,7 +1171,7 @@ test(`processador corrige status explicito sem enviar no modo ${mode}`, async ()
 
   const result = await processWhatsAppRedesignShadowTurns({
     store: fakeStore,
-    storeId: 1,
+    storeId,
     turnId,
     now: new Date(BASE_TIME),
     classifier: async () => ({
@@ -1205,8 +1206,8 @@ test(`processador corrige status explicito sem enviar no modo ${mode}`, async ()
 
 }
 
-for (const [storeId, storeMode, conversationMode] of [[1, 'legacy', 'shadow'], [2, 'redesign', 'redesign']] as const) {
-test(`processador ignora modo ${storeMode} na loja ${storeId}`, async () => {
+for (const [storeId, storeMode, conversationMode] of [[1, 'legacy', 'shadow'], [2, 'legacy', 'redesign']] as const) {
+test(`processador respeita automacao desativada na loja ${storeId}, mesmo com flag ${storeMode}`, async () => {
   const turnId = '00000000-0000-4000-8000-000000000201'
   const customerMessage = {
     ...message(1),
@@ -1254,7 +1255,7 @@ test(`processador ignora modo ${storeMode} na loja ${storeId}`, async () => {
       id: 1,
       name: 'Loja 1',
       tenant_id: '00000000-0000-4000-8000-000000000001',
-      settings: { whatsapp_automation: { ai_redesign: { mode: storeMode } } },
+      settings: { whatsapp_automation: { enabled: false, ai_responder: { enabled: true }, ai_redesign: { mode: storeMode } } },
       street: null,
       number: null,
       neighborhood: null,
@@ -1345,9 +1346,9 @@ test('turno preserva todas as mensagens mesmo quando a memoria literal mostra so
   assert.equal(draft.messageIds.length, 12)
 })
 
-test('modo sombra exige ativacao explicita por loja', () => {
-  assert.equal(resolveWhatsAppRedesignMode(undefined), 'legacy')
-  assert.equal(resolveWhatsAppRedesignMode({ ai_redesign: { mode: 'shadow' } }), 'shadow')
+test('redesign e padrao sem depender da configuracao antiga de modo', () => {
+  assert.equal(resolveWhatsAppRedesignMode(undefined), 'redesign')
+  assert.equal(resolveWhatsAppRedesignMode({ ai_redesign: { mode: 'shadow' } }), 'redesign')
   assert.equal(resolveWhatsAppRedesignMode({ ai_redesign: { mode: 'redesign' } }), 'redesign')
 })
 
@@ -1359,11 +1360,11 @@ test('modo do redesign usa cache curto por loja e evita leituras repetidas', asy
     return 'shadow' as const
   }
 
-  assert.equal(await resolveCachedWhatsAppRedesignMode(1, loader, 1_000), 'shadow')
-  assert.equal(await resolveCachedWhatsAppRedesignMode(1, loader, 1_001), 'shadow')
+  assert.equal(await resolveCachedWhatsAppRedesignMode(1, loader, 1_000), 'redesign')
+  assert.equal(await resolveCachedWhatsAppRedesignMode(1, loader, 1_001), 'redesign')
   assert.equal(loads, 1)
 
-  assert.equal(await resolveCachedWhatsAppRedesignMode(1, loader, 61_001), 'shadow')
+  assert.equal(await resolveCachedWhatsAppRedesignMode(1, loader, 61_001), 'redesign')
   assert.equal(loads, 2)
   clearWhatsAppRedesignModeCache()
 })
@@ -1383,7 +1384,7 @@ test('leituras simultaneas do modo compartilham a mesma consulta', async () => {
   const second = resolveCachedWhatsAppRedesignMode(2, loader, 1_000)
   releaseLoader()
 
-  assert.deepEqual(await Promise.all([first, second]), ['legacy', 'legacy'])
+  assert.deepEqual(await Promise.all([first, second]), ['redesign', 'redesign'])
   assert.equal(loads, 1)
   clearWhatsAppRedesignModeCache()
 })

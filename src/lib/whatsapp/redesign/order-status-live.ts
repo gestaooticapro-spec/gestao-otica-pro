@@ -24,6 +24,7 @@ export type StoreOneOrderLookupPlan = {
 
 export function planStoreOneOrderLookup(input: {
   storeId: number
+  fullRouting?: boolean
   enabled: boolean
   classification: WhatsAppRedesignClassification
   decision: WhatsAppSystemDecisionDraft
@@ -32,7 +33,7 @@ export function planStoreOneOrderLookup(input: {
   conversationHistory?: string[]
 }): StoreOneOrderLookupPlan | null {
   const { classification, decision } = input
-  if (input.storeId !== 1 || !input.enabled || classification.requestsHuman
+  if ((input.storeId !== 1 && !input.fullRouting) || !input.enabled || classification.requestsHuman
     || classification.mentionsAttachment || isExplicitHumanHandoffRequest(input.messageText)) return null
   if (decision.action === 'no_reply' && decision.facts.decisionReason === 'human_control_blocks_ai') return null
 
