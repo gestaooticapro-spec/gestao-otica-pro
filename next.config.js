@@ -56,6 +56,9 @@ const nextConfig = {
         ]
     },
     experimental: {
+        outputFileTracingIncludes: {
+            '/api/usage-assistant': ['./docs/BASE_CONHECIMENTO_GESTAO_OTICA_PRO.md'],
+        },
         serverActions: {
             bodySizeLimit: '10mb', // Aumenta o limite para 10MB
         },

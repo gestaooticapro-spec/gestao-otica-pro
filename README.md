@@ -2,6 +2,16 @@
 
 Aplicacao principal de operacao para otica, com foco em atendimento, vendas, laboratorio, financeiro, pos-venda, relatorios e automacoes de WhatsApp por loja.
 
+## Pendencias identificadas em auditorias
+
+Ha possiveis erros e comportamentos financeiros aguardando revisao em
+[docs/AUDITORIA_PENDENCIAS.md](docs/AUDITORIA_PENDENCIAS.md). Em cada novo
+contexto de trabalho, consulte esse arquivo e lembre o usuario de que ha
+pendencias de auditoria, sem desviar da tarefa atual. Registre ali novos pontos
+encontrados em auditorias futuras. Ao terminar o trabalho atual sobre a base de
+conhecimento e o assistente, retome com o usuario a analise desses pontos.
+Nao trate os relatos como falhas confirmadas ou corrigidas sem verificacao.
+
 ## Stack
 
 - Next.js 14
@@ -250,6 +260,44 @@ Perguntas financeiras reais seguem o fluxo proprio; comentarios nao afirmam
 divida, quitacao nem fatura de cartao. A resposta especializada identifica a
 IAra quando ela ainda nao se apresentou no historico recente.
 
+## Assistente de uso da Central de Operacoes
+
+O botao abaixo de Pontos de Atencao abre uma conversa de ajuda baseada em
+`docs/BASE_CONHECIMENTO_GESTAO_OTICA_PRO.md`. O contexto dura enquanto o modal
+estiver aberto; ao fechar ou iniciar nova conversa, o historico local e descartado.
+Cada pergunta envia no maximo cinco pares recentes de pergunta/resposta, com
+limite adicional de tamanho, e carrega a base no servidor.
+
+O endpoint `/api/usage-assistant` valida a sessao, o vinculo com a loja e o tenant.
+Ele consulta somente as configuracoes necessarias para orientar o uso. Os atalhos
+da resposta sao resolvidos por uma lista de destinos permitidos para o perfil e
+os modulos da loja, incluindo os modais de parcelas e consulta de cliente.
+
+Cada resposta permite registrar uma avaliacao negativa. Ao clicar, a pergunta
+correspondente e a resposta sao guardadas em `usage_assistant_feedback`, com loja,
+usuario e data, para revisao posterior. O restante da conversa nao e armazenado;
+perguntas de continuacao podem precisar de contexto adicional para analise. A
+migration da tabela deve ser aplicada no banco antes de disponibilizar o botao.
+O registro exige sessao e acesso a loja e a tabela nao permite acesso direto de
+clientes autenticados; a consulta administrativa e feita pelo banco.
+
+Esse assistente usa o mesmo `gemini-2.5-flash` do tutorial existente, com as chaves
+`GEMINI_SECRET_KEY_1`, `GEMINI_SECRET_KEY_2` e demais numeradas em ordem numerica.
+A chave inicial alterna por processo e as seguintes sao tentadas em caso de falha;
+se nenhuma chave numerada existir, utiliza `GOOGLE_API_KEY`. Se Gemini nao produzir
+uma resposta valida, o assistente tenta a chave `OPENAI_API_KEY` com o modelo
+`gpt-6-luna`. A variavel opcional `USAGE_ASSISTANT_OPENAI_MODEL` permite escolher
+outro modelo apenas para esse fallback. A OpenAI recebe a mesma base, contexto e
+lista de destinos permitidos, e usa o mesmo filtro de links. O rodizio e o limite
+de requisicoes sao locais ao processo, sem coordenacao entre instancias.
+
+Em acesso pelo localhost, o terminal registra o nome da chave consultada, o modelo,
+o resultado e a quantidade de tokens de entrada e saida informada pelo provedor.
+Nao registra o valor da chave, perguntas ou respostas. Uma chamada que falha sem
+informacoes de uso nao permite informar sua contagem de tokens. As chaves ficam
+exclusivamente no servidor. O arquivo Markdown e incluido no pacote da rota para
+publicacao na Vercel.
+
 ## Configuracao dos modelos OpenAI
 
 O backend centraliza os modelos em `src/lib/openai-models.ts`.
@@ -262,8 +310,10 @@ As variaveis opcionais abaixo sobrescrevem somente sua tarefa:
 - `WHATSAPP_AI_OPENAI_ORDER_HANDOFF_MODEL`: texto de encaminhamento humano.
 - `WHATSAPP_AI_OPENAI_CLASSIFICATION_MODEL`: classificacao do redesign da Loja 1.
 - `WHATSAPP_AI_OPENAI_ORDER_STATUS_MODEL`: resposta e revisao de consulta de OS.
+- `USAGE_ASSISTANT_OPENAI_MODEL`: fallback OpenAI da ajuda por IA; por padrao `gpt-6-luna`.
 
-Quando vazias, as variaveis de tarefa herdam o modelo geral correspondente.
+Quando vazias, as variaveis de tarefa herdam o modelo geral correspondente,
+exceto o fallback do assistente de uso, que usa o modelo economico indicado acima.
 `OPENAI_TEXT_FALLBACK_MODELS` aceita alternativas para narrativas, separadas por
 virgula e tentadas em ordem depois do modelo principal. Quando vazia, nenhuma
 alternativa de modelo e acrescentada. A lista nao inclui modelos antigos fixos.

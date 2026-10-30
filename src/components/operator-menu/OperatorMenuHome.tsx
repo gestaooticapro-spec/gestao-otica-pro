@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import FullscreenToggleButton from '@/components/FullscreenToggleButton';
 import VersionHistoryModal from '@/components/VersionHistoryModal';
+import UsageAssistant from '@/components/help/UsageAssistant';
 import { CURRENT_VERSION } from '@/lib/release-history';
 
 function saoPauloDay() {
@@ -55,7 +56,7 @@ export default function OperatorMenuHome({
     };
 
     return (
-        <div className="min-h-screen relative flex flex-col items-center justify-center p-6 overflow-y-auto md:overflow-hidden bg-slate-950 font-sans transition-colors duration-500">
+        <div className="min-h-screen relative flex flex-col items-center justify-center p-6 overflow-y-auto bg-slate-950 font-sans transition-colors duration-500">
             <div className="absolute top-6 right-6 z-50 flex items-center gap-3">
                 <FullscreenToggleButton className="right-20 top-6" />
                 <BackgroundToggle />
@@ -175,6 +176,7 @@ export default function OperatorMenuHome({
                         <CircleAlert className="h-3.5 w-3.5" />
                         Pontos de Atenção
                     </Link>
+                    <UsageAssistant key={storeId} storeId={storeId} storeName={storeName} />
                 </div>
             </div>
 

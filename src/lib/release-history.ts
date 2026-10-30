@@ -9,6 +9,15 @@ export type Release = {
 // altera o Dashboard ou o modal de histórico.
 export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'A ajuda por IA explica estoque, cadastros, XML, etiquetas e as telas de gestão, respeitando o perfil e os módulos da loja.',
+  'A ajuda por IA explica o pós-venda, a assistência e os envios de WhatsApp, sem tratar tentativa de envio como mensagem lida pelo cliente.',
+  'A ajuda por IA explica o laboratório, a gaveta e a entrega, inclusive quando a OS não aparece ou a venda ainda precisa ser fechada.',
+  'A ajuda por IA explica como incluir produtos e preencher a OS na venda de óculos, distinguindo a ficha embutida da ficha separada conforme o botão da loja.',
+  'A ajuda por IA explica como iniciar e retomar a venda de óculos, inclusive quando o botão está desabilitado, há avaliação aberta ou a loja está bloqueada.',
+  'A ajuda por IA distingue recebimento de parcela, reversão, Pix pendente e contato de cobrança, sem tratar lembrete ou WhatsApp como pagamento.',
+  'A ajuda por IA explica como gerar e renegociar o carnê, inclusive a entrada pedida depois de uma venda a prazo, sem registrar o mesmo valor duas vezes.',
+  'A ajuda por IA orienta o pagamento direto da venda rápida e da venda experimental, a diferença para a parcela do carnê e a correção do valor sem usar o Livro Caixa para apagar o recebimento.',
+  'A Central de Operações oferece ajuda por IA sobre o uso do sistema, com conversa contextual, atalhos e uma opção para relatar respostas que não ajudaram ou estão erradas.',
   'O piloto da loja 1 confere a autorizacao das notas antigas antes de associa-las ao acompanhamento de cancelamento, preservando numero, chave e XML.',
   'No piloto da loja 1, excluir uma OS devolve as reservas e remove os vinculos na mesma operacao; uma tentativa fiscal vinculada impede a exclusao antes de alterar o estoque.',
   'As operacoes especiais de NF-e do piloto preservam a nota de origem e impedem reservar duas vezes a mesma referencia ou ultrapassar a quantidade de devolucao.',
