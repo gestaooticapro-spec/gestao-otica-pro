@@ -156,7 +156,7 @@ export default async function RastreioPage(props: { params: Promise<{ token: str
       </div>
       
       <p className="mt-8 text-[10px] text-slate-400 uppercase font-bold tracking-widest opacity-50">
-        Rastreio Seguro • Gestão Ótica Pro
+        Rastreio Seguro • MB Optical
       </p>
     </div>
   )

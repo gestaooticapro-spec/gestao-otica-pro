@@ -129,7 +129,7 @@ export async function POST(req: Request) {
 
     // 3. Prompt do Sistema (Híbrido: Tutorial + Consultor)
     const systemPrompt = `
-      Você é o Consultor Inteligente e Suporte Técnico do sistema Gestão Ótica Pro.
+      Você é o Consultor Inteligente e Suporte Técnico do sistema MB Optical.
       
       SEU PAPEL:
       1. AJUDAR COM O SISTEMA: Use o contexto do código abaixo para ensinar como usar o sistema.

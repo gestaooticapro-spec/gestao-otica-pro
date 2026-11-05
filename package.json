@@ -1,7 +1,7 @@
 {
   "name": "gestao-otica-pro",
   "version": "0.1.0",
-  "description": "Gestão Ótica Pro",
+  "description": "MB Optical — Sistema de gestão para redes de óticas",
   "author": "MB Optical",
   "private": true,
   "scripts": {

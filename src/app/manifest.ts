@@ -3,9 +3,9 @@ import { MetadataRoute } from 'next'
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Gestão Ótica Pro',
-    short_name: 'Ótica Pro',
-    description: 'Sistema de Gestão para Óticas',
+    name: 'MB Optical',
+    short_name: 'MB Optical',
+    description: 'Sistema de gestão para redes de óticas',
     start_url: '/',
     display: 'fullscreen',
     background_color: '#020617',

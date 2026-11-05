@@ -1,5 +1,6 @@
 # Alterações pendentes para o próximo deploy
 
+- O sistema, as prévias compartilhadas e os documentos gerados passam a se apresentar como MB Optical.
 - A ajuda por IA explica estoque, cadastros, XML, etiquetas e as telas de gestão, respeitando o perfil e os módulos da loja.
 - A ajuda por IA explica o pós-venda, a assistência e os envios de WhatsApp, sem tratar tentativa de envio como mensagem lida pelo cliente.
 - A ajuda por IA explica o laboratório, a gaveta e a entrega, inclusive quando a OS não aparece ou a venda ainda precisa ser fechada.

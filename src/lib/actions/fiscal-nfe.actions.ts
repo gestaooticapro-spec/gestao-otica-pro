@@ -1783,7 +1783,7 @@ export async function emitirNFe(input: NFeSaleInput) {
                 finNFe: 1,
                 indFinal: 1,
                 detPag: null,
-                infCpl: "NF-e de venda emitida pelo Gestao Otica Pro.",
+                infCpl: "NF-e de venda emitida pelo MB Optical.",
             }
             : isReturnOperation
                 ? {
@@ -2009,7 +2009,7 @@ export async function emitirNFe(input: NFeSaleInput) {
                     indPres: template.indPres,
                     indIntermed: isAdvancedOperation ? Number(advanced.ind_intermed ?? 0) : 0,
                     procEmi: 0,
-                    verProc: "GestaoOticaPro 1.0",
+                    verProc: "MB Optical 1.0",
                     ...(isReturnOperation || isWarrantyShipment || isShipmentReturn || isDepositReturn ? { NFref: [{ refNFe: referenceKey }] } : {}),
                     ...advancedReference,
                 },

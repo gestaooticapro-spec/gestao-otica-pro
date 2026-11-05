@@ -154,7 +154,7 @@ export default function RelatorioPixPrint({
                             {/* RODAPÉ */}
                             <div className="text-center text-[10px] mt-4 pt-2 border-t border-gray-300">
                                 <p>Relatório gerado em {new Date().toLocaleDateString('pt-BR')}</p>
-                                <p>Sistema Gestão Ótica Pro</p>
+                                <p>Sistema MB Optical</p>
                             </div>
                         </td>
                     </tr>

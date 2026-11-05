@@ -3,7 +3,7 @@
 ## Visão Geral
 A funcionalidade permite o acompanhamento do ciclo de vida das Ordens de Serviço (OS) através de etiquetas NFC físicas coladas nas bandejas do laboratório. 
 A bandeja atua como um "gêmeo digital" da OS temporariamente. 
-O acesso é feito via URL pública estática gravada na Tag NFC, e a **autenticação é baseada puramente na posse física** da bandeja. Isso possibilita fluxos de integração B2B no futuro, onde laboratórios terceirizados poderão ler a tag e atualizar o status de recebimento sem precisarem de login no Gestão Ótica Pro.
+O acesso é feito via URL pública estática gravada na Tag NFC, e a **autenticação é baseada puramente na posse física** da bandeja. Isso possibilita fluxos de integração B2B no futuro, onde laboratórios terceirizados poderão ler a tag e atualizar o status de recebimento sem precisarem de login no MB Optical.
 
 ## Tipo de Projeto
 **WEB** (Focado em interface Mobile PWA/Touch-friendly)

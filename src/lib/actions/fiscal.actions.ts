@@ -729,7 +729,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
                     indFinal: 1, // 1 = Consumidor Final
                     indPres: 1, // 1 = Presencial
                     procEmi: 0,
-                    verProc: "GestaoOticaPro 1.0"
+                    verProc: "MB Optical 1.0"
                 },
                 emit: {
                     CNPJ: cnpj.replace(/\D/g, ""),
@@ -1195,7 +1195,7 @@ export async function emitirNFe(payload: EmissionPayload) {
                     indFinal: 0,
                     indPres: 0,
                     procEmi: 0,
-                    verProc: "GestaoOticaPro 1.0"
+                    verProc: "MB Optical 1.0"
                 },
                 emit: {
                     CNPJ: cnpj.replace(/\D/g, ""),

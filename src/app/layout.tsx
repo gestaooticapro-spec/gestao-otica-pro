@@ -19,7 +19,8 @@ export const viewport: Viewport = {
 
 // 2. METADADOS PARA iOS (IPHONE)
 export const metadata: Metadata = {
-  title: 'Gestão Ótica Pro',
+  metadataBase: new URL('https://mboptical.mentebinaria.com'),
+  title: 'MB Optical',
   description: 'Sistema de gestão para redes de óticas',
   icons: {
     icon: [
@@ -31,16 +32,16 @@ export const metadata: Metadata = {
     apple: '/apple-touch-icon.png',
   },
   openGraph: {
-    title: 'Gestão Ótica Pro',
+    title: 'MB Optical',
     description: 'Sistema de gestão para redes de óticas',
-    url: 'https://gestao-otica-pro.vercel.app',
-    siteName: 'Gestão Ótica Pro',
+    url: 'https://mboptical.mentebinaria.com',
+    siteName: 'MB Optical',
     images: [
       {
-        url: 'https://gestao-otica-pro.vercel.app/web-app-manifest-512x512.png',
+        url: '/web-app-manifest-512x512.png',
         width: 1200,
         height: 630,
-        alt: 'Gestão Ótica Pro - Painel de Controle',
+        alt: 'MB Optical - Sistema de gestão para redes de óticas',
       },
     ],
     type: 'website',
@@ -48,14 +49,14 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Gestão Ótica Pro',
+    title: 'MB Optical',
     description: 'Sistema de gestão para redes de óticas',
-    images: ['https://gestao-otica-pro.vercel.app/web-app-manifest-512x512.png'],
+    images: ['/web-app-manifest-512x512.png'],
   },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'Ótica Pro',
+    title: 'MB Optical',
   },
   formatDetection: {
     telephone: false,

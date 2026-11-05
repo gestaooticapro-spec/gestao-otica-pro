@@ -1,4 +1,4 @@
-# gestao-otica-pro
+# MB Optical
 
 Aplicacao principal de operacao para otica, com foco em atendimento, vendas, laboratorio, financeiro, pos-venda, relatorios e automacoes de WhatsApp por loja.
 

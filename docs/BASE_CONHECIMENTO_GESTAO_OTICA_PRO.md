@@ -1,10 +1,10 @@
-# Base de conhecimento do Gestão Ótica Pro
+# Base de conhecimento do MB Optical
 
 Referência para conhecer o produto, apoiar futuras peças de apresentação e orientar investigações sobre o uso do sistema. Levantamento realizado em 30/10/2026 a partir do README e do código local. A presença de uma função no código não comprova, por si só, que ela esteja publicada, configurada ou homologada em todas as lojas.
 
 ## Escopo e leitura da base
 
-- O Gestão Ótica Pro acompanha a operação de uma ótica: atendimento, venda, ordem de serviço (OS), laboratório, entrega, financeiro, relacionamento e gestão.
+- O MB Optical acompanha a operação de uma ótica: atendimento, venda, ordem de serviço (OS), laboratório, entrega, financeiro, relacionamento e gestão.
 - Esta base segue a jornada da loja e inclui recursos de apoio que participam dessa jornada. Páginas internas de criação de gabaritos, modelos de lentes e outras ferramentas que não pertencem ao fluxo da loja ficam fora do escopo.
 - **As telas de venda consideradas operacionais são a venda expressa e a venda experimental.** Segundo o responsável pelo produto, a outra tela de venda não funciona; não usá-la como referência de funcionalidade ou como caminho de atendimento.
 - Uma capacidade descrita aqui pode depender de módulo, configuração, perfil, integração, equipamento ou disponibilidade por loja. Os detalhes estão na seção **Configurações e disponibilidade** e também junto aos fluxos relevantes.
