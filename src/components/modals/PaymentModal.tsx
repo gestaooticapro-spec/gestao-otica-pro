@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import { X, CheckCircle, Printer, Plus, CreditCard, FileText, Loader2, Search, QrCode } from 'lucide-react'
 import FinanciamentoBox from '@/components/vendas/FinanciamentoBox'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
@@ -22,6 +22,7 @@ import { useStoreModules } from '@/lib/contexts/StoreModulesContext'
 import { getPixProviderForStore } from '@/lib/actions/pix-installment.actions'
 import { createPixSaleChargeWithExpressAuthorization } from '@/lib/actions/pix-sale.actions'
 import PixSaleChargeModal from '@/components/modals/PixSaleChargeModal'
+import { getExpressPaymentError } from '@/lib/express-payment'
 
 // Tipo para o funcionário autenticado
 type Employee = Database['public']['Tables']['employees']['Row']
@@ -72,6 +73,7 @@ export default function PaymentModal({
     const [customersFound, setCustomersFound] = useState<CustomerSearchResult[]>([])
     const [selectedCustomer, setSelectedCustomer] = useState<CustomerSearchResult | null>(null)
     const [vendaParcialId, setVendaParcialId] = useState<number | null>(null)
+    const creatingCarneSale = useRef(false)
 
     // Estados da NFC-e
     const [isFiscalModalOpen, setIsFiscalModalOpen] = useState(false)
@@ -106,11 +108,13 @@ export default function PaymentModal({
 
     // 3. Validação antes de abrir a senha
     const handlePrePayment = () => {
+        if (creatingCarneSale.current || vendaParcialId) return
         const valorLimpo = valorPago.replace(/[^\d,]/g, '').replace(',', '.')
         const valorNumerico = parseFloat(valorLimpo) || 0
 
-        if (valorNumerico <= 0) {
-            alert("Valor inválido.")
+        const paymentError = getExpressPaymentError(valorTotal, valorNumerico)
+        if (paymentError) {
+            alert(paymentError)
             return
         }
         // Se passou na validação, abre a senha
@@ -120,9 +124,13 @@ export default function PaymentModal({
     // 4. Executa o pagamento APÓS a senha correta
     const handleAuthSuccess = (authedEmployee: Pick<Employee, 'id' | 'full_name'> & { authorization_token?: string }) => {
         setIsAuthOpen(false)
+        if (creatingCarneSale.current || vendaParcialId) return
 
         const valorLimpo = valorPago.replace(/[^\d,]/g, '').replace(',', '.')
         const valorNumerico = parseFloat(valorLimpo) || 0
+
+        const paymentError = getExpressPaymentError(valorTotal, valorNumerico)
+        if (paymentError) { alert(paymentError); return }
 
         if (formaPagamento === 'Pix Sicredi') {
             const token = authedEmployee.authorization_token
@@ -180,8 +188,11 @@ export default function PaymentModal({
     }
 
     const handleSelectCustomer = (cust: CustomerSearchResult) => {
+        if (creatingCarneSale.current || vendaParcialId) return
+        creatingCarneSale.current = true
         setSelectedCustomer(cust)
         startProcess(async () => {
+            try {
             const formData = new FormData()
             formData.append('store_id', storeId.toString())
             formData.append('employee_id', employeeId.toString())
@@ -195,7 +206,23 @@ export default function PaymentModal({
                 alert("Erro: " + res.message)
                 setSelectedCustomer(null)
             }
+            } catch {
+                alert('Não foi possível confirmar a criação da venda. Confira a lista de vendas antes de tentar novamente.')
+            } finally {
+                creatingCarneSale.current = false
+            }
         })
+    }
+
+    const handleClose = () => {
+        if (creatingCarneSale.current || isProcessing) return
+        if (vendaParcialId) {
+            // A venda ja existe: consumir a cesta e continuar pelo mesmo registro.
+            onReset()
+            window.location.assign(`/dashboard/loja/${storeId}/vendas/${vendaParcialId}/experimental`)
+            return
+        }
+        onClose()
     }
 
     const handleOpenFiscalModal = async () => {
@@ -231,7 +258,7 @@ export default function PaymentModal({
                 <div className="bg-slate-900/40 backdrop-blur-xl border border-white/10 w-full max-w-2xl rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] relative">
 
                     {!isCompleted && (
-                        <button onClick={onClose} className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-full transition-colors z-20">
+                        <button onClick={handleClose} disabled={isProcessing} aria-label="Fechar pagamento" className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-full transition-colors z-20 disabled:opacity-50">
                             <X className="h-5 w-5" />
                         </button>
                     )}
@@ -285,7 +312,7 @@ export default function PaymentModal({
 
                                 {!vendaParcialId && (
                                     <div className="flex p-1 bg-white/5 border border-white/10 rounded-2xl mx-auto w-full max-w-md backdrop-blur-md">
-                                        <button onClick={() => setActiveTab('pagamento')} className={`flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl flex items-center justify-center gap-2 transition-all ${activeTab === 'pagamento' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 shadow-lg' : 'text-slate-400 hover:text-white hover:bg-white/5 border border-transparent'}`}>
+                                        <button onClick={() => { if (!creatingCarneSale.current) setActiveTab('pagamento') }} className={`flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl flex items-center justify-center gap-2 transition-all ${activeTab === 'pagamento' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 shadow-lg' : 'text-slate-400 hover:text-white hover:bg-white/5 border border-transparent'}`}>
                                             <CreditCard className="h-4 w-4" /> Pagamento
                                         </button>
                                         {modules.installments && <button onClick={() => setActiveTab('carne')} className={`flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl flex items-center justify-center gap-2 transition-all ${activeTab === 'carne' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/20 shadow-lg' : 'text-slate-400 hover:text-white hover:bg-white/5 border border-transparent'}`}>
@@ -306,6 +333,7 @@ export default function PaymentModal({
                                                     <div>
                                                         <label className={labelStyle}>Valor Pago (R$)</label>
                                                         <input type="text" value={valorPago} onChange={e => setValorPago(e.target.value)} className={`${inputStyle} text-right text-lg text-emerald-400 focus:ring-emerald-500/50 focus:border-emerald-500/50`} />
+                                                        <p className="mt-1 text-[10px] text-slate-400">Informe o total da cesta, sem o troco devolvido.</p>
                                                     </div>
                                                     <div>
                                                         <label className={labelStyle}>Forma</label>
@@ -382,11 +410,16 @@ export default function PaymentModal({
                                                     </div>
                                                 </div>
                                             ) : (
+                                                <>
+                                                <div className="mb-4 text-sm text-amber-200">
+                                                    Venda #{vendaParcialId} já criada. Ao sair, continue por ela na Venda Experimental.
+                                                    <button type="button" onClick={handleClose} className="block mt-2 underline">Continuar na Venda Experimental</button>
+                                                </div>
                                                 <FinanciamentoBox
                                                     financiamento={null}
                                                     vendaId={vendaParcialId}
                                                     customerId={selectedCustomer!.id}
-                                                    customer={null}
+                                                    customer={selectedCustomer}
                                                     storeId={storeId}
                                                     employeeId={employeeId}
                                                     valorRestante={valorTotal}
@@ -394,6 +427,7 @@ export default function PaymentModal({
                                                     disabled={false}
                                                     isModal={true}
                                                 />
+                                                </>
                                             )}
                                         </div>
                                     )}

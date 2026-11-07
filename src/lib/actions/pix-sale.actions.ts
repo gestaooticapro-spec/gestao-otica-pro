@@ -131,7 +131,7 @@ export async function createPixSaleCharge(input: z.input<typeof CreateSchema>): 
     if (vendaError || !venda) throw new Error('Venda nao encontrada.')
     const remainingAmount = Number(venda.valor_restante || 0)
     if (remainingAmount <= 0.01) throw new Error('Esta venda nao possui saldo disponivel para um novo Pix.')
-    if (data.amount > remainingAmount + 0.01) throw new Error('O valor do Pix nao pode ser maior que o saldo da venda.')
+    if (Math.round(data.amount * 100) > Math.round(remainingAmount * 100)) throw new Error('O valor do Pix nao pode ser maior que o saldo da venda.')
 
     const { data: latest, error: latestError } = await table(admin)
       .select('*')

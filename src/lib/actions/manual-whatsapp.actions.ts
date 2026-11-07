@@ -232,6 +232,16 @@ async function sendAutomationMessage(payload: {
   return result
 }
 
+async function markManualConversationActivity(input: Parameters<typeof markStoreInitiatedConversation>[0]) {
+  try {
+    await markStoreInitiatedConversation(input)
+  } catch (error) {
+    // A pausa humana e o estado da conversa são auxiliares; uma falha ao gravá-los
+    // não deve impedir o envio da mensagem pelo canal Evolution conectado.
+    console.error('[Manual WhatsApp] Could not update conversation activity:', error)
+  }
+}
+
 export async function sendManualWhatsApp(input: SendManualWhatsAppInput): Promise<SendManualWhatsAppResult> {
   const storeId = Number(input.storeId)
   const remotePhone = normalizeRemotePhone(String(input.remotePhone || ''))
@@ -338,7 +348,7 @@ export async function sendManualWhatsApp(input: SendManualWhatsAppInput): Promis
       })
     }
 
-    await markStoreInitiatedConversation({
+    await markManualConversationActivity({
       instanceKey: channel.instance_key,
       phone: remotePhone,
       messageText,
@@ -544,7 +554,7 @@ async function sendManualWhatsAppMediaWithContext(
     }
   }
 
-  await markStoreInitiatedConversation({
+  await markManualConversationActivity({
     instanceKey: channel.instance_key,
     phone: remotePhone,
     messageText: media.caption,

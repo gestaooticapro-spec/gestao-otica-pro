@@ -1,5 +1,28 @@
 # Alterações pendentes para o próximo deploy
 
+- A observação informada na renegociação do carnê é salva junto ao acordo, com autor e data, preservando os registros anteriores. Se o texto não puder ser gravado, a renegociação também não é confirmada.
+
+- O carnê da Venda Expressa usa o cliente selecionado para completar documento e celular e seguir à autorização por PIN. Ao sair depois de criar a venda, a operação continua no mesmo registro pela Venda Experimental e a cesta da Expressa é limpa.
+
+- A alteração da forma ou do parcelamento no Livro Caixa refaz os recebíveis pendentes junto com o pagamento, preservando o histórico. Lançamentos já recebidos ou conciliados exigem revisão financeira, e carteira, Pix integrado e carnê mantêm seus fluxos próprios.
+
+- Finalizar uma venda exige que pagamentos e carnê cubram todo o valor, mesmo quando falta apenas um centavo. Parcelas futuras do carnê não impedem fechar uma venda cujo saldo já está coberto.
+
+- A Venda Experimental bloqueia pagamentos acima de A Receber, e a Venda Expressa exige o total exato da cesta. Inclusive em dinheiro, o valor registrado deve ser líquido, sem o troco devolvido. A geração do Pix também respeita o saldo sem tolerância de um centavo excedente.
+
+- Remover um pagamento direto comum atualiza seus recebíveis e o saldo da venda em uma única operação, preserva o histórico do lançamento e bloqueia exclusões de pagamentos Pix vinculados à conciliação integrada.
+
+- A devolução integral de venda quitada e sem carnê confirma estoque, Crédito em Loja e comissões pendentes juntos, considera o desconto e impede devolução duplicada. Devoluções parciais, vendas com carnê e estorno em dinheiro ficam indisponíveis nesse fluxo.
+
+- O uso de Crédito em Loja confirma o pagamento e o débito juntos; a adição de crédito grava saldo e extrato juntos. Repetir a mesma tentativa não duplica o lançamento, e pagamentos em crédito respeitam o saldo da carteira e da venda.
+
+- Remover um pagamento em Crédito em Loja devolve o valor uma única vez à carteira de quem pagou, registra o estorno no extrato e atualiza o saldo da venda.
+
+- A Venda Expressa bloqueia pagamentos inferiores ao total da cesta e orienta usar a Venda Experimental para pagamentos parciais.
+
+- A NFC-e usa nome e contato somente quando o documento corresponde ao cadastro do cliente da venda. Documentos informados apenas para a nota são enviados sem os dados pessoais desse cliente e não alteram seu cadastro.
+- A emissão de NFC-e exige sessão e acesso à loja, preserva o destinatário de tentativas já preparadas e permite informar CPF ou CNPJ somente para a nota, independentemente do tipo do cliente da venda.
+
 - O sistema, as prévias compartilhadas e os documentos gerados passam a se apresentar como MB Optical.
 - A ajuda por IA explica estoque, cadastros, XML, etiquetas e as telas de gestão, respeitando o perfil e os módulos da loja.
 - A ajuda por IA explica o pós-venda, a assistência e os envios de WhatsApp, sem tratar tentativa de envio como mensagem lida pelo cliente.
@@ -46,3 +69,5 @@
 - A Loja 1 pode enviar uma mensagem unica, identificada como teste, para validar o contexto de conversa do lembrete de cobranca da parcela reservada; o disparo confirma telefone, elegibilidade, opt-out e pausa humana sem alterar o registro normal do lembrete.
 - A memória do redesign usa o horário do WhatsApp em cada mensagem agrupada, sem depender do relógio da VPS.
 - Todas as chamadas de IA via API da OpenAI passam a usar o GPT-5.4 mini.
+- Clientes Sumidos permite ajustar o período da última compra, classificar por nome, cidade, data da última compra e valor comprado, filtrar por telefone e situação no SPC, consultar dados do cliente, abrir o dossiê e retirar ou restaurar pessoas da lista; o dossiê retorna à tela de origem.
+- Falhas ao atualizar o estado auxiliar da conversa no WhatsApp não bloqueiam o envio pela Evolution conectada; a falha continua registrada no log do servidor.

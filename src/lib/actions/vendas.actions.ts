@@ -6,7 +6,6 @@ import { Database } from '@/lib/database.types'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
-import { useCredit } from './wallet.actions'
 import { calcularERegistrarComissao, cancelarComissao, calcularComissaoMedico } from './commission.actions'
 import { checkLensStock, confirmReservations, cancelReservations, getLensReservationForOsSlot, releaseReservationsForServiceOrder, reopenReservations, reserveLensByAdmin, type LensReservationSlot } from './stock.actions'
 import { isStoreModuleEnabledForStore } from '@/lib/store-modules.server'
@@ -23,6 +22,7 @@ import { getInstallmentOutstanding } from '@/lib/installment-balance'
 import { shouldStampGroupedReceipt } from '@/lib/receipt-reprint'
 import { isSicrediPilotStoreCnpj } from '@/lib/pix/sicredi-availability'
 import { documentDigits } from '@/lib/customer-document'
+import { getExpressPaymentError } from '@/lib/express-payment'
 import { randomUUID, createHash } from 'node:crypto'
 import { cookies } from 'next/headers'
 import { createDailyHealthGrant, dailyHealthCookieName, dailyHealthGrantMaxAge } from '@/lib/daily-health-access'
@@ -1834,6 +1834,7 @@ export async function addPagamento(
     parcelas: formData.get('parcelas'),
     data_pagamento: formData.get('data_pagamento'),
     obs: formData.get('obs'),
+    idempotency_key: formData.get('idempotency_key') || undefined,
   })
 
   if (!validatedFields.success) {
@@ -1844,7 +1845,11 @@ export async function addPagamento(
     }
   }
 
-  const { venda_id, ...pagamentoData } = validatedFields.data
+  const { venda_id, idempotency_key, ...pagamentoData } = validatedFields.data
+  const isWalletPayment = pagamentoData.forma_pagamento === 'Crédito em Loja'
+  if (isWalletPayment && !idempotency_key) {
+    return { success: false, message: 'Reabra o pagamento para iniciar uma tentativa identificada.' }
+  }
 
   const supabaseAdmin = createAdminClient();
 
@@ -1859,37 +1864,24 @@ export async function addPagamento(
     return { success: false, message: 'Venda não encontrada para registrar o pagamento.' }
   }
 
-  if (vendaParaPagamento.financiamento_id) {
+  if (!isWalletPayment) {
     const saldoEmCentavos = Math.round(Number(vendaParaPagamento.valor_restante || 0) * 100)
     const pagamentoEmCentavos = Math.round(pagamentoData.valor_pago * 100)
-    if (vendaParaPagamento.status !== 'Em Aberto' || saldoEmCentavos <= 0) {
-      return { success: false, message: 'Renegocie o carnê de uma venda em aberto para liberar saldo antes de registrar um pagamento direto.' }
+    if (vendaParaPagamento.status !== 'Em Aberto' || !Number.isSafeInteger(saldoEmCentavos) || saldoEmCentavos <= 0) {
+      return { success: false, message: vendaParaPagamento.financiamento_id
+        ? 'Renegocie o carnê de uma venda em aberto para liberar saldo antes de registrar um pagamento direto.'
+        : 'A venda precisa estar em aberto e ter saldo a receber para registrar um pagamento direto.' }
     }
     if (pagamentoEmCentavos > saldoEmCentavos) {
-      return { success: false, message: 'O pagamento não pode superar o saldo disponível da venda.' }
+      return { success: false, message: 'O pagamento não pode superar o saldo disponível da venda. Registre somente o valor líquido, após devolver o troco.' }
     }
   }
-
-  // --- LÃ“GICA DE CRÃ‰DITO (Carteira do Cliente) ---
-  if (pagamentoData.forma_pagamento === 'Crédito em Loja') {
-    const fdWallet = new FormData()
-    fdWallet.append('store_id', String(store_id))
-    fdWallet.append('customer_id', String(pagamentoData.customer_id))
-    fdWallet.append('amount', String(pagamentoData.valor_pago))
-    fdWallet.append('description', `Pagamento na Venda #${venda_id}`)
-    fdWallet.append('employee_id', String(pagamentoData.employee_id))
-    fdWallet.append('related_venda_id', String(venda_id))
-
-    const resWallet = await useCredit(fdWallet)
-    if (!resWallet.success) {
-      return { success: false, message: resWallet.message }
-    }
-  }
-  // -----------------------------------------------
 
   // --- CORREÇÃO DA DATA: Forçamos o created_at a seguir a data escolhida ---
   // Adicionamos T12:00:00Z para garantir que caia no dia correto em qualquer fuso (Brasil é UTC-3)
-  const dataIso = new Date(`${pagamentoData.data_pagamento}T12:00:00Z`).toISOString();
+  const paymentDate = new Date(`${pagamentoData.data_pagamento}T12:00:00Z`)
+  if (!Number.isFinite(paymentDate.getTime())) return { success: false, message: 'Data do pagamento inválida.' }
+  const dataIso = paymentDate.toISOString();
 
   const pagToInsert = {
     ...pagamentoData,
@@ -1900,15 +1892,21 @@ export async function addPagamento(
     created_at: dataIso, // Sobrescreve o default now() do banco
   }
 
+  let committedCreditPayment: Pagamento | null = null
   try {
-    // 1. Inserir na tabela de pagamentos (Isso baixa o saldo da venda)
-    const { data: newPagamento, error: pagError } = await (supabaseAdmin.from('pagamentos') as any)
-      .insert(pagToInsert)
-      .select()
-      .single()
+    // O crédito só é debitado na mesma transação que cria o pagamento e o extrato.
+    const { data: newPagamento, error: pagError } = isWalletPayment
+      ? await (supabaseAdmin as any).rpc('pay_sale_with_store_credit', {
+        p_sale_id: venda_id, p_store_id: store_id, p_customer_id: pagamentoData.customer_id,
+        p_employee_id: pagamentoData.employee_id, p_amount: pagamentoData.valor_pago,
+        p_date: pagamentoData.data_pagamento, p_obs: pagamentoData.obs ?? null,
+        p_tenant_id: tenant_id, p_user_id: user.id, p_key: idempotency_key,
+      })
+      : await (supabaseAdmin.from('pagamentos') as any).insert(pagToInsert).select().single()
 
     if (pagError) throw pagError
     if (!newPagamento) throw new Error('Falha ao registrar pagamento.')
+    if (isWalletPayment) committedCreditPayment = newPagamento
 
     // 2. NOVO: Se for Cartão Crédito ou Cheque-Pré, lançar no Contas a Receber
     const forma = pagamentoData.forma_pagamento;
@@ -1949,11 +1947,12 @@ export async function addPagamento(
     }
 
     // 3. Atualiza saldo da venda
-    const { error: rpcError } = await (supabaseAdmin as any).rpc('update_venda_financeiro', {
-      p_venda_id: venda_id,
-    })
-
-    if (rpcError) throw new Error(`Erro ao recalcular total: ${rpcError.message}`)
+    if (!isWalletPayment) {
+      const { error: rpcError } = await (supabaseAdmin as any).rpc('update_venda_financeiro', {
+        p_venda_id: venda_id,
+      })
+      if (rpcError) throw new Error(`Erro ao recalcular total: ${rpcError.message}`)
+    }
 
     // 4. Recalcula comissão (caso tenha % por recebimento ou % garantida mudada pelo pagamento)
     const { data: vendaAtual } = await (supabaseAdmin.from('vendas') as any)
@@ -1964,7 +1963,7 @@ export async function addPagamento(
     const deveFecharAutomaticamente =
       vendaAtual?.status === 'Em Aberto' &&
       !vendaAtual?.financiamento_id &&
-      Number(vendaAtual?.valor_restante || 0) <= 0.01
+      Math.round(Number(vendaAtual?.valor_restante || 0) * 100) <= 0
 
     if (deveFecharAutomaticamente) {
       const fechamento = await updateVendaStatus(venda_id, store_id, 'Fechada', pagamentoData.employee_id)
@@ -1982,6 +1981,10 @@ export async function addPagamento(
 
     return { success: true, message: 'Pagamento registrado!', data: newPagamento as any, timestamp: Date.now() }
   } catch (error: any) {
+    if (committedCreditPayment) {
+      return { success: true, message: 'Crédito debitado e pagamento registrado. O fechamento ou a comissão precisa de revisão: ' + error.message,
+        data: committedCreditPayment, timestamp: Date.now() }
+    }
     return { success: false, message: error.message }
   }
 }
@@ -2004,8 +2007,8 @@ export async function deletePagamento(
   }
 
   const supabaseAuth = createClient()
-  const { data: { user } } = await supabaseAuth.auth.getUser()
-  if (!user) return { success: false, message: 'Usuario nao autenticado.' }
+  const { data: { user }, error: authError } = await supabaseAuth.auth.getUser()
+  if (authError || !user) return { success: false, message: 'Usuario nao autenticado.' }
 
   const profile = await getProfileByAdmin(user.id) as any
   if (!profile?.tenant_id) return { success: false, message: 'Perfil sem empresa vinculada.' }
@@ -2017,12 +2020,17 @@ export async function deletePagamento(
   const supabaseAdmin = createAdminClient()
 
   try {
-    const { data: venda } = await (supabaseAdmin.from('vendas') as any)
-      .select('is_historical_import')
+    const { data: venda, error: saleError } = await (supabaseAdmin.from('vendas') as any)
+      .select('is_historical_import, status')
       .eq('id', vendaId)
       .eq('store_id', storeId)
+      .eq('tenant_id', profile.tenant_id)
       .maybeSingle()
 
+    if (saleError || !venda) return { success: false, message: 'Venda não encontrada para remover o pagamento.' }
+    if (venda?.status === 'Devolvida') {
+      return { success: false, message: 'Pagamentos de venda devolvida devem ser preservados.' }
+    }
     if (venda?.is_historical_import === true) {
       return { success: false, message: 'Pagamentos de venda histórica não podem ser estornados por este fluxo.' }
     }
@@ -2030,7 +2038,7 @@ export async function deletePagamento(
     // 1. NOVO: Antes de apagar o pagamento, apaga os recebíveis (Cartão/Cheque) vinculados a ele
     const { data: pagamento, error: paymentError } = await (supabaseAdmin
       .from('pagamentos') as any)
-      .select('id, venda_id, store_id, tenant_id, parcela_id')
+      .select('id, venda_id, store_id, tenant_id, parcela_id, forma_pagamento')
       .eq('id', pagamentoId)
       .eq('venda_id', vendaId)
       .eq('store_id', storeId)
@@ -2044,41 +2052,56 @@ export async function deletePagamento(
       return { success: false, message: 'Pagamento de parcela deve ser estornado pelo fluxo de recebimento do carne.' }
     }
 
-    const { error: deleteReceivablesError } = await supabaseAdmin
-      .from('accounts_receivable')
-      .delete()
-      .eq('origin_payment_id', pagamentoId);
+    if (pagamento.forma_pagamento === 'Crédito em Loja') {
+      const { error: reversalError } = await (supabaseAdmin as any).rpc('reverse_store_credit_payment', {
+        p_payment_id: pagamentoId,
+        p_sale_id: vendaId,
+        p_store_id: storeId,
+        p_tenant_id: profile.tenant_id,
+        p_user_id: user.id,
+      })
+      // Não usar a exclusão comum se a transação falhar ou a migration faltar.
+      if (reversalError) throw new Error(reversalError.message)
 
-    if (deleteReceivablesError) {
-      console.error("Erro ao limpar recebíveis:", deleteReceivablesError);
+      let message = 'Pagamento removido e crédito devolvido à carteira.'
+      try {
+        await calcularERegistrarComissao(vendaId)
+      } catch (error) {
+        console.error('Crédito devolvido, mas a comissão não foi recalculada:', error)
+        message += ' A comissão precisa ser revisada, pois seu recálculo falhou.'
+      }
+      revalidatePath(`/dashboard/loja/${storeId}/vendas`)
+      revalidatePath(`/dashboard/loja/${storeId}/vendas/${vendaId}`)
+      revalidatePath(`/dashboard/loja/${storeId}/vendas/${vendaId}/experimental`)
+      revalidatePath(`/dashboard/loja/${storeId}/clientes`)
+      revalidatePath(`/dashboard/loja/${storeId}/financeiro/comissoes`)
+      return { success: true, message }
     }
 
-    // 2. Apaga o pagamento principal
-    const { error: deleteError } = await supabaseAdmin
-      .from('pagamentos')
-      .delete()
-      .eq('id', pagamentoId)
-      .eq('venda_id', vendaId)
-      .eq('store_id', storeId)
-      .eq('tenant_id', profile.tenant_id)
-      .is('parcela_id', null)
-
-    if (deleteError) throw deleteError
-
-    // 3. Recalcula o saldo da venda (RPC)
-    const { error: rpcError } = await (supabaseAdmin as any).rpc('update_venda_financeiro', {
-      p_venda_id: vendaId,
+    const { error: removalError } = await (supabaseAdmin as any).rpc('remove_direct_sale_payment', {
+      p_payment_id: pagamentoId,
+      p_sale_id: vendaId,
+      p_store_id: storeId,
+      p_tenant_id: profile.tenant_id,
+      p_user_id: user.id,
     })
+    // Falha ou migration ausente nunca libera a exclusão em chamadas separadas.
+    if (removalError) throw new Error(removalError.message)
 
-    if (rpcError) throw new Error(`Erro ao recalcular total: ${rpcError.message}`)
-
-    await calcularERegistrarComissao(vendaId)
+    let message = 'Pagamento removido e saldo da venda atualizado.'
+    try {
+      await calcularERegistrarComissao(vendaId)
+    } catch (error) {
+      console.error('Pagamento removido, mas a comissão não foi recalculada:', error)
+      message += ' A comissão precisa ser revisada, pois seu recálculo falhou.'
+    }
 
     revalidatePath(`/dashboard/loja/${storeId}/vendas`)
     revalidatePath(`/dashboard/loja/${storeId}/vendas/${vendaId}`)
+    revalidatePath(`/dashboard/loja/${storeId}/vendas/${vendaId}/experimental`)
     revalidatePath(`/dashboard/loja/${storeId}/financeiro/comissoes`)
 
-    return { success: true, message: 'Pagamento removido.' }
+    return { success: true, message }
   } catch (error: any) {
     return { success: false, message: error.message }
   }
@@ -2251,14 +2274,29 @@ export async function updateVendaStatus(
 
   const supabaseAdmin = createAdminClient()
   const { data: { user } } = await createClient().auth.getUser()
-  const profile = user ? await getProfileByAdmin(user.id) : null
+  const profile = (user ? await getProfileByAdmin(user.id) : null) as {
+    tenant_id: string; store_id: number; role: string
+  } | null
 
   try {
+    if (!user || !profile?.tenant_id || (profile.role !== 'admin' && profile.store_id !== storeId)) {
+      return { success: false, message: 'Sem acesso a esta loja.', timestamp: Date.now() }
+    }
+    const { data: statusStore } = await supabaseAdmin.from('stores')
+      .select('id').eq('id', storeId).eq('tenant_id', profile.tenant_id).maybeSingle()
+    if (!statusStore) return { success: false, message: 'Sem acesso a esta loja.', timestamp: Date.now() }
     const { data: vendaAtual } = await (supabaseAdmin.from('vendas') as any)
-      .select('is_historical_import')
+      .select('is_historical_import, status')
       .eq('id', vendaId)
+      .eq('store_id', storeId)
+      .eq('tenant_id', profile.tenant_id)
       .maybeSingle()
+    if (!vendaAtual) return { success: false, message: 'Venda não encontrada.', timestamp: Date.now() }
     const isHistoricalImport = vendaAtual?.is_historical_import === true
+
+    if (vendaAtual?.status === 'Devolvida') {
+      return { success: false, message: 'Venda devolvida não pode ser reaberta ou cancelada por este fluxo.', timestamp: Date.now() }
+    }
 
     if (isHistoricalImport) {
       return {
@@ -2294,9 +2332,18 @@ export async function updateVendaStatus(
       updatePayload.data_fechamento = new Date().toISOString();
     }
 
-    const { data, error } = await (supabaseAdmin.from('vendas') as any)
+    // O fechamento confere saldo e muda status na mesma transacao no banco.
+    // Falha/ausencia da RPC nao permite um UPDATE alternativo.
+    const { data, error } = newStatus === 'Fechada'
+      ? await (supabaseAdmin as any).rpc('close_sale_with_balance_check', {
+          p_sale_id: vendaId, p_store_id: storeId,
+          p_tenant_id: profile.tenant_id, p_user_id: user.id,
+        })
+      : await (supabaseAdmin.from('vendas') as any)
       .update(updatePayload)
       .eq('id', vendaId)
+      .eq('store_id', storeId)
+      .eq('tenant_id', profile.tenant_id)
       .select()
       .single()
 
@@ -2826,7 +2873,7 @@ export async function saveFinanciamentoLoja(...args: any[]) {
   let novoValorRestante = isHistoricalImport
     ? Number(valor_total)
     : valorTotalVenda - totalCoberto;
-  if (novoValorRestante < 0.05 && novoValorRestante > -0.05) novoValorRestante = 0;
+  novoValorRestante = Math.round(novoValorRestante * 100) / 100;
   const novoStatus = isHistoricalImport ? 'Fechada' : (novoValorRestante <= 0 ? 'Fechada' : 'Em Aberto');
 
   const { error: erroUpdate } = await (supabaseAdmin.from('vendas') as any)
@@ -3683,6 +3730,7 @@ const RenegociarFinanciamentoSchema = z.object({
   venda_id: z.coerce.number().int().positive(),
   store_id: z.coerce.number().int().positive(),
   employee_id: z.coerce.number().int().positive(),
+  obs: z.string().trim().max(2000).optional(),
   parcelas: z.array(z.object({
     data_vencimento: z.string().min(10),
     valor_parcela: z.coerce.number().positive(),
@@ -3721,7 +3769,7 @@ export async function renegociarFinanciamentoLoja(input: unknown) {
     return { success: false, message: 'Carnê não encontrado para esta venda.' }
   }
 
-  const { data: result, error } = await (supabaseAdmin.rpc as any)('renegotiate_store_financing', {
+  const { data: result, error } = await (supabaseAdmin.rpc as any)('renegotiate_store_financing_with_note', {
     p_financing_id: data.financiamento_id,
     p_sale_id: data.venda_id,
     p_store_id: data.store_id,
@@ -3729,6 +3777,7 @@ export async function renegociarFinanciamentoLoja(input: unknown) {
     p_user_id: user.id,
     p_tenant_id: profile.tenant_id,
     p_installments: data.parcelas,
+    p_note: data.obs || null,
   })
 
   if (error) return { success: false, message: error.message }
@@ -3859,6 +3908,8 @@ export async function criarVendaExpressPixPendente(input: {
   if (!Array.isArray(input.items) || input.items.length === 0 || !Number.isFinite(amount) || amount <= 0) return { success: false, message: 'Venda expressa invalida.' }
 
   const total = input.items.reduce((sum, item) => sum + Number(item.price) * Number(item.quantity), 0)
+  const paymentError = getExpressPaymentError(total, amount)
+  if (paymentError) return { success: false, message: paymentError }
   if (!Number.isFinite(total) || Math.abs(total - amount) > 0.01) return { success: false, message: 'O total da venda mudou. Confira a cesta e tente novamente.' }
 
   const billingGuard = await getNewSaleBillingGuard(storeId)
@@ -3974,8 +4025,22 @@ export async function finalizarVendaExpress(formData: FormData) {
   if (!user) return { success: false, message: 'Sem permissão.' }
   const profile = await getProfileByAdmin(user.id)
 
-  const rawItens = JSON.parse(formData.get('itens') as string)
-  const rawPagamento = JSON.parse(formData.get('pagamento') as string)
+  let rawItens: any
+  let rawPagamento: any
+  try {
+    rawItens = JSON.parse(formData.get('itens') as string)
+    rawPagamento = JSON.parse(formData.get('pagamento') as string)
+  } catch {
+    return { success: false, message: 'Dados da venda inválidos. Confira a cesta e o pagamento.' }
+  }
+  if (!Array.isArray(rawItens) || rawItens.length === 0 || !rawPagamento ||
+      rawItens.some((item: any) => !item || !Number.isFinite(item.price) || item.price < 0 ||
+        !Number.isFinite(item.quantity) || item.quantity <= 0)) {
+    return { success: false, message: 'Dados da venda inválidos. Confira a cesta e o pagamento.' }
+  }
+  const totalVenda = rawItens.reduce((acc: number, item: any) => acc + (item.price * item.quantity), 0)
+  const paymentError = getExpressPaymentError(totalVenda, rawPagamento.valor)
+  if (paymentError) return { success: false, message: paymentError }
 
   // CORREÃ‡ÃƒO 1: Conversão explícita para Number
   const storeId = parseInt(formData.get('store_id') as string)
@@ -4022,9 +4087,6 @@ export async function finalizarVendaExpress(formData: FormData) {
 
     customerId = (novo as any).id
   }
-
-  // 2. Calcula Totais
-  const totalVenda = rawItens.reduce((acc: number, item: any) => acc + (item.price * item.quantity), 0)
 
   // 3. INSERÃ‡ÃƒO (Venda)
   const { data: novaVenda, error: errVenda } = await (supabaseAdmin.from('vendas') as any).insert({
@@ -4175,6 +4237,7 @@ export async function autenticarFuncionarioPorPin(
       || requestedPurpose === 'pix_charge_cancel'
       || requestedPurpose === 'pix_charge_recover'
       || requestedPurpose === 'daily_health_access'
+      || requestedPurpose === 'sale_return'
       ? requestedPurpose
       : null
 
@@ -4211,7 +4274,9 @@ export async function autenticarFuncionarioPorPin(
     }
 
     const hasValidAuthorizationContext =
-      authorizationPurpose === 'evaluation_unlink'
+      authorizationPurpose === 'sale_return'
+        ? /^return:[1-9]\d*:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(authorizationContext)
+        : authorizationPurpose === 'evaluation_unlink'
         ? /^\d+:\d+$/.test(authorizationContext)
         : authorizationPurpose === 'installment_receipt_reversal'
           ? /^(?:\d+|legacy:\d+)$/.test(authorizationContext)

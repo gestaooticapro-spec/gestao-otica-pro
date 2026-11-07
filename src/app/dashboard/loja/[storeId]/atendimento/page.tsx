@@ -466,7 +466,7 @@ export default function AtendimentoPage() {
                             </div>
                             <div className="flex flex-col items-end gap-2">
                                 <button
-                                    onClick={() => push(`/dashboard/loja/${storeId}/cliente/${selectedCustomer.id}/historico`)}
+                                    onClick={() => push(`/dashboard/loja/${storeId}/cliente/${selectedCustomer.id}/historico?from=atendimento-pagina`)}
                                     className="p-2.5 bg-white/5 hover:bg-cyan-500/20 text-slate-400 hover:text-cyan-300 rounded-xl border border-white/5 hover:border-cyan-500/30 transition-all flex items-center gap-2 group"
                                     title="Ver Raio-X Completo"
                                 >

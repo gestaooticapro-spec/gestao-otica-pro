@@ -186,6 +186,22 @@ As mudancas de banco ficam em `supabase/migrations`.
 
 Quando uma feature depender de tabela nova, indice novo ou alteracao estrutural, confirme que a migration foi aplicada antes de validar apenas pela interface.
 
+Em 06/11/2026, o usuario informou que a migration de Clientes Sumidos
+`20261106120000_inactive_customer_list_controls.sql` ja estava aplicada e que
+executou com sucesso, nesta ordem, `20261106140000_reverse_store_credit_payment.sql`,
+`20261106150000_atomic_wallet_operations.sql` e
+`20261106160000_atomic_integral_sale_return.sql`.
+Na mesma data, informou sucesso tambem na aplicacao de
+`20261106170000_atomic_direct_payment_removal.sql` e
+`20261106180000_guard_direct_payment_sale_balance.sql`.
+Em 07/11/2026, informou tambem a aplicacao com sucesso de
+`20261107120000_guard_sale_closing_balance.sql`, depois da 180000.
+Na mesma data, informou sucesso na aplicacao de
+`20261107140000_atomic_payment_method_change.sql`, depois da migration de fechamento.
+O ambiente do banco nao foi especificado. Esse e um registro do relato do
+usuario, sem consulta independente ao banco. A publicacao do aplicativo e a
+validacao operacional das correcoes continuam pendentes de confirmacao.
+
 ## Deploy
 
 ### App principal
@@ -213,7 +229,64 @@ Antes de considerar um deploy completo de WhatsApp, normalmente precisamos valid
 - Para mudancas de configuracao por loja, a fonte canonica costuma ficar em `stores.settings`.
 - Em mudancas operacionais, priorize comportamento confiavel e auditavel antes de sofisticacao.
 
+## Fluxos de vendas em uso
+
+Sempre que tratarmos de vendas, seja em analises, auditorias, correcoes ou novas
+implementacoes, considere os dois fluxos em uso: **Venda Expressa** e
+**Venda Experimental**. Verifique o impacto em ambos, incluindo as rotinas
+compartilhadas. Os demais fluxos de vendas presentes no codigo nao estao sendo
+usados na operacao atual.
+
+Na aba Pagamento da Venda Expressa, o valor pago deve ser igual ao total da
+cesta. A tela e o servidor bloqueiam valores inferiores ou superiores antes de
+criar a venda; pagamentos parciais devem ser feitos pela Venda Experimental.
+Na Experimental, o pagamento direto nao pode superar A Receber. Em ambas,
+inclusive em dinheiro, registre somente o valor liquido, sem o troco devolvido:
+venda de R$ 100,00, entrega de R$ 120,00 e troco de R$ 20,00 geram pagamento de
+R$ 100,00. Nao ha campo separado de valor entregue ou calculo de troco.
+
+A protecao no banco usa a migration
+`20261106180000_guard_direct_payment_sale_balance.sql`, aplicada com sucesso
+conforme relato do usuario em 06/11/2026, sem consulta independente ao banco.
+Publicacao e validacao operacional continuam pendentes de confirmacao.
+Antes de cada inclusao/alteracao financeira de pagamento direto,
+o banco bloqueia a venda e calcula o limite com itens, desconto, pagamentos
+diretos anteriores e valor formalizado no carne. O saldo e recalculado na mesma
+transacao do pagamento. Recebimentos de parcelas seguem seu proprio fluxo e
+nao sao descontados duas vezes; importacoes historicas ficam fora dessa regra.
+Nenhum pagamento antigo e corrigido retroativamente pela migration.
+Os testes usam `npm run test:wallet:setup` e `npm run test:payment-limit`.
+
+O Pix Sicredi tambem recusa um centavo acima do saldo ao gerar a cobranca. Se o
+provedor confirmar pagamento depois de o saldo ter sido coberto por outra forma,
+a baixa excedente e bloqueada no banco e o fluxo existente sinaliza erro de
+conciliacao para revisao; isso nao devolve dinheiro automaticamente ao cliente.
+
 ## Regra financeira: venda, pagamentos e carne
+
+Na aba Carne da Expressa, o cliente selecionado acompanha o componente de
+financiamento. Sem documento ou celular, a janela de complemento abre antes do
+PIN; cadastros PF e PJ usam CPF ou CNPJ, respectivamente. Durante a criacao,
+cliques repetidos e troca para pagamento direto ficam bloqueados no modal.
+Depois de criada a venda, sair pelo X ou por Continuar na Venda Experimental
+limpa a cesta da Expressa e abre o mesmo registro para retomar. A selecao ainda
+cria a venda e registra estoque antes da emissao do carne; erro de rede com
+resultado incerto exige conferir a lista antes de tentar novamente. Essa
+correcao de interface nao exige nova migration nem torna a criacao atomica.
+Testes locais: `npm run test:express-financing`.
+
+O fechamento da Venda Experimental bloqueia qualquer centavo ainda a receber,
+mesmo com carne. O servidor usa `close_sale_with_balance_check`, com sessao e
+acesso a loja/tenant conferidos. A nova migration
+`20261107120000_guard_sale_closing_balance.sql` foi aplicada com sucesso
+conforme relato do usuario em 07/11/2026, depois da 180000. Nao houve consulta
+independente ao banco; publicacao e validacao operacional seguem pendentes.
+O banco recalcula itens, desconto, pagamentos diretos e valor formalizado no
+carne na mesma transacao da transicao para Fechada. A insercao inicial fechada
+da Expressa e os historicos mantem seu fluxo. A geracao compartilhada de carne
+nao arredonda saldo pendente de ate quatro centavos para zero.
+Comissao, estoque e ranking continuam posteriores a confirmacao do status.
+Validacao local: `npm run test:wallet:setup` e `npm run test:sale-closing`.
 
 O saldo da venda representa somente o valor que ainda nao foi coberto por pagamento direto ou pelo compromisso formalizado no carne. Depois que um carne e assinado, o compromisso de recebimento deixa de ser a venda e passa a ser exclusivamente o carne. Portanto, uma venda integralmente financiada deve ficar com `valor_restante = 0` e pode ser fechada, mesmo que existam parcelas futuras em aberto.
 
@@ -224,6 +297,116 @@ O saldo da venda representa somente o valor que ainda nao foi coberto por pagame
 Pagamentos de parcelas nao podem ser somados novamente como pagamentos diretos da venda. Tambem nao se deve criar um Pix direto de venda depois de um carne integral já assinado: isso aumentaria o total comprometido pelo cliente. Se for necessário alterar esse acordo, o fluxo deve ajustar ou substituir o carne de forma auditavel, antes de registrar qualquer novo pagamento.
 
 Na renegociacao de uma venda `Em Aberto`, o saldo parcelado pode ser reduzido para receber uma entrada posterior. A diferenca reduz o valor formalizado no carne e volta a `valor_restante`, liberando `Novo pagamento`. O dinheiro anteriormente recebido nas parcelas e preservado no valor formalizado; somente a parte ainda pendente pode voltar para a venda. A renegociacao registra saldo anterior, saldo novo e diferenca no historico, sem criar um recebimento. Vendas fechadas permitem redistribuir o mesmo saldo entre parcelas, mas nao reduzir o valor. Exemplo: carne de R$ 900,00 renegociado para R$ 700,00 devolve R$ 200,00 ao saldo da venda; o recebimento efetivo desses R$ 200,00 zera novamente o saldo.
+
+## Observacao da renegociacao
+
+O formulario compartilhado de carne envia a observacao opcional para
+`renegotiate_store_financing_with_note`, que chama a rotina financeira existente
+e grava `installment_renegotiations.note` na mesma transacao. Autor e data ficam
+no registro do acordo; observacoes anteriores e a observacao original do carne
+sao preservadas. Texto vazio vira null; limite de 2000 caracteres na tela,
+action e banco. A nova migration
+`20261107160000_financing_renegotiation_note.sql` precisa ser aplicada depois da
+20261107140000 e antes de publicar; ainda pendente de aplicacao. Sem essa RPC,
+a action falha sem tentar renegociar sem a observacao. Nenhum texto perdido em
+renegociacoes antigas e recuperado retroativamente. O historico e persistido no
+banco; esta correcao nao cria uma tela de consulta do historico.
+Testes: `npm run test:wallet:setup` e `npm run test:renegotiation-note`.
+
+## Estorno de pagamento em credito em loja
+
+Ao remover um pagamento direto em Credito em Loja de uma venda em aberto,
+o valor deve voltar uma unica vez a carteira do cliente que pagou. A devolucao,
+o extrato, a exclusao do pagamento e o recalculo da venda ocorrem na mesma
+transacao. A publicacao dessa correcao exige aplicar primeiro a migration
+`20261106140000_reverse_store_credit_payment.sql`. A rotina exige a carteira
+original e lastro do debito no extrato; inconsistencias bloqueiam a remocao.
+
+Os testes locais dessa operacao usam PostgreSQL em memoria, com dados sinteticos:
+execute `npm run test:wallet:setup` uma vez e depois `npm run test:wallet`.
+Essa validacao nao confirma o schema instalado no Supabase de producao.
+
+A adicao de credito grava saldo e extrato na mesma transacao. O uso na Venda
+Experimental grava pagamento, debito da carteira, extrato e saldo da venda
+juntos. As rotinas bloqueiam a carteira durante a atualizacao e identificam
+cada tentativa para impedir repeticao com a mesma chave. O formulario preserva
+a chave ao repetir os mesmos dados enquanto permanece aberto; fechar ou
+recarregar a pagina inicia outra tentativa e exige conferir o historico antes
+de reenviar uma operacao cujo resultado ficou incerto.
+
+Essa protecao exige tambem `20261106150000_atomic_wallet_operations.sql`, depois
+da migration de estorno e antes de publicar o app. Nenhuma rotina de debito
+isolado da carteira permanece no servidor da aplicacao atualizada.
+
+## Devolucao integral de venda
+
+O fluxo autorizado aceita somente venda fechada, integralmente quitada, sem
+carne e nao historica. Todos os itens sao devolvidos juntos, com reembolso
+do valor final em Credito em Loja, incluindo o desconto. Devolucao parcial,
+venda com carne e Estorno Financeiro ficam bloqueados ate definicao propria.
+O cadastro compartilhado Consumidor Final, usado na Venda Expressa, exige
+identificar o titular antes de receber credito em carteira. A devolucao de uma
+venda originada na Expressa e feita ao abri-la pela Venda Experimental.
+
+A autorizacao por PIN gera um token assinado para a venda e a tentativa.
+O servidor busca valores e quantidades no banco e confirma estoque, credito,
+extrato, status Devolvida, estorno das comissoes pendentes e historico na mesma
+transacao. A mesma venda nao pode ser devolvida outra vez nem reaberta por esse
+fluxo; seus itens, pagamentos originais e titular sao preservados. Comissoes ja pagas
+continuam no historico e exigem acerto manual, informado na confirmacao.
+
+Entradas de estoque exigem saidas comprovadas na mesma loja. Pares restauram
+duas unidades; defeitos registram perda sem nova baixa. Sobras exigem uma lente
+individual com variante original identificada, conservando os graus. Itens
+avulsos sem produto cadastrado nao geram entrada ficticia. Registros anteriores
+de devolucao ou credito e cobrancas Pix pendentes/incertas exigem revisao antes
+de continuar. A devolucao comercial nao cancela notas fiscais nem transfere
+dinheiro por Pix/cartao.
+
+A publicacao exige `20261106160000_atomic_integral_sale_return.sql`, depois das
+duas migrations da carteira. A validacao local usa `npm run test:wallet:setup`
+e `npm run test:sale-return`. As migrations foram testadas em banco sintetico;
+o schema instalado em producao e a concorrencia entre conexoes independentes
+continuam exigindo verificacao antes da entrega operacional.
+
+## Remocao de pagamento direto comum
+
+A remocao de dinheiro, Pix manual, cartao, cheque e outras formas comuns usa
+`remove_direct_sale_payment`. Recebiveis vinculados, pagamento, recalculo do
+saldo e snapshot de auditoria sao confirmados na mesma transacao. A rotina
+exige venda Em Aberto nao historica, mesma loja/empresa e pagamento direto.
+Vendas fechadas precisam ser reabertas pela regra existente; vendas devolvidas
+e pagamentos de parcelas continuam protegidos. Credito em Loja usa a rotina
+propria de devolucao da carteira.
+
+Pagamento vinculado a cobranca Pix Sicredi nao pode ser apagado por esse fluxo:
+exige revisao da conciliacao. A exclusao local de pagamento nao devolve dinheiro
+ao banco ou cartao. A comissao continua com recalculo posterior; se esse passo
+lancar erro, a resposta informa a pendencia sem negar a remocao ja confirmada.
+O historico preserva os valores originais do pagamento e dos recebiveis.
+
+Em 06/11/2026, o usuario informou que aplicou com sucesso
+`20261106170000_atomic_direct_payment_removal.sql`. Nao houve consulta independente
+ao banco; publicacao e validacao operacional seguem pendentes de confirmacao.
+Testes: `npm run test:wallet:setup` e `npm run test:payment-removal`.
+
+## Correcao de forma de pagamento no Livro Caixa
+
+Pagamentos diretos originados na Expressa ou Experimental usam a mesma rotina
+`change_payment_method_with_audit`. A nova migration
+`20261107140000_atomic_payment_method_change.sql` foi aplicada com sucesso
+conforme relato do usuario em 07/11/2026, depois da 20261107120000.
+Ela altera forma/parcelamento, recompoe somente recebiveis pendentes e preserva
+snapshots na mesma transacao. Recebimento ou conciliacao bloqueiam a edicao;
+carteira, Pix integrado, parcelas de carne e vendas historicas/canceladas/devolvidas
+exigem revisao no fluxo proprio. A autoria do pagamento continua sendo conferida.
+Cartao de credito e Cheque-Pre dividem centavos em 1 a 12 parcelas; vencimentos
+seguem intervalos de 30 dias desde a data original, como na criacao existente.
+Dinheiro, Pix manual e debito ficam com uma parcela e sem agenda de recebiveis.
+Nao ha alteracao do valor/data, recomposicao retroativa nem movimentacao no banco.
+O schema remoto e integracoes externas de conciliacao nao foram consultados;
+alem do status, a verificacao usa campos opcionais de baixa/conciliacao no JSON.
+Validacao local: `npm run test:wallet:setup` e `npm run test:payment-method`.
 
 ## Versionamento de deploy
 

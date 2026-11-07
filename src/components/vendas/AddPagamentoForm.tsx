@@ -77,6 +77,7 @@ export default function AddPagamentoForm({
 
   const formRef = useRef<HTMLFormElement>(null)
   const lastProcessedTs = useRef<number>(0)
+  const creditAttempt = useRef<{ key: string; payload: string } | null>(null)
 
   const initialState: SavePagamentoResult = { success: false, message: '' }
   const [saveState, dispatchSave] = useFormState(addPagamento, initialState)
@@ -129,10 +130,11 @@ export default function AddPagamentoForm({
   useEffect(() => {
     if (saveState.success && saveState.timestamp && saveState.timestamp > lastProcessedTs.current) {
       lastProcessedTs.current = saveState.timestamp
+      creditAttempt.current = null
       setAuthedEmployee(null);
       setObs('');
       onPaymentAdded();
-      toast.success('Pagamento registrado!', {
+      toast.success(saveState.message || 'Pagamento registrado!', {
         description: 'Para imprimir o recibo, use o botão "Recibos" na barra inferior.',
         duration: 5000,
       });
@@ -192,7 +194,27 @@ export default function AddPagamentoForm({
         </div>
       )}
 
-      <form ref={formRef} action={dispatchSave} className="flex-1 flex flex-col space-y-2">
+      <form ref={formRef} action={(formData) => {
+        const amount = Number(String(formData.get('valor_pago') || '').replace(/\./g, '').replace(',', '.'))
+        const paidCents = Math.round(amount * 100)
+        const remainingCents = Math.round(valorRestante * 100)
+        if (!Number.isSafeInteger(paidCents) || paidCents <= 0) {
+          toast.error('Informe um valor de pagamento válido.')
+          return
+        }
+        if (!Number.isSafeInteger(remainingCents) || paidCents > remainingCents) {
+          toast.error('O pagamento não pode superar A Receber. Registre somente o valor líquido, após devolver o troco.')
+          return
+        }
+        if (formData.get('forma_pagamento') === 'Crédito em Loja') {
+          const payload = JSON.stringify(Array.from(formData.entries()).filter(([name]) => name !== 'idempotency_key'))
+          if (!creditAttempt.current || creditAttempt.current.payload !== payload) {
+            creditAttempt.current = { key: crypto.randomUUID(), payload }
+          }
+          formData.set('idempotency_key', creditAttempt.current.key)
+        }
+        dispatchSave(formData)
+      }} className="flex-1 flex flex-col space-y-2">
         <div className={`space-y-2 flex-1 ${isBloqueado ? 'opacity-50 pointer-events-none' : ''}`}>
           <input type="hidden" name="venda_id" value={vendaId} />
           <input type="hidden" name="customer_id" value={customerId} />
@@ -212,6 +234,7 @@ export default function AddPagamentoForm({
                 disabled={formaPagamento === 'Pix Sicredi' && (isCheckingExistingPixSaleCharge || hasActivePixSaleCharge)}
                 className={`${inputStyle} font-bold text-emerald-400 text-right text-base`}
               />
+              <p className="mt-1 text-[10px] text-slate-400">Informe o valor líquido, sem o troco devolvido.</p>
             </div>
             <div>
               <label className={labelStyle}>Forma</label>

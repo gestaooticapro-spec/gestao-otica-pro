@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { resolveNuvemLocalEndpoints } from './nuvem-local-endpoints';
+import { protectNfceRecoveryRecipient } from './nfce-recovery-recipient';
 
 export type GopRecoveryAttempt = {
   requestId:string;organizationId:string;storeId:number;cnpj:string;clientId:string;model:'NFe'|'NFCe';series:number;number:number;
@@ -57,6 +58,7 @@ export class GopRecoveryClient {
     return decode(await this.rpc('gop_recovery_local_failure_v1',{p_request:attempt.requestId,p_code:code}));
   }
   async prepare(attempt:GopRecoveryAttempt,payload:Record<string,unknown>,snapshot:Record<string,unknown>):Promise<GopRecoveryAttempt> {
+    if(attempt.model==='NFCe')snapshot=protectNfceRecoveryRecipient(attempt.payload,payload,snapshot);
     const data=await this.rpc('gop_recovery_prepare_v1',{p_request:attempt.requestId,p_version:attempt.version,p_payload:payload,p_snapshot:snapshot});
     return data===null?this.get(attempt.requestId):decode(data);
   }

@@ -793,6 +793,7 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                                         onEditForma={(mov: any) => {
                                             setEditingPgForma(mov)
                                             setNovaFormaSelecionada(mov.forma_pagamento || '')
+                                            setParcelasCredito(Number(mov.parcelas) || 1)
                                             setIsPgFormaAuthOpen(true)
                                         }}
                                     />
@@ -843,6 +844,7 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                                         onEditForma={(mov: any) => {
                                             setEditingPgForma(mov)
                                             setNovaFormaSelecionada(mov.forma_pagamento || '')
+                                            setParcelasCredito(Number(mov.parcelas) || 1)
                                             setIsPgFormaAuthOpen(true)
                                         }}
                                     />
@@ -1001,11 +1003,12 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                                         <option className="bg-slate-900">Dinheiro</option>
                                         <option className="bg-slate-900">Cartão Débito</option>
                                         <option className="bg-slate-900">Cartão Crédito</option>
+                                        <option className="bg-slate-900">Cheque-Pré</option>
                                     </select>
                                 </div>
-                                {novaFormaSelecionada === 'Cartão Crédito' && (
+                                {(novaFormaSelecionada === 'Cartão Crédito' || novaFormaSelecionada === 'Cheque-Pré') && (
                                     <div>
-                                        <label className={labelStyle}>Parcelas do Cartão</label>
+                                        <label className={labelStyle}>Quantidade de Parcelas</label>
                                         <select
                                             value={parcelasCredito}
                                             onChange={e => setParcelasCredito(Number(e.target.value))}
@@ -1018,7 +1021,7 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                                     </div>
                                 )}
                                 <button
-                                    disabled={isPending || novaFormaSelecionada === editingPgForma.forma_pagamento}
+                                    disabled={isPending}
                                     onClick={async () => {
                                         const pgId = Number(editingPgForma.id.replace('pg-', ''))
                                         startTransition(async () => {
@@ -1040,6 +1043,7 @@ export default function CaixaInterface({ initialData, storeId, ultimoFechamento 
                                     {isPending ? <Loader2 className="animate-spin h-4 w-4 inline mr-2" /> : null}
                                     Confirmar Alteração
                                 </button>
+                                <p className="text-xs text-slate-400">Recebíveis pendentes serão refeitos. Lançamentos já recebidos ou conciliados exigem revisão financeira. Confira a quantidade de parcelas antes de confirmar.</p>
                             </div>
                         </SimpleModal>
                     )}

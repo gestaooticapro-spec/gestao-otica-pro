@@ -80,7 +80,7 @@ export default async function VendaPageExperimental(props: Props) {
             : null
 
     // FIX: Quitado = valor restante zerado E (não tem carnê OU todas parcelas do carnê pagas)
-    const isQuitado = (venda.valor_restante ?? 0) <= 0.01;
+    const isQuitado = venda.valor_restante != null && Math.round(Number(venda.valor_restante) * 100) <= 0;
 
     return (
         <VendaInterfaceExperimental

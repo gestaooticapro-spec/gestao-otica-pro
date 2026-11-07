@@ -83,7 +83,7 @@ function SearchRedirectModal({
                         results.map(c => (
                             <button
                                 key={c.id}
-                                onClick={() => onNavigate(`/dashboard/loja/${storeId}/cliente/${c.id}/historico`)}
+                                onClick={() => onNavigate(`/dashboard/loja/${storeId}/cliente/${c.id}/historico?from=atendimento`)}
                                 className="w-full text-left p-3 hover:bg-white/5 rounded-xl flex items-center gap-3 transition-colors group border border-transparent hover:border-white/5"
                             >
                                 <div className="w-10 h-10 rounded-full bg-indigo-500/20 flex items-center justify-center text-indigo-300 border border-indigo-500/20 group-hover:bg-indigo-500/30 group-hover:text-indigo-200 transition-colors">

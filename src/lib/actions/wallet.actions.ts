@@ -77,176 +77,47 @@ export async function getWallet(storeId: number, customerId: number): Promise<Ge
 // 2. ADICIONAR CRÉDITO (DEVOLUÇÃO)
 // ==============================================================================
 const AddCreditSchema = z.object({
-    store_id: z.coerce.number(),
-    customer_id: z.coerce.number(),
-    amount: z.coerce.number().positive("O valor do crédito deve ser positivo."),
-    description: z.string().min(3),
-    employee_id: z.coerce.number(), // Quem autorizou (PIN)
-    related_venda_id: z.coerce.number().optional().nullable()
+    store_id: z.coerce.number().int().positive(),
+    customer_id: z.coerce.number().int().positive(),
+    amount: z.coerce.number().positive(),
+    description: z.string().trim().min(3),
+    employee_id: z.coerce.number().int().positive(),
+    related_venda_id: z.coerce.number().int().positive().nullable(),
+    idempotency_key: z.string().uuid(),
 })
 
 export async function addCredit(formData: FormData): Promise<WalletActionResult> {
-    const supabaseAdmin = createAdminClient()
     const { data: { user } } = await createClient().auth.getUser()
-    
     if (!user) return { success: false, message: 'Usuário não autenticado.' }
-    
-    // CORREÇÃO: Cast 'as any' para garantir acesso ao tenant_id e store_id
-    const profile = await getProfileByAdmin(user.id) as any
-    if (!profile) return { success: false, message: 'Perfil inválido.' }
-
-    const inputData = {
+    const profile = await getProfileByAdmin(user.id) as { tenant_id: string | null } | null
+    if (!profile?.tenant_id) return { success: false, message: 'Perfil inválido.' }
+    const validated = AddCreditSchema.safeParse({
         store_id: formData.get('store_id'),
         customer_id: formData.get('customer_id'),
         amount: formData.get('amount'),
         description: formData.get('description'),
         employee_id: formData.get('employee_id'),
-        related_venda_id: formData.get('related_venda_id')
-    }
-
-    const validated = AddCreditSchema.safeParse(inputData)
-    if (!validated.success) return { success: false, message: 'Dados inválidos.' }
-
-    const { store_id, customer_id, amount, description, employee_id, related_venda_id } = validated.data
-
+        related_venda_id: formData.get('related_venda_id') || null,
+        idempotency_key: formData.get('idempotency_key'),
+    })
+    if (!validated.success) return { success: false, message: 'Dados do crédito inválidos. Reabra a operação.' }
+    const data = validated.data
     try {
-        // 1. Busca ou Cria a Carteira (Upsert)
-        // Primeiro tentamos buscar para pegar o ID
-        // CORREÇÃO: Cast 'as any'
-        let { data: wallet } = await (supabaseAdmin
-            .from('customer_wallets') as any)
-            .select('id, balance')
-            .eq('store_id', store_id)
-            .eq('customer_id', customer_id)
-            .maybeSingle()
-
-        if (!wallet) {
-            // Cria nova carteira zerada
-            // CORREÇÃO: Cast 'as any'
-            const { data: newWallet, error: createError } = await (supabaseAdmin
-                .from('customer_wallets') as any)
-                .insert({
-                    tenant_id: profile.tenant_id,
-                    store_id,
-                    customer_id,
-                    balance: 0
-                })
-                .select()
-                .single()
-            
-            if (createError) throw new Error("Erro ao criar carteira: " + createError.message)
-            wallet = newWallet
-        }
-
-        // 2. Atualiza o Saldo (Adiciona o valor)
-        const novoSaldo = Number(wallet.balance) + amount
-        
-        // CORREÇÃO: Cast 'as any'
-        await (supabaseAdmin
-            .from('customer_wallets') as any)
-            .update({ balance: novoSaldo, updated_at: new Date().toISOString() })
-            .eq('id', wallet.id)
-
-        // 3. Registra o Extrato (Transaction)
-        // CORREÇÃO: Cast 'as any'
-        await (supabaseAdmin.from('wallet_transactions') as any).insert({
-            tenant_id: profile.tenant_id,
-            store_id,
-            wallet_id: wallet.id,
-            amount: amount, // Positivo
-            operation_type: 'Credito_Devolucao',
-            description,
-            related_venda_id: related_venda_id || null,
-            employee_id, // Quem autorizou
-            created_by_user_id: user.id // Quem estava logado
+        const { error } = await (createAdminClient() as any).rpc('add_store_credit_atomic', {
+            p_store_id: data.store_id,
+            p_customer_id: data.customer_id,
+            p_amount: data.amount,
+            p_description: data.description,
+            p_employee_id: data.employee_id,
+            p_sale_id: data.related_venda_id,
+            p_tenant_id: profile.tenant_id,
+            p_user_id: user.id,
+            p_key: data.idempotency_key,
         })
-
-        revalidatePath(`/dashboard/loja/${store_id}/clientes`)
-        return { success: true, message: `Crédito de R$ ${amount.toFixed(2)} adicionado!` }
-
-    } catch (e: any) {
-        return { success: false, message: e.message }
-    }
-}
-
-// ==============================================================================
-// 3. USAR CRÉDITO (PAGAMENTO)
-// ==============================================================================
-const UseCreditSchema = z.object({
-    store_id: z.coerce.number(),
-    customer_id: z.coerce.number(),
-    amount: z.coerce.number().positive("O valor deve ser positivo."),
-    description: z.string().min(3),
-    employee_id: z.coerce.number(), // Vendedor que está usando
-    related_venda_id: z.coerce.number() // Obrigatório vincular a uma venda nova
-})
-
-export async function useCredit(formData: FormData): Promise<WalletActionResult> {
-    const supabaseAdmin = createAdminClient()
-    const { data: { user } } = await createClient().auth.getUser()
-    
-    if (!user) return { success: false, message: 'Usuário não autenticado.' }
-    
-    // CORREÇÃO: Cast 'as any'
-    const profile = await getProfileByAdmin(user.id) as any
-
-    const inputData = {
-        store_id: formData.get('store_id'),
-        customer_id: formData.get('customer_id'),
-        amount: formData.get('amount'),
-        description: formData.get('description'),
-        employee_id: formData.get('employee_id'),
-        related_venda_id: formData.get('related_venda_id')
-    }
-
-    const validated = UseCreditSchema.safeParse(inputData)
-    if (!validated.success) return { success: false, message: 'Dados inválidos.' }
-
-    const { store_id, customer_id, amount, description, employee_id, related_venda_id } = validated.data
-
-    try {
-        // 1. Busca Carteira e Verifica Saldo
-        // CORREÇÃO: Cast 'as any'
-        const { data: wallet } = await (supabaseAdmin
-            .from('customer_wallets') as any)
-            .select('id, balance')
-            .eq('store_id', store_id)
-            .eq('customer_id', customer_id)
-            .single()
-
-        if (!wallet) return { success: false, message: "Cliente não possui carteira digital." }
-        
-        if (wallet.balance < amount) {
-            return { success: false, message: `Saldo insuficiente. Disponível: R$ ${wallet.balance}` }
-        }
-
-        // 2. Debita o Saldo
-        const novoSaldo = Number(wallet.balance) - amount
-
-        // CORREÇÃO: Cast 'as any'
-        await (supabaseAdmin
-            .from('customer_wallets') as any)
-            .update({ balance: novoSaldo, updated_at: new Date().toISOString() })
-            .eq('id', wallet.id)
-
-        // 3. Registra Extrato (Negativo)
-        // CORREÇÃO: Cast 'as any'
-        await (supabaseAdmin.from('wallet_transactions') as any).insert({
-            tenant_id: profile?.tenant_id,
-            store_id,
-            wallet_id: wallet.id,
-            amount: -amount, // Negativo para indicar saída
-            operation_type: 'Uso_Venda',
-            description,
-            related_venda_id: related_venda_id,
-            employee_id,
-            created_by_user_id: user.id
-        })
-
-        revalidatePath(`/dashboard/loja/${store_id}/clientes`)
-        return { success: true, message: `Crédito utilizado com sucesso!` }
-
-    } catch (e: any) {
-        return { success: false, message: e.message }
+        if (error) return { success: false, message: error.message }
+        revalidatePath(`/dashboard/loja/${data.store_id}/clientes`)
+        return { success: true, message: `Crédito de R$ ${data.amount.toFixed(2)} adicionado!` }
+    } catch (error: any) {
+        return { success: false, message: error.message }
     }
 }

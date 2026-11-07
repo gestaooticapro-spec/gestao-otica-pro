@@ -35,7 +35,7 @@ test('manual financing and individual commission keep installment receipts outsi
 })
 
 test('covered sale blocks new direct payment without blocking pending installments', () => {
-  assert.match(experimentalSalePage, /const isQuitado = \(venda\.valor_restante \?\? 0\) <= 0\.01/)
+  assert.match(experimentalSalePage, /const isQuitado = venda\.valor_restante != null && Math\.round\(Number\(venda\.valor_restante\) \* 100\) <= 0/)
   assert.doesNotMatch(experimentalSalePage, /&& !temParcelasPendentes/)
   assert.match(experimentalSale, /isVendaFechadaOuCancelada \|\| isQuitado \? undefined/)
   assert.match(experimentalSale, /isQuitado=\{isCarneQuitado\}/)

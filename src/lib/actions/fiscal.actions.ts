@@ -9,6 +9,8 @@ import { Database } from "@/lib/database.types";
 import { isStoreModuleEnabledForStore } from "@/lib/store-modules.server";
 import { documentDigits, isValidCnpj, isValidCpf } from "@/lib/customer-document";
 import { formatFiscalUserMessage } from "@/lib/fiscal-user-message";
+import { nfceRecipient } from '@/lib/nfce-recipient';
+import { NFCE_RECIPIENT_IMMUTABLE } from '@/lib/nfce-recovery-recipient';
 
 // Sanitiza xNome para atender ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â  regex do SEFAZ: ^([!-ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¹]{1}[ -ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¹]{0,}[!-ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¹]{1}|[!-ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¹]{1})$
 function sanitizeXNome(nome: string | null | undefined): string {
@@ -49,6 +51,7 @@ type EmissionPayload = {
     cliente: {
         cpf_cnpj: string;
         nome: string;
+        somente_documento?: boolean;
         razao_social?: string;
         nome_fantasia?: string;
         email?: string;
@@ -584,10 +587,22 @@ export async function emitirNFCe(payload: EmissionPayload) {
     let pilot:GopPilotContext|null=null;
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
-    console.log("[emitirNFCe] User ID:", user?.id, "Auth Error:", authError?.message);
-
     try {
+        if (authError || !user) return { success: false, error: 'Sua sessao terminou. Entre novamente para emitir a NFC-e.' };
         const env = payload.environment || 'production';
+        if (!['production', 'homologation'].includes(env) || !Number.isSafeInteger(payload.store_id) || payload.store_id! <= 0) {
+            return { success: false, error: 'Loja ou ambiente fiscal invalido.' };
+        }
+        // Authorize before any fiscal lookup, numbering, recovery or provider call.
+        const { data: profile, error: profileError } = await adminSupabase.from('profiles')
+            .select('tenant_id,store_id,role').eq('id', user.id).single();
+        if (profileError || !profile || !profile.tenant_id || profile.tenant_id !== payload.organization_id ||
+            (profile.role !== 'admin' && Number(profile.store_id) !== payload.store_id)) {
+            return { success: false, error: 'Acesso negado para emitir NFC-e nesta loja.' };
+        }
+        const { data: authorizedStore, error: storeAccessError } = await adminSupabase.from('stores')
+            .select('id').eq('id', payload.store_id).eq('tenant_id', profile.tenant_id).single();
+        if (storeAccessError || !authorizedStore) return { success: false, error: 'Loja nao encontrada no seu tenant.' };
 
         if (payload.work_order_id) {
             const { data: workOrder } = await adminSupabase
@@ -620,12 +635,31 @@ export async function emitirNFCe(payload: EmissionPayload) {
             return { success: false, error: "Modulo fiscal desativado para esta loja." };
         }
 
+        // Resolve identity on the server; a typed document never inherits sale data.
+        let recipientCustomer = null;
+        if (payload.work_order_id) {
+            const { data: sale, error: saleError } = await adminSupabase.from('vendas')
+                .select('customer_id').eq('id', payload.work_order_id)
+                .eq('store_id', payload.store_id).eq('tenant_id', payload.organization_id).maybeSingle();
+            if (saleError || !sale) throw new Error('Nao foi possivel conferir o cliente da venda para a NFC-e.');
+            if (sale.customer_id) {
+                const { data: customer, error: customerError } = await adminSupabase.from('customers')
+                    .select('*').eq('id', sale.customer_id).eq('store_id', payload.store_id)
+                    .eq('tenant_id', payload.organization_id).maybeSingle();
+                if (customerError || !customer) throw new Error('Nao foi possivel conferir o cadastro do destinatario.');
+                recipientCustomer = customer;
+            }
+        }
+        payload = { ...payload, cliente: nfceRecipient(payload.cliente.cpf_cnpj,
+            payload.cliente.somente_documento ? null : recipientCustomer) };
+
         const token = await getNuvemLocalToken(env);
 
         const { data: store } = await adminSupabase
             .from("stores")
             .select("*")
             .eq("id", payload.store_id)
+            .eq("tenant_id", profile.tenant_id)
             .single() as unknown as { data: StoreRow | null; error: unknown };
 
         if (!store) {
@@ -776,7 +810,8 @@ export async function emitirNFCe(payload: EmissionPayload) {
                     return {
                         CNPJ: cleanDoc.length === 14 ? cleanDoc : undefined,
                         CPF: cleanDoc.length === 11 ? cleanDoc : undefined,
-                        xNome: sanitizeXNome(payload.cliente.razao_social || payload.cliente.nome),
+                        ...(normalizeText(payload.cliente.razao_social || payload.cliente.nome)
+                            ? { xNome: sanitizeXNome(payload.cliente.razao_social || payload.cliente.nome) } : {}),
                         indIEDest: inscricaoEstadual ? 1 : 9,
                         IE: inscricaoEstadual || undefined,
                         email: payload.cliente.email || undefined,
@@ -1069,6 +1104,10 @@ export async function emitirNFCe(payload: EmissionPayload) {
         return { success: true, invoiceId: invoice.id, message: "Nota em processamento" };
 
     } catch (error: any) {
+        if (error?.message === NFCE_RECIPIENT_IMMUTABLE) {
+            return { success: false, invoiceId: pilot?.attempt.invoiceId,
+                error: 'O destinatario desta tentativa ja foi definido. Nenhum envio foi feito. Retome com os dados originais ou solicite a conferencia da nota.' };
+        }
         if(pilot) {
             const attempt=await pilot.client.failure(pilot.attempt,'RECOVERY_CONSUMER_EMISSION_FAILURE');
             return pilotActionResult(attempt);

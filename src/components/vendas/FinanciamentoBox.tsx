@@ -56,7 +56,8 @@ type FinanciamentoBoxProps = {
     financiamento: (Financiamento & { financiamento_parcelas: FinanciamentoParcela[] }) | null
     vendaId: number
     customerId: number
-    customer: Customer | null
+    customer: (Pick<Customer, 'id' | 'full_name' | 'cpf' | 'fone_movel'> &
+        Partial<Pick<Customer, 'person_type' | 'cnpj' | 'phone'>>) | null
     storeId: number
     employeeId: number
     valorRestante: number
@@ -767,6 +768,7 @@ export default function FinanciamentoBox({
                                         store_id: storeId,
                                         employee_id: payload.employee_id,
                                         parcelas: parcelasCustomizadas,
+                                        obs: payload.obs,
                                     })
                                     : await saveFinanciamentoLoja(null, payload);
 
@@ -889,7 +891,8 @@ export default function FinanciamentoBox({
 
                                 <div>
                                     <label className={labelStyle}>Observação</label>
-                                    <input type="text" value={obs} onChange={(e) => setObs(e.target.value)} className={inputStyle} placeholder="Opcional..." />
+                                    <input type="text" value={obs} maxLength={isRenegotiating ? 2000 : undefined} onChange={(e) => setObs(e.target.value)} className={inputStyle} placeholder="Opcional..." />
+                                    {isRenegotiating && <p className="text-[10px] text-slate-400 mt-1">A observação será registrada no histórico desta renegociação.</p>}
                                 </div>
 
                                 <div className="pt-2">

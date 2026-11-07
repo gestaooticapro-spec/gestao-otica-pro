@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { Loader2, AlertTriangle, CheckCircle2, X, FileText, Save, ExternalLink, UserX } from 'lucide-react'
+import { Loader2, AlertTriangle, CheckCircle2, X, FileText, ExternalLink, UserX } from 'lucide-react'
 import Link from 'next/link'
 import { emitirNFCe } from '@/lib/actions/fiscal.actions'
-import { getTenantIdByStore, getProductFiscalData, updateCustomerDocument, getEmissoesByVenda } from '@/lib/actions/fiscal-db.actions'
+import { getTenantIdByStore, getProductFiscalData, getEmissoesByVenda } from '@/lib/actions/fiscal-db.actions'
 import { isValidCnpj, isValidCpf, maskCpfCnpj } from '@/lib/customer-document'
+import { nfceRecipient } from '@/lib/nfce-recipient'
 
 function validaCPF(cpf: string): boolean {
     const stripped = cpf.replace(/\D/g, '')
@@ -66,13 +67,12 @@ export default function FiscalEmissionModal({
     const personType: 'PF' | 'PJ' = customer?.person_type === 'PJ' ? 'PJ' : 'PF'
     const existingCpf = personType === 'PJ' ? (customer?.cnpj || customer?.cpf_cnpj || '') : (customer?.cpf || customer?.cpf_cnpj || '')
     const [cpfInput, setCpfInput] = useState(existingCpf)
-    const [cpfSaving, setCpfSaving] = useState(false)
-    const [cpfSaved, setCpfSaved] = useState(false)
+    const [usarOutroDocumento, setUsarOutroDocumento] = useState(false)
     const [identificarCliente, setIdentificarCliente] = useState(true)
 
     const cpfDigits = cpfInput.replace(/\D/g, '')
-    const cpfIsValid = personType === 'PJ' ? isValidCnpj(cpfInput) : isValidCpf(cpfInput)
-    const cpfEditable = !existingCpf
+    const cpfIsValid = cpfDigits.length === 14 ? isValidCnpj(cpfInput) : isValidCpf(cpfInput)
+    const cpfEditable = !existingCpf || usarOutroDocumento
 
     useEffect(() => {
         setMounted(true)
@@ -94,21 +94,16 @@ export default function FiscalEmissionModal({
 
     const valorTotal = venda.valor_final ?? venda.total_amount ?? 0
 
-    const handleSaveCpf = async () => {
-        if (!cpfIsValid || !customer?.id) return
-        setCpfSaving(true)
-        const result = await updateCustomerDocument(customer.id, personType, cpfDigits)
-        setCpfSaving(false)
-        if (result.success) setCpfSaved(true)
-        else setError('Não foi possível salvar o CPF.')
-    }
-
     const handleEmission = async () => {
         setIsLoading(true)
         setError(null)
         setSuccessMsg(null)
 
         try {
+            if (identificarCliente && cpfEditable && cpfDigits && !cpfIsValid) {
+                setError('Informe um CPF/CNPJ válido ou desative a identificação na nota.')
+                return
+            }
             const storeId: number = venda.store_id
 
             const tenantId = await getTenantIdByStore(storeId)
@@ -193,16 +188,8 @@ export default function FiscalEmissionModal({
                 store_id: storeId,
                 work_order_id: venda.id,
                 cliente: {
-                    cpf_cnpj: cpfFinal,
-                    nome: identificarCliente ? (personType === 'PJ' ? (customer?.razao_social || customer?.full_name || customer?.nome || 'Consumidor Final') : (customer?.full_name || customer?.nome || 'Consumidor Final')) : 'Consumidor Final',
-                    razao_social: identificarCliente && personType === 'PJ' ? (customer?.razao_social || customer?.full_name || undefined) : undefined,
-                    nome_fantasia: identificarCliente && personType === 'PJ' ? (customer?.nome_fantasia || undefined) : undefined,
-                    email: identificarCliente ? customer?.email : undefined,
-                    endereco: identificarCliente ? {
-                        logradouro: customer?.rua, numero: customer?.numero?.toString(), complemento: customer?.complemento,
-                        bairro: customer?.bairro, cidade: customer?.cidade, uf: customer?.uf, cep: customer?.cep,
-                        codigo_municipio: customer?.codigo_municipio_ibge, inscricao_estadual: personType === 'PJ' ? customer?.inscricao_estadual : undefined,
-                    } : undefined,
+                    ...nfceRecipient(cpfFinal, cpfEditable ? null : customer),
+                    somente_documento: cpfEditable,
                 },
                 itens: itensMapeados,
                 valor_total: valorTotal,
@@ -352,7 +339,9 @@ export default function FiscalEmissionModal({
                         <div className="flex justify-between">
                             <span className="text-slate-400">Cliente:</span>
                             <span className="font-semibold text-slate-200">
-                                {identificarCliente ? (customer?.full_name || customer?.nome || 'Consumidor Final') : 'Consumidor Final'}
+                                {identificarCliente && !cpfEditable
+                                    ? (customer?.razao_social || customer?.full_name || customer?.nome || 'Consumidor Final')
+                                    : identificarCliente && cpfIsValid ? 'Somente CPF/CNPJ' : 'Consumidor Final'}
                             </span>
                         </div>
 
@@ -380,7 +369,7 @@ export default function FiscalEmissionModal({
                         {/* CPF */}
                         {identificarCliente && (
                             <div className="flex items-center justify-between gap-2">
-                                <span className="text-slate-400 shrink-0">{personType === 'PJ' ? 'CNPJ:' : 'CPF:'}</span>
+                                <span className="text-slate-400 shrink-0">{cpfEditable ? 'CPF/CNPJ:' : personType === 'PJ' ? 'CNPJ:' : 'CPF:'}</span>
                                 {cpfEditable ? (
                                     <div className="flex items-center gap-2 flex-1 justify-end">
                                         <div className="relative">
@@ -389,32 +378,15 @@ export default function FiscalEmissionModal({
                                                 value={cpfInput}
                                                 onChange={e => {
                                                     setCpfInput(maskCpfCnpj(e.target.value))
-                                                    setCpfSaved(false)
                                                 }}
-                                                placeholder={personType === 'PJ' ? '00.000.000/0000-00' : '000.000.000-00'}
-                                                maxLength={personType === 'PJ' ? 18 : 14}
+                                                placeholder="CPF ou CNPJ"
+                                                maxLength={18}
                                                 className={`w-36 bg-slate-800 border rounded px-2 py-1 text-sm font-mono text-slate-200 outline-none transition-colors ${
                                                     cpfDigits.length === 0 ? 'border-white/20' :
                                                     cpfIsValid ? 'border-emerald-500/60' : 'border-red-500/60'
                                                 }`}
                                             />
                                         </div>
-                                        {cpfIsValid && !cpfSaved && (
-                                            <button
-                                                onClick={handleSaveCpf}
-                                                disabled={cpfSaving}
-                                                title="Salvar CPF no cadastro do cliente"
-                                                className="flex items-center gap-1 px-2 py-1 text-xs font-bold rounded bg-emerald-600/20 border border-emerald-500/40 text-emerald-400 hover:bg-emerald-600/30 transition-colors disabled:opacity-50"
-                                            >
-                                                {cpfSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                                                Salvar
-                                            </button>
-                                        )}
-                                        {cpfSaved && (
-                                            <span className="flex items-center gap-1 text-xs text-emerald-400 font-bold">
-                                                <CheckCircle2 className="h-3 w-3" /> Salvo
-                                            </span>
-                                        )}
                                         {cpfDigits.length > 0 && !cpfIsValid && (
                                             <span className="text-xs text-red-400 font-bold">Inválido</span>
                                         )}
@@ -423,6 +395,21 @@ export default function FiscalEmissionModal({
                                     <span className="font-semibold text-slate-200 font-mono">{existingCpf}</span>
                                 )}
                             </div>
+                        )}
+
+                        {identificarCliente && existingCpf && (
+                            <button type="button" disabled={isLoading} className="text-xs text-blue-300 underline"
+                                onClick={() => {
+                                    setUsarOutroDocumento(!usarOutroDocumento)
+                                    setCpfInput(usarOutroDocumento ? existingCpf : '')
+                                }}>
+                                {usarOutroDocumento ? 'Usar documento do cadastro' : 'Informar outro documento só para esta nota'}
+                            </button>
+                        )}
+                        {identificarCliente && cpfEditable && (
+                            <p className="text-xs text-slate-400">
+                                O documento informado será usado somente nesta nota, sem nome, endereço ou e-mail do cliente da venda. O cadastro não será alterado.
+                            </p>
                         )}
 
                         <div className="flex justify-between border-t border-white/10 pt-2 mt-2">

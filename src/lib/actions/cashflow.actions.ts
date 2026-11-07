@@ -794,7 +794,7 @@ export async function getResumoCaixa(storeId: number): Promise<ResumoCaixa | nul
 
     const { data: pagamentosVendas } = await supabaseAdmin
         .from('pagamentos')
-        .select(`id, valor_pago, forma_pagamento, created_at, venda_id, obs, employee_id, vendas (customer_id, customers (full_name))`)
+        .select(`id, valor_pago, forma_pagamento, created_at, venda_id, obs, employee_id, parcelas, vendas (customer_id, customers (full_name))`)
         .eq('store_id', storeId)
         .gte('created_at', dataRef.toISOString())
 
@@ -863,7 +863,7 @@ export async function getResumoCaixa(storeId: number): Promise<ResumoCaixa | nul
         const origemCalculada = formaNormalizada.includes('dinheiro') ? 'Caixa' : 'Banco'
 
         historicoUnificado.push({
-            id: `pg-${pg.id}`, tipo: tipo, descricao: clienteNome, categoria: categoria, valor: Number(pg.valor_pago), horario: pg.created_at, forma_pagamento: pg.forma_pagamento, origem: origemCalculada, employee_id: pg.employee_id ?? null,
+            id: `pg-${pg.id}`, tipo: tipo, descricao: clienteNome, categoria: categoria, valor: Number(pg.valor_pago), horario: pg.created_at, forma_pagamento: pg.forma_pagamento, origem: origemCalculada, employee_id: pg.employee_id ?? null, parcelas: pg.parcelas ?? 1,
             altered_by_employee_name: alteredByPaymentId.get(Number(pg.id)) ?? null
         })
 
@@ -1041,7 +1041,7 @@ export async function getResumoCaixaPorData(storeId: number, dataISO: string): P
     // 4. PAGAMENTOS do dia
     const { data: pagamentosVendas } = await supabaseAdmin
         .from('pagamentos')
-        .select(`id, valor_pago, forma_pagamento, created_at, venda_id, obs, employee_id, vendas (customer_id, customers (full_name))`)
+        .select(`id, valor_pago, forma_pagamento, created_at, venda_id, obs, employee_id, parcelas, vendas (customer_id, customers (full_name))`)
         .eq('store_id', storeId)
         .gte('created_at', dataRef.toISOString())
         .lte('created_at', dataFim.toISOString())
@@ -1115,7 +1115,7 @@ export async function getResumoCaixaPorData(storeId: number, dataISO: string): P
         const origemCalculada = formaNormalizada.includes('dinheiro') ? 'Caixa' : 'Banco'
 
         historicoUnificado.push({
-            id: `pg-${pg.id}`, tipo, descricao: clienteNome, categoria, valor: Number(pg.valor_pago), horario: pg.created_at, forma_pagamento: pg.forma_pagamento, origem: origemCalculada, employee_id: pg.employee_id ?? null,
+            id: `pg-${pg.id}`, tipo, descricao: clienteNome, categoria, valor: Number(pg.valor_pago), horario: pg.created_at, forma_pagamento: pg.forma_pagamento, origem: origemCalculada, employee_id: pg.employee_id ?? null, parcelas: pg.parcelas ?? 1,
             altered_by_employee_name: alteredByPaymentId.get(Number(pg.id)) ?? null
         })
 
@@ -1199,6 +1199,10 @@ export async function alterarFormaPagamento(
     storeId: number,
     parcelas?: number
 ): Promise<{ success: boolean; message: string }> {
+    if (![pagamentoId, storeId, authedEmployeeId].every(id => Number.isSafeInteger(id) && id > 0) ||
+        !Number.isInteger(parcelas ?? 1) || (parcelas ?? 1) < 1 || (parcelas ?? 1) > 12) {
+        return { success: false, message: 'Identificadores ou quantidade de parcelas inválidos.' }
+    }
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { success: false, message: 'Sessão expirada.' }

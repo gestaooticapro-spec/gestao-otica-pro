@@ -263,11 +263,12 @@ export default function EmitirNotaPage(props: { params: { storeId: string } }) {
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <label className="text-[10px] font-bold text-slate-500 ml-1">NOME</label>
-                                    <input value={clienteNome} onChange={e => setClienteNome(e.target.value)} className="w-full bg-[#F8F7F2] p-2 rounded-lg text-sm font-medium outline-none" placeholder="Consumidor Final" />
+                                    <input readOnly value={clienteDoc.replace(/\D/g, '') && clienteDoc.replace(/\D/g, '') === String(selectedSale?.clients?.cpf_cnpj || '').replace(/\D/g, '') ? clienteNome : ''} className="w-full bg-[#F8F7F2] p-2 rounded-lg text-sm font-medium outline-none" placeholder="Sem nome na nota" />
                                 </div>
                                 <div>
                                     <label className="text-[10px] font-bold text-slate-500 ml-1">CPF / CNPJ</label>
                                     <input value={clienteDoc} onChange={e => setClienteDoc(e.target.value)} className="w-full bg-[#F8F7F2] p-2 rounded-lg text-sm font-medium outline-none" placeholder="000.000.000-00" />
+                                    <p className="text-xs text-slate-400 mt-2">Nome e contato acompanham somente o documento do cadastro da venda. Outro documento será usado apenas nesta nota, sem alterar o cadastro.</p>
                                 </div>
                             </div>
                         </div>

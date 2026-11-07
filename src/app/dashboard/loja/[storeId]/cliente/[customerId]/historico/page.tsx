@@ -12,11 +12,20 @@ export const dynamic = 'force-dynamic'
 export default async function Page(
     props: {
         params: Promise<{ storeId: string, customerId: string }>
+        searchParams?: Promise<{ from?: string | string[] }>
     }
 ) {
     const params = await props.params;
+    const searchParams = await props.searchParams;
     const storeId = parseInt(params.storeId)
     const customerId = parseInt(params.customerId)
+    const from = Array.isArray(searchParams?.from) ? searchParams.from[0] : searchParams?.from
+    const returnHref = from === 'clientes-inativos'
+        ? `/dashboard/loja/${storeId}/clientes-inativos`
+        : from === 'atendimento-pagina'
+            ? `/dashboard/loja/${storeId}/atendimento`
+            : `/dashboard/loja/${storeId}?menu=atendimento`
+    const returnTitle = from === 'clientes-inativos' ? 'Voltar para Clientes Sumidos' : 'Voltar para Atendimento'
 
     const { success, data, error } = await getCustomerXRay(customerId, storeId)
 
@@ -28,7 +37,7 @@ export default async function Page(
             <div className="flex flex-col items-center justify-center min-h-screen bg-slate-950 text-white">
                 <h1 className="text-2xl font-bold mb-2">Erro ao carregar histórico</h1>
                 <p className="text-slate-400 mb-6">{error || 'Cliente não encontrado'}</p>
-                <Link href={`/dashboard/loja/${storeId}/atendimento`} className="px-4 py-2 bg-indigo-600 rounded-lg">Voltar</Link>
+                <Link href={returnHref} className="px-4 py-2 bg-indigo-600 rounded-lg">Voltar</Link>
             </div>
         )
     }
@@ -47,9 +56,9 @@ export default async function Page(
                 <div className="flex justify-between items-center mb-6 shrink-0">
                     <div className="flex items-center gap-4">
                         <Link
-                            href={`/dashboard/loja/${storeId}?menu=atendimento`}
+                            href={returnHref}
                             className="p-2 rounded-full bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors border border-white/5"
-                            title="Voltar para Atendimento"
+                            title={returnTitle}
                         >
                             <ArrowLeft className="w-5 h-5" />
                         </Link>

@@ -14,7 +14,10 @@ const date = (value: string | null | undefined) => value ? value.split('T')[0].s
 
 function DeleteButton({ payment, vendaId, storeId, onDelete, disabled }: { payment: Pagamento; vendaId: number; storeId: number; onDelete: () => Promise<void>; disabled: boolean }) {
   const [pending, start] = useTransition()
-  return <button type="button" disabled={pending || disabled} onClick={() => { if (disabled || !window.confirm(`Remover pagamento de ${money(payment.valor_pago)}?`)) return; start(async () => { const result = await deletePagamento(payment.id, vendaId, storeId); if (result.success) await onDelete(); else alert(`Erro: ${result.message}`) }) }} className="p-1 text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 rounded-md disabled:opacity-50" title="Estornar / Remover">{pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}</button>
+  const confirmation = payment.forma_pagamento === 'Crédito em Loja'
+    ? `Remover pagamento de ${money(payment.valor_pago)} e devolver esse crédito à carteira do cliente que pagou?`
+    : `Remover pagamento de ${money(payment.valor_pago)}?`
+  return <button type="button" disabled={pending || disabled} onClick={() => { if (disabled || !window.confirm(confirmation)) return; start(async () => { const result = await deletePagamento(payment.id, vendaId, storeId); if (result.success) { toast.info(result.message); try { await onDelete() } catch { toast.error('Pagamento removido. Recarregue a página para atualizar os dados.') } } else alert(`Erro: ${result.message}`) }) }} className="p-1 text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 rounded-md disabled:opacity-50" title="Estornar / Remover">{pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}</button>
 }
 
 export default function ListaPagamentos({ pagamentos, vendaId, storeId, onDelete, disabled, whatsappReceiptEnabled = false }: Props) {

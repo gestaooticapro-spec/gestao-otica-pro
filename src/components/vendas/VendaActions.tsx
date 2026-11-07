@@ -70,9 +70,8 @@ export default function VendaActions({
         canReopen = canReopen || (diffDays >= 0 && diffDays <= 2)
     }
 
-    const hasRemaining = (venda.valor_restante ?? 0) > 0.01
-    const hasFinance = !!venda.financiamento_id
-    const isLocked = hasRemaining && !hasFinance
+    const remainingCents = Math.round(Number(venda.valor_restante) * 100)
+    const isLocked = venda.valor_restante == null || !Number.isSafeInteger(remainingCents) || remainingCents > 0
 
     const handleActionClick = (action: 'Finalizar' | 'Reabrir') => {
         setAuthAction(action)
@@ -148,7 +147,7 @@ export default function VendaActions({
                     </button>
 
                     {isLocked ? (
-                        <div className="flex items-center gap-2 px-4 h-9 text-sm rounded-lg bg-white/5 text-slate-500 font-bold cursor-not-allowed border border-white/10 uppercase tracking-wide" title="Zere o saldo ou gere um carnê para finalizar.">
+                        <div className="flex items-center gap-2 px-4 h-9 text-sm rounded-lg bg-white/5 text-slate-500 font-bold cursor-not-allowed border border-white/10 uppercase tracking-wide" title="Cubra todo o saldo com pagamentos ou carnê para finalizar.">
                             <Lock className="h-4 w-4" />
                             <span>Falta Destinar</span>
                         </div>
@@ -170,7 +169,7 @@ export default function VendaActions({
             {isVendaFechada && (
                 <div className="flex gap-3 items-center">
 
-                    {canReopen && (
+                    {canReopen && venda.status === 'Fechada' && (
                         <button
                             type="button"
                             disabled={isPending}
@@ -236,6 +235,8 @@ export default function VendaActions({
                     storeId={venda.store_id}
                     customerId={venda.customer_id}
                     itens={vendaItens}
+                    valorReembolso={venda.valor_final}
+                    onSuccess={onStatusChange}
                 />
             )}
 

@@ -1,15 +1,13 @@
 'use client'
 
-import { useState, useRef, useTransition, useEffect } from 'react'
+import { useState, useTransition, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { X, RefreshCcw, AlertTriangle, CheckCircle2, Wallet, CreditCard, ArrowRight, Loader2 } from 'lucide-react'
+import { X, RefreshCcw, Wallet, ArrowRight, Loader2 } from 'lucide-react'
 import { Database } from '@/lib/database.types'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import { processarDevolucao } from '@/lib/actions/return.actions'
 
-type VendaItem = Database['public']['Tables']['venda_itens']['Row']
-type Employee = Database['public']['Tables']['employees']['Row']
-
+type VendaItem = Database['public']['Tables']['venda_itens']['Row'] & { unidade?: string | null }
 interface ReturnModalProps {
     isOpen: boolean
     onClose: () => void
@@ -17,6 +15,8 @@ interface ReturnModalProps {
     storeId: number
     customerId: number
     itens: VendaItem[]
+    valorReembolso: number
+    onSuccess?: () => Promise<void>
 }
 
 type SelectedItemState = {
@@ -28,35 +28,25 @@ type SelectedItemState = {
 
 const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-export default function ReturnModal({ isOpen, onClose, vendaId, storeId, customerId, itens }: ReturnModalProps) {
+export default function ReturnModal({ isOpen, onClose, vendaId, storeId, customerId, itens, valorReembolso, onSuccess }: ReturnModalProps) {
+    const [returnAttemptKey, setReturnAttemptKey] = useState<string | null>(null)
     // Estado dos Itens (Controle de seleção e condição)
     const [itemsState, setItemsState] = useState<Record<number, SelectedItemState>>(() => {
         const initial: Record<number, SelectedItemState> = {}
         itens.forEach(item => {
-            initial[item.id] = { selected: false, condicao: 'Intacto' }
+            initial[item.id] = { selected: true, condicao: 'Intacto' }
         })
         return initial
     })
 
-    const [refundMethod, setRefundMethod] = useState<'Carteira' | 'Estorno'>('Carteira')
     const [isAuthOpen, setIsAuthOpen] = useState(false)
     const [isPending, startTransition] = useTransition()
 
     // Cálculos
     const selectedItemsIds = Object.keys(itemsState).filter(id => itemsState[parseInt(id)].selected).map(Number)
-    const totalRefund = selectedItemsIds.reduce((acc, id) => {
-        const item = itens.find(i => i.id === id)
-        return acc + (item ? item.valor_total_item : 0) // Assume devolução total do item (qtd total)
-    }, 0)
+    const totalRefund = valorReembolso
 
     // Handlers
-    const toggleSelect = (id: number) => {
-        setItemsState(prev => ({
-            ...prev,
-            [id]: { ...prev[id], selected: !prev[id].selected }
-        }))
-    }
-
     const updateCondition = (id: number, condicao: 'Intacto' | 'Defeito' | 'Sobra') => {
         setItemsState(prev => ({
             ...prev,
@@ -73,7 +63,7 @@ export default function ReturnModal({ isOpen, onClose, vendaId, storeId, custome
 
     // Fluxo de Confirmação
     const handlePreConfirm = () => {
-        if (selectedItemsIds.length === 0) return alert("Selecione pelo menos um item.")
+        if (selectedItemsIds.length === 0 || selectedItemsIds.length !== itens.length) return alert('A devolução deve incluir todos os itens da venda.')
         
         // Validação de Sobras
         for (const id of selectedItemsIds) {
@@ -85,28 +75,20 @@ export default function ReturnModal({ isOpen, onClose, vendaId, storeId, custome
             }
         }
 
+        setReturnAttemptKey(current => current ?? crypto.randomUUID())
         setIsAuthOpen(true)
     }
 
-    const handleAuthSuccess = (employee: { id: number, full_name: string, role: string }) => {
-        // TRAVA DE SEGURANÇA: Estorno exige Gerente
-        if (refundMethod === 'Estorno' && employee.role !== 'gerente' && employee.role !== 'admin') {
-            alert("⛔ Acesso Negado: Apenas Gerentes podem autorizar Estorno Financeiro.\nPara vendedores, use a opção 'Crédito em Loja'.")
-            // Não fecha o modal de auth, força tentar de novo ou cancelar
-            return 
-        }
+    const handleAuthSuccess = (employee: { id: number, full_name: string, role: string, authorization_token?: string }) => {
+        if (!returnAttemptKey || !employee.authorization_token) return alert('Autorize novamente a devolução pelo PIN.')
 
         setIsAuthOpen(false)
 
         // Prepara Payload
         const itensPayload = selectedItemsIds.map(id => {
-            const original = itens.find(i => i.id === id)!
             const state = itemsState[id]
             return {
                 venda_item_id: id,
-                product_id: original.product_id,
-                quantidade: original.quantidade, // Devolução total da linha
-                valor_unitario: original.valor_unitario,
                 condicao: state.condicao,
                 detalhes_sobra: state.condicao === 'Sobra' ? {
                     diametro: parseFloat(state.diametro || '0'),
@@ -120,14 +102,20 @@ export default function ReturnModal({ isOpen, onClose, vendaId, storeId, custome
         formData.append('venda_id', vendaId.toString())
         formData.append('customer_id', customerId.toString())
         formData.append('employee_id', employee.id.toString())
-        formData.append('tipo_reembolso', refundMethod)
+        formData.append('tipo_reembolso', 'Carteira')
         formData.append('itens_json', JSON.stringify(itensPayload))
+        formData.append('idempotency_key', returnAttemptKey)
+        formData.append('authorization_token', employee.authorization_token)
 
         startTransition(async () => {
-            const res = await processarDevolucao(null, formData)
+            let res
+            try { res = await processarDevolucao(null, formData) }
+            catch { alert('Resposta incerta. Consulte o histórico antes de repetir a devolução.'); return }
             if (res.success) {
-                alert("Devolução processada com sucesso!")
+                alert(res.message)
                 onClose()
+                try { await onSuccess?.() }
+                catch { alert('Devolução concluída. Recarregue a página para atualizar os dados.') }
             } else {
                 alert(`Erro: ${res.message}`)
             }
@@ -150,11 +138,11 @@ export default function ReturnModal({ isOpen, onClose, vendaId, storeId, custome
                 <div className="bg-red-50 px-6 py-4 border-b border-red-100 flex justify-between items-center">
                     <div>
                         <h2 className="text-xl font-bold text-red-900 flex items-center gap-2">
-                            <RefreshCcw className="h-6 w-6" /> Devolução / Troca
+                            <RefreshCcw className="h-6 w-6" /> Devolução integral
                         </h2>
-                        <p className="text-xs text-red-700">Selecione os itens e o destino.</p>
+                        <p className="text-xs text-red-700">Venda quitada, sem carnê. Todos os itens serão devolvidos e o valor final virará Crédito em Loja.</p>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-red-100 rounded-full text-red-400"><X className="h-6 w-6"/></button>
+                    <button disabled={isPending} onClick={onClose} className="p-2 hover:bg-red-100 rounded-full text-red-400"><X className="h-6 w-6"/></button>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -164,7 +152,7 @@ export default function ReturnModal({ isOpen, onClose, vendaId, storeId, custome
                         <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Itens da Venda</h3>
                         {itens.map(item => {
                             const state = itemsState[item.id]
-                            const isLente = item.item_tipo === 'Lente'
+                            const canReturnLeftover = item.item_tipo === 'Lente' && item.quantidade === 1 && item.unidade !== 'Par' && item.variant_id != null
                             
                             return (
                                 <div key={item.id} className={`p-4 rounded-xl border transition-all ${state.selected ? 'border-red-500 bg-red-50/50' : 'border-gray-200 bg-white'}`}>
@@ -172,7 +160,7 @@ export default function ReturnModal({ isOpen, onClose, vendaId, storeId, custome
                                         <input 
                                             type="checkbox" 
                                             checked={state.selected} 
-                                            onChange={() => toggleSelect(item.id)}
+                                            disabled
                                             className="mt-1 w-5 h-5 text-red-600 rounded border-gray-300 focus:ring-red-500"
                                         />
                                         <div className="flex-1">
@@ -181,6 +169,7 @@ export default function ReturnModal({ isOpen, onClose, vendaId, storeId, custome
                                                 <span className="font-mono text-gray-600">{formatCurrency(item.valor_total_item)}</span>
                                             </div>
                                             <p className="text-xs text-gray-500 mb-2">{item.quantidade}x {item.item_tipo}</p>
+                                            {item.product_id == null && <p className="text-xs text-gray-500">Item sem produto cadastrado: não gera entrada no estoque.</p>}
 
                                             {/* Opções Condicionais (Só aparecem se selecionado) */}
                                             {state.selected && (
@@ -189,12 +178,13 @@ export default function ReturnModal({ isOpen, onClose, vendaId, storeId, custome
                                                         <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Estado / Destino</label>
                                                         <select 
                                                             value={state.condicao} 
+                                                            disabled={isPending}
                                                             onChange={(e) => updateCondition(item.id, e.target.value as any)}
                                                             className="h-8 text-xs rounded border-gray-300 focus:ring-red-500 bg-white"
                                                         >
                                                             <option value="Intacto">Intacto (Estoque)</option>
                                                             <option value="Defeito">Defeito (Lixo/Perda)</option>
-                                                            {isLente && <option value="Sobra">Sobra (Banco de Lentes)</option>}
+                                                            {canReturnLeftover && <option value="Sobra">Sobra (Banco de Lentes)</option>}
                                                         </select>
                                                     </div>
 
@@ -205,6 +195,7 @@ export default function ReturnModal({ isOpen, onClose, vendaId, storeId, custome
                                                                 <label className="block text-[10px] font-bold text-blue-600 uppercase mb-1">Diâmetro Útil</label>
                                                                 <input 
                                                                     type="number" 
+                                                                    disabled={isPending}
                                                                     placeholder="Ex: 65"
                                                                     value={state.diametro || ''}
                                                                     onChange={(e) => updateDetails(item.id, 'diametro', e.target.value)}
@@ -215,6 +206,7 @@ export default function ReturnModal({ isOpen, onClose, vendaId, storeId, custome
                                                                 <label className="block text-[10px] font-bold text-blue-600 uppercase mb-1">Olho</label>
                                                                 <select 
                                                                     value={state.olho || ''}
+                                                                    disabled={isPending}
                                                                     onChange={(e) => updateDetails(item.id, 'olho', e.target.value)}
                                                                     className="h-8 w-20 text-xs rounded border-blue-300 focus:ring-blue-500"
                                                                 >
@@ -242,25 +234,14 @@ export default function ReturnModal({ isOpen, onClose, vendaId, storeId, custome
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
-                            <button 
-                                onClick={() => setRefundMethod('Carteira')}
-                                className={`p-4 rounded-xl border-2 flex flex-col items-center gap-2 transition-all ${refundMethod === 'Carteira' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-500 hover:border-blue-200'}`}
-                            >
+                            <div className="p-4 rounded-xl border-2 border-blue-500 bg-blue-50 text-blue-700 flex flex-col items-center gap-2">
                                 <Wallet className="h-6 w-6" />
                                 <span className="font-bold text-sm">Gerar Crédito (Carteira)</span>
-                                <span className="text-[10px] bg-blue-200 text-blue-800 px-2 py-0.5 rounded">Recomendado</span>
-                            </button>
-
-                            <button 
-                                onClick={() => setRefundMethod('Estorno')}
-                                className={`p-4 rounded-xl border-2 flex flex-col items-center gap-2 transition-all ${refundMethod === 'Estorno' ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-200 bg-white text-gray-500 hover:border-red-200'}`}
-                            >
-                                <CreditCard className="h-6 w-6" />
-                                <span className="font-bold text-sm">Estorno Financeiro</span>
-                                <span className="text-[10px] bg-red-100 text-red-800 px-2 py-0.5 rounded flex items-center gap-1">
-                                    <AlertTriangle className="h-3 w-3"/> Exige Gerente
-                                </span>
-                            </button>
+                                <span className="text-[10px]">Valor final, incluindo o desconto da venda.</span>
+                            </div>
+                            <div className="p-4 rounded-xl border border-gray-200 text-gray-500 text-xs flex items-center">
+                                Estorno financeiro e devoluções parciais estão indisponíveis neste fluxo.
+                            </div>
                         </div>
                     </div>
 
@@ -268,7 +249,7 @@ export default function ReturnModal({ isOpen, onClose, vendaId, storeId, custome
 
                 {/* Footer */}
                 <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
-                    <button onClick={onClose} className="px-6 py-3 rounded-xl font-bold text-gray-500 hover:bg-gray-200 transition-colors">Cancelar</button>
+                    <button disabled={isPending} onClick={onClose} className="px-6 py-3 rounded-xl font-bold text-gray-500 hover:bg-gray-200 transition-colors">Cancelar</button>
                     <button 
                         onClick={handlePreConfirm}
                         disabled={selectedItemsIds.length === 0 || isPending}
@@ -289,8 +270,10 @@ export default function ReturnModal({ isOpen, onClose, vendaId, storeId, custome
                 isOpen={isAuthOpen} 
                 onClose={() => setIsAuthOpen(false)} 
                 onSuccess={handleAuthSuccess}
-                title={refundMethod === 'Estorno' ? "Autorização de Gerente Necessária" : "Autorizar Devolução"}
-                description={refundMethod === 'Estorno' ? "Para estornos financeiros, é necessário o PIN de um gerente." : "Insira seu PIN para confirmar a devolução."}
+                title="Autorizar Devolução Integral"
+                description="Insira seu PIN para confirmar a devolução em Crédito em Loja."
+                purpose="sale_return"
+                authorizationContext={`return:${vendaId}:${returnAttemptKey}`}
             />
         )}
         </>,

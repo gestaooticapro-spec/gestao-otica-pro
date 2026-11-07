@@ -145,7 +145,7 @@ export default function ResumoFinanceiro({
       {/* Bloco 4: A RECEBER (Destaque) */}
       <div className="flex flex-col items-end border-l border-white/10 pl-4">
         <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">A Receber</span>
-        <span className={`text-xl font-black leading-none ${venda.valor_restante > 0.01 ? 'text-red-500' : 'text-emerald-500'}`}>
+        <span className={`text-xl font-black leading-none ${Math.round(Number(venda.valor_restante) * 100) > 0 ? 'text-red-500' : 'text-emerald-500'}`}>
           {formatCurrency(venda.valor_restante)}
         </span>
       </div>

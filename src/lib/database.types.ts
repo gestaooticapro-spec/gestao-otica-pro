@@ -1739,6 +1739,66 @@ export interface Database {
       }
 
       // --- CARTEIRA E COMISSÕES ---
+      direct_payment_removals: {
+        Row: {
+          id: number
+          tenant_id: string
+          store_id: number
+          venda_id: number
+          payment_id: number
+          created_by_user_id: string
+          payment_snapshot: Json
+          receivables_snapshot: Json
+          sale_before: Json
+          sale_after: Json
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          tenant_id: string
+          store_id: number
+          venda_id: number
+          payment_id: number
+          created_by_user_id: string
+          payment_snapshot: Json
+          receivables_snapshot: Json
+          sale_before: Json
+          sale_after: Json
+          created_at?: string
+        }
+        Update: never
+      }
+      sale_return_operations: {
+        Row: {
+          id: number
+          tenant_id: string
+          store_id: number
+          venda_id: number
+          customer_id: number
+          employee_id: number
+          created_by_user_id: string
+          operation_key: string
+          request_payload: Json
+          snapshot: Json
+          result: Json
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          tenant_id: string
+          store_id: number
+          venda_id: number
+          customer_id: number
+          employee_id: number
+          created_by_user_id: string
+          operation_key: string
+          request_payload: Json
+          snapshot: Json
+          result: Json
+          created_at?: string
+        }
+        Update: never
+      }
       customer_wallets: {
         Row: {
           id: number
@@ -1766,6 +1826,10 @@ export interface Database {
       wallet_transactions: {
         Row: {
           id: number
+          reversed_payment_id?: number | null
+          operation_key?: string | null
+          operation_payload?: Json | null
+          payment_id?: number | null
           tenant_id: string | null
           store_id: number
           wallet_id: number
@@ -1779,6 +1843,10 @@ export interface Database {
         }
         Insert: {
           id?: number
+          reversed_payment_id?: number | null
+          operation_key?: string | null
+          operation_payload?: Json | null
+          payment_id?: number | null
           tenant_id?: string | null
           store_id: number
           wallet_id: number
