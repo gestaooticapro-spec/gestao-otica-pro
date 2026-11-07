@@ -10,7 +10,8 @@ function load(file,mocks={},globals={}){
   const code=ts.transpileModule(readFileSync(new URL(`../${file}`,import.meta.url),'utf8'),{
     compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText
   runInNewContext(code,{module,exports:module.exports,FormData,console,
-    require:id=>mocks[id]||(['zod','node:crypto'].includes(id)?native(id):{}),...globals})
+    require:id=>mocks[id]||(id==='@/lib/financing-dates'?load('src/lib/financing-dates.ts'):
+      ['zod','node:crypto'].includes(id)?native(id):{}),...globals})
   return module.exports
 }
 const nodes=n=>!n||typeof n!=='object'?[]:Array.isArray(n)?n.flatMap(nodes):[n,...nodes(n.props?.children)]

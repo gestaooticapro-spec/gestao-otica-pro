@@ -9,7 +9,6 @@ import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { calcularERegistrarComissao, cancelarComissao, calcularComissaoMedico } from './commission.actions'
 import { checkLensStock, confirmReservations, cancelReservations, getLensReservationForOsSlot, releaseReservationsForServiceOrder, reopenReservations, reserveLensByAdmin, type LensReservationSlot } from './stock.actions'
 import { isStoreModuleEnabledForStore } from '@/lib/store-modules.server'
-import { clearNfcTrayLinkForDeliveredOrder } from '@/lib/nfc-tray-cleanup'
 import { getNewSaleBillingGuard } from '@/lib/billing/billing-guard'
 import {
   issueEmployeeAuthorization,
@@ -646,9 +645,7 @@ export async function saveServiceOrder(
       }
     }
 
-    if (payload.dt_entregue_em) {
-      await clearNfcTrayLinkForDeliveredOrder(savedId, payload.dt_entregue_em)
-    }
+    // Entrega e liberacao do envelope NFC sao confirmadas pelo trigger no banco.
 
     const { data: previousItemLinks, error: previousItemLinksError } = await (supabaseAdmin
       .from('venda_itens_os_links') as any)
@@ -1088,26 +1085,44 @@ export async function fetchDefaultCustomers(storeId: number): Promise<SearchCust
   return { success: true, data: dataComPendencia as any }
 }
 
-// 2. Busca por Nome ou CPF
+// 2. Busca por nome, documento ou telefone na loja autorizada.
 export async function searchCustomersByName(
   query: string,
   storeId: number
 ): Promise<SearchCustomersResult> {
+  const { data: { user } } = await createClient().auth.getUser()
+  if (!user) return { success: false, message: 'Sessão inválida.' }
+  const profile = await getProfileByAdmin(user.id) as any
+  if (!Number.isSafeInteger(storeId) || storeId <= 0 || !profile?.tenant_id ||
+      (profile.role !== 'admin' && Number(profile.store_id) !== storeId)) {
+    return { success: false, message: 'Sem acesso a esta loja.' }
+  }
   const supabaseAdmin = createAdminClient()
   const termo = query.trim()
+  if (!termo) return { success: true, data: [] }
   const documentTerm = documentDigits(termo)
+  // Aspas protegem os separadores do filtro PostgREST em nomes digitados.
+  const pattern = (value: string) => `"%${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}%"`
   const searchTerms = [
-    `full_name.ilike.%${termo}%`,
-    `razao_social.ilike.%${termo}%`,
-    `nome_fantasia.ilike.%${termo}%`,
-    `cpf.ilike.%${documentTerm || termo}%`,
-    `cnpj.ilike.%${documentTerm || termo}%`,
+    `full_name.ilike.${pattern(termo)}`,
+    `razao_social.ilike.${pattern(termo)}`,
+    `nome_fantasia.ilike.${pattern(termo)}`,
+    `cpf.ilike.${pattern(documentTerm || termo)}`,
+    `cnpj.ilike.${pattern(documentTerm || termo)}`,
   ]
+  if (/^[+\d\s().-]+$/.test(termo) && documentTerm.length >= 3) {
+    const phoneTerms = [documentTerm]
+    if (documentTerm.startsWith('55') && [12, 13].includes(documentTerm.length)) phoneTerms.push(documentTerm.slice(2))
+    for (const digits of phoneTerms) {
+      searchTerms.push(`search_mobile_digits.ilike.%${digits}%`, `search_phone_digits.ilike.%${digits}%`)
+    }
+  }
 
   const { data, error } = await supabaseAdmin
     .from('customers')
     .select('id, full_name, razao_social, nome_fantasia, person_type, cpf, cnpj, fone_movel, obs_debito')
     .eq('store_id', storeId)
+    .eq('tenant_id', profile.tenant_id)
     .or(searchTerms.join(','))
     .order('full_name')
     .limit(50)
@@ -1145,25 +1160,43 @@ export async function getCustomerById(
 
 export async function createNewVenda(
   customerId: number,
-  employeeId?: number | null
+  employeeId: number | null,
+  storeId: number
 ): Promise<CreateVendaResult> {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) { return { success: false, message: 'Usuário não autenticado.' } }
 
   const profile: any = await getProfileByAdmin(user.id)
-  if (!profile || !profile.tenant_id || !profile.store_id) {
+  if (!profile?.tenant_id) {
     return { success: false, message: 'Perfil do usuário não encontrado.' }
   }
 
-  const billingGuard = await getNewSaleBillingGuard(Number(profile.store_id))
+  if (!Number.isSafeInteger(storeId) || storeId <= 0 || !Number.isSafeInteger(customerId) || customerId <= 0 ||
+      (profile.role !== 'admin' && Number(profile.store_id) !== storeId)) {
+    return { success: false, message: 'Sem acesso à loja informada.' }
+  }
+  const supabaseAdmin = createAdminClient()
+  const { data: store, error: storeError } = await (supabaseAdmin.from('stores') as any)
+    .select('id').eq('id', storeId).eq('tenant_id', profile.tenant_id).maybeSingle()
+  if (storeError || !store) return { success: false, message: 'Loja não encontrada nesta empresa.' }
+  const { data: customer, error: customerError } = await (supabaseAdmin.from('customers') as any)
+    .select('id').eq('id', customerId).eq('store_id', storeId).eq('tenant_id', profile.tenant_id).maybeSingle()
+  if (customerError || !customer) return { success: false, message: 'Cliente não encontrado nesta loja.' }
+  if (employeeId != null) {
+    if (!Number.isSafeInteger(employeeId) || employeeId <= 0) return { success: false, message: 'Vendedor inválido.' }
+    const { data: employee, error: employeeError } = await (supabaseAdmin.from('employees') as any)
+      .select('id').eq('id', employeeId).eq('store_id', storeId).eq('tenant_id', profile.tenant_id).eq('is_active', true).maybeSingle()
+    if (employeeError || !employee) return { success: false, message: 'Vendedor não autorizado nesta loja.' }
+  }
+  const billingGuard = await getNewSaleBillingGuard(storeId)
   if (billingGuard.blocked) {
     return { success: false, message: billingGuard.message || 'Novas vendas estao bloqueadas para esta loja.' }
   }
 
   const vendaData = {
     tenant_id: profile.tenant_id,
-    store_id: profile.store_id,
+    store_id: storeId,
     customer_id: customerId,
     employee_id: (employeeId ?? null) as number | null,
     created_by_user_id: user.id,
@@ -1173,15 +1206,14 @@ export async function createNewVenda(
     valor_final: 0,
   }
 
-  const supabaseAdmin = createAdminClient();
-
   try {
     const cutoff = new Date()
     cutoff.setDate(cutoff.getDate() - 7)
 
     const { data: recentOpenEvaluation, error: recentEvaluationError } = await (supabaseAdmin.from('optical_evaluations') as any)
       .select('id, updated_at')
-      .eq('store_id', profile.store_id)
+      .eq('store_id', storeId)
+      .eq('tenant_id', profile.tenant_id)
       .is('exported_venda_id', null)
       .is('outcome_status', null)
       .gte('updated_at', cutoff.toISOString())
@@ -1379,7 +1411,7 @@ export async function addVendaItem(
   if (!user) return { success: false, message: 'Usuário não autenticado.' }
 
   const profile = await getProfileByAdmin(user.id)
-  if (!profile) return { success: false, message: 'Perfil não encontrado.' }
+  if (!(profile as any)?.tenant_id) return { success: false, message: 'Perfil não encontrado.' }
 
   const nullIfEmpty = (val: unknown) => (val === '' ? null : val)
 
@@ -1436,6 +1468,27 @@ export async function addVendaItem(
   // Definimos o ID do produto unificado
   const productId = data.lente_id || data.armacao_id || data.tratamento_id;
 
+  const supabaseAdmin = createAdminClient()
+  const { data: saleContext, error: saleContextError } = await (supabaseAdmin.from('vendas') as any)
+    .select('store_id, tenant_id, status')
+    .eq('id', data.venda_id)
+    .eq('tenant_id', (profile as any).tenant_id)
+    .maybeSingle()
+  if (saleContextError || !saleContext) {
+    return { success: false, message: 'Venda não encontrada para adicionar o item.', timestamp: Date.now() }
+  }
+  if ((profile as any).role !== 'admin' && Number((profile as any).store_id) !== Number(saleContext.store_id)) {
+    return { success: false, message: 'Sem acesso à loja desta venda.', timestamp: Date.now() }
+  }
+  if (saleContext.status !== 'Em Aberto') {
+    return { success: false, message: 'Só é possível adicionar itens em vendas abertas.', timestamp: Date.now() }
+  }
+  if (productId) {
+    const { data: product, error: productError } = await (supabaseAdmin.from('products') as any)
+      .select('id').eq('id', productId).eq('store_id', saleContext.store_id).eq('tenant_id', saleContext.tenant_id).maybeSingle()
+    if (productError || !product) return { success: false, message: 'Produto não encontrado nesta loja.', timestamp: Date.now() }
+  }
+
   // Montamos o objeto (sem tipagem estrita para evitar o erro 'never')
   const itemToInsert = {
     venda_id: data.venda_id,
@@ -1447,8 +1500,8 @@ export async function addVendaItem(
     valor_unitario: data.valor_unitario,
     valor_total_item: valor_total_item,
     unidade: data.unidade,
-    tenant_id: (profile as any).tenant_id, // Forçamos aqui
-    store_id: (profile as any).store_id,   // CORREÃ‡ÃƒO: Forçamos aqui também
+    tenant_id: saleContext.tenant_id,
+    store_id: saleContext.store_id,
     detalhes_avulsos: {
       original_price: catalogOfferSnapshot?.originalPrice ?? data.valor_unitario,
       ...(catalogOfferSnapshot
@@ -1465,26 +1518,6 @@ export async function addVendaItem(
           }
         : {}),
     },
-  }
-
-  const supabaseAdmin = createAdminClient();
-
-  const { data: saleContext, error: saleContextError } = await (supabaseAdmin.from('vendas') as any)
-    .select('store_id, tenant_id, status')
-    .eq('id', data.venda_id)
-    .eq('tenant_id', (profile as any).tenant_id)
-    .maybeSingle()
-
-  if (saleContextError || !saleContext) {
-    return {
-      success: false,
-      message: 'Venda não encontrada para adicionar o item.',
-      timestamp: Date.now(),
-    }
-  }
-
-  if (saleContext.status !== 'Em Aberto') {
-    return { success: false, message: 'Só é possível adicionar itens em vendas abertas.', timestamp: Date.now() }
   }
 
   if (catalogOfferSnapshot) {
@@ -1507,6 +1540,7 @@ export async function addVendaItem(
   const { data: storeContext, error: storeContextError } = await (supabaseAdmin.from('stores') as any)
     .select('settings')
     .eq('id', saleContext.store_id)
+    .eq('tenant_id', saleContext.tenant_id)
     .maybeSingle()
 
   if (storeContextError || !storeContext) {
@@ -1557,12 +1591,10 @@ export async function addVendaItem(
 
     await calcularERegistrarComissao(data.venda_id)
 
-    // CORREÃ‡ÃƒO 3: Cast no profile para o revalidatePath
-    revalidatePath(`/dashboard/loja/${(profile as any).store_id
-      } / vendas`)
-    revalidatePath(`/ dashboard / loja / ${(profile as any).store_id
-      } /vendas/${data.venda_id} `)
-    revalidatePath(`/dashboard/loja/${(profile as any).store_id}/financeiro/comissoes`)
+    revalidatePath(`/dashboard/loja/${saleContext.store_id}/vendas`)
+    revalidatePath(`/dashboard/loja/${saleContext.store_id}/vendas/${data.venda_id}`)
+    revalidatePath(`/dashboard/loja/${saleContext.store_id}/vendas/${data.venda_id}/experimental`)
+    revalidatePath(`/dashboard/loja/${saleContext.store_id}/financeiro/comissoes`)
 
     return { success: true, message: 'Item adicionado!', data: newItem as any }
   } catch (error: any) {
@@ -4238,6 +4270,7 @@ export async function autenticarFuncionarioPorPin(
       || requestedPurpose === 'pix_charge_recover'
       || requestedPurpose === 'daily_health_access'
       || requestedPurpose === 'sale_return'
+      || requestedPurpose === 'immediate_assistance'
       ? requestedPurpose
       : null
 
@@ -4274,7 +4307,9 @@ export async function autenticarFuncionarioPorPin(
     }
 
     const hasValidAuthorizationContext =
-      authorizationPurpose === 'sale_return'
+      authorizationPurpose === 'immediate_assistance'
+        ? /^immediate:[1-9]\d*:[1-9]\d*:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(authorizationContext)
+        : authorizationPurpose === 'sale_return'
         ? /^return:[1-9]\d*:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(authorizationContext)
         : authorizationPurpose === 'evaluation_unlink'
         ? /^\d+:\d+$/.test(authorizationContext)

@@ -99,7 +99,7 @@ export default function CatalogLensSaleActions({
     }
     setMessage(null)
     startTransition(async () => {
-      const result = await createNewVenda(customerId, Number(selectedEmployeeId))
+      const result = await createNewVenda(customerId, Number(selectedEmployeeId), storeId)
       if (!result.success || !result.data) {
         setMessage(result.message || 'Não foi possível criar a venda.')
         return

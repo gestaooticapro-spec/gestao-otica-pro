@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useRef } from 'react'
+import EmployeeAuthModal from './EmployeeAuthModal'
 import { createAssistanceTicket } from '@/lib/actions/assistance.actions'
 import { searchCustomersByName, getItensCompradosPorCliente, type CustomerSearchResult, type ItemComprado } from '@/lib/actions/vendas.actions'
 import { Search, ArrowRight, Phone, Package, AlertTriangle, CheckCircle2, Loader2, X, ShoppingBag, PlusCircle, History } from 'lucide-react'
@@ -40,7 +41,10 @@ export default function NewAssistanceModal({
     const [defeito, setDefeito] = useState('')
     const [modalidade, setModalidade] = useState<'Padrao' | 'TrocaGarantida' | 'TrocaImediata'>('Padrao')
 
-    const [isPending, startTransition] = useTransition()
+    const [isPending, setIsPending] = useState(false)
+    const submitting = useRef(false)
+    const attempt = useRef<{ signature: string; key: string } | null>(null)
+    const [authDraft, setAuthDraft] = useState<{ formData: FormData; context: string } | null>(null)
     const [loadingItems, setLoadingItems] = useState(false)
 
     if (!isOpen) return null
@@ -91,10 +95,30 @@ export default function NewAssistanceModal({
         setStep(4)
     }
 
-    const handleSubmit = () => {
-        if (!selectedCustomer) return
-        if (!defeito) return alert("Descreva o defeito.")
+    const submitTicket = async (formData: FormData) => {
+        if (submitting.current) return
+        submitting.current = true
+        setIsPending(true)
+        try {
+            const res = await createAssistanceTicket(formData)
+            if (res.success && res.ticket) {
+                attempt.current = null
+                onSuccess(res.ticket)
+                onClose()
+                setStep(1); setQuery(''); setCustomers([]); setSelectedCustomer(null)
+                setPurchasedItems([]); setSelectedProduct(null); setDefeito(''); setModalidade('Padrao')
+            } else alert(res.message)
+        } catch {
+            alert('Não foi possível confirmar a assistência. Confira o histórico antes de repetir; mantenha esta janela para reutilizar a tentativa.')
+        } finally {
+            submitting.current = false
+            setIsPending(false)
+        }
+    }
 
+    const handleSubmit = () => {
+        if (!selectedCustomer || submitting.current || authDraft) return
+        if (defeito.trim().length < 3) return alert('Descreva o defeito.')
         const formData = new FormData()
         formData.append('store_id', storeId.toString())
         formData.append('customer_id', selectedCustomer.id.toString())
@@ -102,33 +126,29 @@ export default function NewAssistanceModal({
         formData.append('product_descricao', productDesc)
         formData.append('descricao_defeito', defeito)
         formData.append('modalidade', modalidade)
-
-        // Vínculos
         if (selectedProduct) {
-            formData.append('product_id', selectedProduct.product_id ? selectedProduct.product_id.toString() : '')
+            formData.append('product_id', selectedProduct.product_id?.toString() || '')
             formData.append('venda_original_id', selectedProduct.venda_id.toString())
         }
-
-        startTransition(async () => {
-            const res = await createAssistanceTicket(formData)
-            if (res.success && res.ticket) {
-                onSuccess(res.ticket) // Atualiza Kanban
-                onClose()
-                // Reset Full
-                setStep(1); setQuery(''); setCustomers([]); setSelectedCustomer(null); setPurchasedItems([]); setSelectedProduct(null);
-            } else {
-                alert(res.message)
-            }
-        })
+        if (modalidade === 'TrocaImediata' && selectedProduct?.product_id) {
+            const signature = JSON.stringify(Array.from(formData.entries()))
+            if (attempt.current?.signature !== signature) attempt.current = { signature, key: crypto.randomUUID() }
+            const key = attempt.current.key
+            formData.append('idempotency_key', key)
+            setAuthDraft({ formData, context: `immediate:${selectedCustomer.id}:${selectedProduct.product_id}:${key}` })
+            return
+        }
+        void submitTicket(formData)
     }
 
     return (
+        <>
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
             <div className="bg-slate-950 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-white/10">
 
                 <div className="bg-indigo-900/20 px-6 py-4 border-b border-indigo-500/20 flex justify-between items-center">
                     <h3 className="font-bold text-indigo-300">Nova Assistência (Passo {step}/4)</h3>
-                    <button onClick={onClose} className="hover:bg-white/5 p-2 rounded-full transition-colors text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
+                    <button onClick={() => { if (!submitting.current) onClose() }} disabled={isPending} className="hover:bg-white/5 p-2 rounded-full transition-colors text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
                 </div>
 
                 <div className="p-6 overflow-y-auto custom-scrollbar">
@@ -257,10 +277,12 @@ export default function NewAssistanceModal({
                             <p className="text-center text-xs text-slate-500">
                                 {modalidade === 'Padrao' && 'Cliente deixa o produto para análise.'}
                                 {modalidade === 'TrocaGarantida' && 'Cliente leva produto. Pedimos novo ao fornecedor.'}
-                                {modalidade === 'TrocaImediata' && 'Baixa estoque da loja agora. Risco nosso.'}
+                                {modalidade === 'TrocaImediata' && (selectedProduct?.product_id
+                                    ? 'Baixa uma unidade com o PIN do funcionário. Estoque negativo permitido.'
+                                    : 'Sem produto cadastrado, não há baixa automática; o ticket permanece em triagem.')}
                             </p>
 
-                            <button onClick={handleSubmit} disabled={isPending} className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold shadow-lg shadow-emerald-500/20 flex justify-center items-center gap-2 transition-all">
+                            <button onClick={handleSubmit} disabled={isPending || !!authDraft} className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold shadow-lg shadow-emerald-500/20 flex justify-center items-center gap-2 transition-all">
                                 {isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : 'ABRIR TICKET'}
                             </button>
                         </div>
@@ -269,5 +291,18 @@ export default function NewAssistanceModal({
                 </div>
             </div>
         </div>
+        {authDraft && <EmployeeAuthModal isOpen storeId={storeId}
+            purpose="immediate_assistance" authorizationContext={authDraft.context}
+            title="Autorizar troca imediata"
+            description="Informe o PIN do funcionário ativo responsável pela baixa de uma unidade."
+            onClose={() => setAuthDraft(null)}
+            onSuccess={employee => {
+                if (!employee.authorization_token) return alert('Autorização indisponível. Informe o PIN novamente.')
+                const formData = authDraft.formData
+                formData.set('authorization_token', employee.authorization_token)
+                setAuthDraft(null)
+                void submitTicket(formData)
+            }} />}
+        </>
     )
 }

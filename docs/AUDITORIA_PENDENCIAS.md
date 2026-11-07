@@ -6,7 +6,7 @@ Os itens abaixo vêm do relatório da auditoria de venda e pagamentos diretos co
 
 ## Resumo atualizado em 07/11/2026
 
-Onze itens têm correção implementada no código e validação local, dentro do escopo autorizado. A publicação do aplicativo e a validação operacional continuam pendentes de confirmação.
+Os vinte itens têm correção implementada no código. A auditoria consolidada do mesmo dia, registrada abaixo, encontrou falhas que essas correções não fecham. A publicação do aplicativo e a validação operacional continuam pendentes de confirmação.
 
 | Item | Correção implementada | Situação do banco |
 | --- | --- | --- |
@@ -17,14 +17,105 @@ Onze itens têm correção implementada no código e validação local, dentro d
 | 5 | Alteração de forma e parcelamento recompõe somente recebíveis pendentes, com auditoria atômica | Migration 20261107140000 aplicada conforme relato do usuário |
 | 6 | Devolução integral de venda quitada, sem carnê, com Crédito em Loja | Migration 160000 aplicada conforme relato do usuário |
 | 7 | Cliente selecionado na Expressa chega ao complemento de cadastro e à autorização do carnê; saída retoma a mesma venda | Sem nova migration |
-| 8 | Observação acompanha a renegociação e fica no registro do acordo, com autor/data e transação única | Nova migration 20261107160000 pendente de aplicação |
+| 8 | Observação acompanha a renegociação e fica no registro do acordo, com autor/data e transação única | Migration 20261107160000 aplicada conforme relato do usuário |
+| 9 | Sugestão do primeiro vencimento usa o calendário local, sem conversão UTC | Sem nova migration |
+| 10 | Recebimento manual de parcela usa data local, consistente entre pagamento e identificação da tentativa | Sem nova migration |
+| 11 | Aviso de excedente é condicional à validação do saldo e informa possível abatimento de várias parcelas | Sem nova migration |
+| 12 | Nome cadastral no recebimento; anotação da parcela preservada separadamente | Migration 20261107180000 aplicada conforme relato do usuário |
+| 13 | Busca compartilhada inclui celular/telefone normalizados, com loja/tenant autorizados | Mesma migration 20261107180000 aplicada conforme relato do usuário |
+| 14 | Criação da venda recebe a loja da tela e confere acesso, cliente e vendedor | Sem nova migration |
+| 15 | Inclusão do item usa a loja/tenant da venda e confere acesso e produto local | Sem nova migration |
+| 16 | Entrega, liberação de envelopes NFC e eventos na mesma transação | Migration 20261107200000 aplicada conforme relato do usuário em 07/11/2026; sem consulta independente |
+| 17 | Troca imediata registra o funcionário do PIN, ticket, baixa e histórico juntos, mantendo estoque negativo | Migration 20261107220000 aplicada conforme relato do usuário em 07/11/2026; sem consulta independente |
 | 18 | Destinatário da NFC-e não mistura documento informado com os dados do cliente da venda | Sem nova migration nesta correção; validação real com provedor pendente |
 | 19 | Criação e uso de crédito com gravações atômicas e proteção contra repetição | Migration 150000 aplicada conforme relato do usuário |
 | 20 | Remoção de pagamento comum e recebíveis com recálculo e auditoria na mesma transação | Migration 170000 aplicada conforme relato do usuário |
 
 As cinco migrations de 06/11 das correções acima foram informadas como aplicadas com sucesso pelo usuário. A migration 120000 de Clientes Sumidos também já havia sido aplicada, conforme seu relato. A migration de fechamento de 07/11 também foi informada como aplicada com sucesso nessa data. O ambiente do banco não foi especificado e não houve consulta independente ao schema instalado. Nenhuma dessas aplicações confirma a publicação do aplicativo.
 
-Restam **9 itens** para investigação, decisão ou correção: **9 a 17**. O próximo na sequência é o **item 9 — data sugerida do primeiro vencimento pode mudar de dia**. Os detalhes e limites das correções permanecem registrados abaixo.
+O usuário informou em 07/11/2026 que as migrations até `20261107220000`, inclusive `20261107200000_atomic_delivery_nfc_release.sql` e `20261107220000_atomic_immediate_assistance.sql`, foram aplicadas com sucesso. Esse relato não é consulta independente ao schema instalado. O agente não aplicou migration, não alterou dado real e não publicou o aplicativo. Dados antigos não foram saneados automaticamente. A validação operacional continua pendente.
+
+A auditoria consolidada abaixo prevalece sobre os resumos anteriores quando aponta falha ainda aberta. A falha preexistente no contrato de teste Sicredi, registrada no item 1, continua como verificação complementar separada; não afirmar validação completa dessa integração.
+
+## Auditoria consolidada em 07/11/2026
+
+Leitura do código atual, das migrations e das telas dos dois fluxos em uso, mais a suíte local e reproduções em memória/PostgreSQL WASM. Nenhuma correção foi implementada nesta etapa. Banco remoto não consultado. Concorrência entre duas conexões não executada. Navegador visual não exercitado.
+
+### Achados por gravidade
+
+1. **Alta, confirmada em execução.** `finalizarVendaExpress` grava a venda já fechada e trata erro posterior como sucesso. Em `src/lib/actions/vendas.actions.ts`, por volta das linhas 4124–4176, a venda nasce `Fechada` com `valor_restante` 0; o insert dos itens não lê erro; o insert do pagamento descarta `error`. A reprodução devolveu `success: true` e `Venda finalizada!` com `pagamentoId` ausente, depois de o pagamento simulado falhar, e ainda chamou o recálculo de comissão. O mesmo ensaio, com perfil de operador da loja 1, gravou a venda na loja 2 enviada pelo formulário, sem token de PIN e sem `employee_id` no pagamento. Cartão de crédito não gerou `accounts_receivable`; o único insert dessa tabela no código está em `addPagamento`. Impacto: venda fechada, estoque e comissão podem seguir, e o caixa fica sem o pagamento ou sem a agenda do cartão. Correção sugerida: uma transação que só confirme venda, itens, pagamento, recebíveis e estoque juntos; conferir loja/tenant e o PIN assinado; se o pagamento falhar, não devolver sucesso.
+
+2. **Alta, confirmada em execução.** `saveFinanciamentoLoja` não limita o carnê ao saldo, não confere a soma das parcelas e não desfaz o carnê se o fechamento falhar. Em `src/lib/actions/vendas.actions.ts`, por volta das linhas 2780–2939, a capa usa `valor_total` e `customer_id` do cliente da requisição; administrador não é limitado ao tenant da venda. A reprodução, com admin do tenant A, criou carnê de R$ 150 no tenant B, com parcelas que somavam R$ 2, gravou `valor_restante` -50 e, ao recusar o fechamento, não executou exclusão. No PostgreSQL/WASM, `close_sale_with_balance_check` aceitou pagamento de R$ 100 mais carnê de R$ 100 e fechou a venda com saldo -100, porque `guard_sale_closing_balance` só recusa `valor_restante > 0` (`supabase/migrations/20261107120000_guard_sale_closing_balance.sql`, linhas 24–26). A tela ainda aceita soma de parcelas com diferença menor que R$ 0,02 (`FinanciamentoBox.tsx`, linha 708). Impacto: o cliente pode ficar obrigado a um carnê diferente do saldo, ou a venda fecha com cobertura a maior. Correção sugerida: RPC única que bloqueie a venda, exija soma das parcelas igual à capa, limite a capa ao saldo canônico e desfaça tudo se o fechamento falhar; o fechamento deve recusar saldo negativo.
+
+3. **Alta, confirmada em execução.** `criarVendaParcialCarnê` não repete o isolamento de `createNewVenda`. Em `src/lib/actions/vendas.actions.ts`, por volta das linhas 4182–4234, operador da loja 1 criou venda na loja 2 e o fluxo segue para a saída de estoque. Não há conferência de tenant, cliente ou vendedor. Impacto: venda e baixa de estoque fora da loja autorizada, antes mesmo do carnê. Correção sugerida: exigir a loja da tela, o mesmo tenant, cliente e vendedor ativo, como na criação experimental.
+
+4. **Alta, confirmada na leitura do controle; o provedor não foi chamado.** A baixa do Pix Sicredi ainda trata um centavo como coberto e pode gravar o pagamento antes de falhar o fechamento. `createPixSaleCharge` recusa saldo `<= 0.01` (`src/lib/actions/pix-sale.actions.ts`, linha 133), então o último centavo não gera cobrança. `finalizeSaleFinancials` tenta fechar quando `valor_restante <= 0.01` (linhas 442–447), depois que o pagamento já foi inserido (linhas 409–431). O fechamento novo recusa esse centavo. Impacto: pagamento lançado, cobrança sem conclusão estável e venda aberta com um centavo que o Pix não recebe. Correção sugerida: comparar centavos exatos, permitir a cobrança de um centavo e só marcar a liquidação depois que o fechamento, quando devido, confirmar.
+
+5. **Alta condicional, confirmada na ordem dos locks; deadlock não executado em duas sessões.** O trigger `guard_direct_payment_sale_balance` bloqueia a venda antes de ignorar pagamento de parcela (`supabase/migrations/20261106180000_guard_direct_payment_sale_balance.sql`, linhas 19–20). O recebimento bloqueia as parcelas antes (`supabase/migrations/20260827170000_installment_receipt_effective_balance.sql`, linhas 93–95) e só então insere o pagamento. A renegociação bloqueia a venda e depois as parcelas (`supabase/migrations/20261006120000_open_sale_financing_reduction.sql`, linhas 70–103). Impacto: recebimento e renegociação simultâneos podem esperar um pelo outro e um deles ser cancelado pelo banco. Correção sugerida: o recebimento deve bloquear a venda antes das parcelas; o trigger não deve inverter essa ordem.
+
+6. **Média, confirmada na leitura.** `addPagamento` continua usando `profile.store_id` (`src/lib/actions/vendas.actions.ts`, linhas 1853 e 1888–1922). Administrador em outra loja do tenant, caminho aberto pelos itens 14 e 15, não encontra a venda para receber. Cartão e cheque gravam o pagamento e os recebíveis em chamadas separadas (linhas 1937–1978); falha da agenda deixa o pagamento confirmado. Correção sugerida: usar a loja da venda já validada e criar a agenda na mesma transação.
+
+7. **Média, confirmada em execução.** O cálculo das parcelas seguintes estoura o dia 31. `FinanciamentoBox.tsx`, linhas 398–405, faz `setMonth` e `toISOString()`. Com primeiro vencimento em 31/01/2026, a segunda parcela saiu em 03/03/2026. A sugestão do item 9 limita o primeiro vencimento; este cálculo não. Impacto: vencimento pulando fevereiro. Correção sugerida: montar ano/mês/dia no calendário local e limitar ao último dia do mês, como `getSuggestedFirstDueDate`.
+
+8. **Média, confirmada em execução local do instante; fora do escopo declarado do item 10.** A liquidação Pix grava `data_pagamento` com `new Date().toISOString().slice(0, 10)` (`pix-sale.actions.ts`, linha 418). 07/11/2026 às 21:30 em Brasília virou 08/11/2026. Correção sugerida: usar a data civil local já adotada no recebimento manual.
+
+9. **Média, confirmada na leitura.** Pagamento da Expressa não grava `employee_id`. `change_payment_method_with_audit` só exige o autor quando `employee_id` não é nulo (`supabase/migrations/20261107140000_atomic_payment_method_change.sql`, linhas 60–62) e retorna sem reconstruir a agenda quando forma e quantidade já coincidem (linha 89). Impacto: cartão da Expressa continua sem recebíveis, e qualquer funcionário ativo pode alterar esse pagamento. Correção sugerida: gravar o funcionário do PIN e recompor agenda pendente ausente.
+
+10. **Média, confirmada na leitura.** `registrarSaidaVenda` (`vendas.actions.ts`, linhas 2183–2193) ignora outra linha do mesmo produto depois da primeira saída. `return_sale_integral` exige que a saída somada seja igual à quantidade de todas as linhas (`supabase/migrations/20261106160000_atomic_integral_sale_return.sql`, linhas 150–158). Impacto: a segunda unidade não sai e a devolução integral dessa venda é bloqueada. Correção sugerida: somar as quantidades do mesmo produto/variante numa saída comprovada.
+
+11. **Média, preexistente e confirmada na leitura, fora do diff das vinte correções.** `getVendaPageData` (`vendas.actions.ts`, linhas 1260–1272) lê venda, cliente e pagamentos com o cliente administrativo, sem sessão. `updateCustomerPhone` (`lab.actions.ts`, linhas 475–481) altera telefone sem sessão. Impacto: quem alcançar a action consulta ou altera dados de outra loja se souber os identificadores. Correção sugerida: exigir sessão, tenant e loja antes dessas leituras e gravações.
+
+12. **Média, confirmada na leitura, ao lado do item 18.** `FiscalEmissionModal.tsx`, linhas 174–184, completa a NFC-e com dinheiro se não houver pagamento e com meio 05, crédito em loja, se a soma ficar mais de um centavo abaixo do total. Isso não mistura o nome do destinatário; declara um pagamento que a venda pode não ter. Correção sugerida: emitir somente os pagamentos reais ou recusar a nota enquanto o total não estiver coberto por eles.
+
+### O que esta leitura não apontou como falha nova
+
+Não apareceu defeito novo na RPC de estorno de crédito, na gravação da observação da renegociação, no texto condicional de excedente da parcela, no trigger do nome do recebimento nem na separação do destinatário da NFC-e. Os testes desses caminhos passaram. Isso não cobre concorrência entre conexões, navegador, provedor fiscal nem o schema remoto.
+
+A sugestão do primeiro vencimento, em `src/lib/financing-dates.ts`, não deslocou o dia nos fusos já testados. O vencimento de cartão calculado com data `2026-01-31` e trinta dias gravou `2026-03-02` pelo `toISOString`, que é o deslocamento civil esperado; não foi registrado como falha.
+
+### Situação dos vinte itens
+
+| Item | Implementação | Teste automatizado nesta auditoria | Validação operacional |
+| --- | --- | --- | --- |
+| 1 | Incompleta: a action ignora falha do pagamento e não isola loja/PIN | Suíte aprovada; não cobre insert recusado | Pendente |
+| 2 | Guard de pagamento direto conferido; carnê acima do saldo continua possível | Suíte aprovada; excedente de carnê reproduzido à parte | Pendente |
+| 3 | Conferida no código e na RPC | 39 testes da carteira aprovados | Pendente |
+| 4 | Conferida para saldo positivo; saldo negativo e o centavo do Pix ficam de fora | 15 testes de fechamento aprovados | Pendente |
+| 5 | Conferida para alteração com recebíveis pendentes; Expressa sem agenda/autor fica de fora | 34 testes aprovados | Pendente |
+| 6 | Conferida no escopo integral sem carnê | 36 testes aprovados; duas linhas do mesmo produto não cobertas | Pendente |
+| 7 | Tela conferida; criação parcial sem isolamento de loja | 8 testes aprovados; não cobrem a action direta | Pendente |
+| 8 | Conferida | 9 testes aprovados | Pendente |
+| 9 | Sugestão conferida; parcelas seguintes ainda estouram o dia 31 | 13 testes de calendário aprovados | Pendente |
+| 10 | Recebimento manual conferido; Pix automático continua em UTC | 2 testes aprovados | Pendente |
+| 11 | Conferida | Coberta pelos 2 testes do modal | Pendente |
+| 12 | Conferida | 15 testes do bloco aprovados | Pendente |
+| 13 | Conferida no adaptador simulado | 15 testes aprovados; PostgREST real não executado | Pendente |
+| 14 | `createNewVenda` conferida; Expressa e carnê parcial não seguem a mesma regra | 19 testes aprovados | Pendente |
+| 15 | `addVendaItem` conferida; `addPagamento` segue na loja do perfil | 19 testes aprovados | Pendente |
+| 16 | Trigger conferido; telefone do laboratório segue sem sessão | 7 testes aprovados | Pendente; migration só pelo relato |
+| 17 | RPC conferida no escopo da troca imediata com produto | 22 testes aprovados | Pendente; migration só pelo relato |
+| 18 | Destinatário conferido; composição dos meios de pagamento não | 5 testes da função e 21 da emissão aprovados; provedor não chamado | Pendente |
+| 19 | Conferida | 39 testes da carteira aprovados | Pendente |
+| 20 | Conferida | 29 testes aprovados | Pendente |
+
+### Testes desta auditoria
+
+Aprovados: `test:sale-financial-boundary` (23), `test:payment-limit` (18), `test:sale-closing` (15), `test:payment-removal` (29), `test:payment-method` (34), `test:wallet` (39), `test:sale-return` (36), `test:express-financing` (8), `test:renegotiation-note` (9), `test:financing-dates` (13), `test:receipt-date` (2), `test:customer-receipt-search` (15), `test:sale-store-context` (19), `test:delivery-nfc` (7), `test:immediate-assistance` (22), `installment-balance` (9) e `test:nfce-recipient` (26). A primeira execução longa de `test:payment-method` foi interrompida pelo tamanho do log; a repetição com saída em arquivo passou os 34 testes.
+
+Falha: `test:sicredi-pix-contracts`, 2 aprovados e 1 reprovado. O teste ainda exige `valor_renegociado_saida` em `vendas.actions.ts`. É a falha complementar já registrada; não foi tratada como regressão dos vinte itens.
+
+Reproduções locais, sem banco remoto: action da Expressa com pagamento recusado; carnê acima do saldo e sem rollback; carnê parcial em outra loja; fechamento com saldo -100 no PostgreSQL/WASM; segunda parcela em 03/03/2026; data UTC do Pix às 21:30 de Brasília.
+
+Limites: schema remoto não consultado; o relato de aplicação até `20261107220000` não foi verificado; duas conexões concorrentes não foram abertas; navegador não foi usado; nenhum Pix, NFC-e ou venda real foi emitido; `npm run typecheck` não foi repetido nesta auditoria.
+
+### Sequência sugerida de correção
+
+1. Bloco de conclusão: Expressa atômica com loja, PIN e pagamento; carnê parcial com o mesmo isolamento; carnê e fechamento sem saldo negativo e com rollback.
+2. Bloco do centavo: Pix com comparação exata, cobrança de um centavo e data civil local.
+3. Bloco da agenda: `employee_id` na Expressa, recebíveis na mesma transação e `addPagamento` na loja da venda.
+4. Bloco de concorrência: alinhar o bloqueio de venda e parcelas entre recebimento, renegociação e o trigger de pagamento. Reproduzir em duas sessões antes de publicar.
+5. Bloco de estoque e leitura: saída que soma linhas repetidas; sessão em `getVendaPageData` e `updateCustomerPhone`.
+6. Bloco fiscal: não inventar meio de pagamento na NFC-e; validar o destinatário com o provedor só depois da publicação autorizada.
 
 ## Venda e pagamentos diretos
 
@@ -119,7 +210,7 @@ Restam **9 itens** para investigação, decisão ou correção: **9 a 17**. O pr
 
 ### 8. Observação da renegociação não é gravada
 
-- **Situação:** comportamento confirmado e corrigido localmente em 07/11/2026; nova migration, publicação e validação operacional pendentes.
+- **Situação:** comportamento confirmado e corrigido localmente em 07/11/2026. Migration aplicada com sucesso conforme relato do usuário na mesma data; publicação e validação operacional pendentes de confirmação.
 - **Comportamento observado:** o formulário de renegociação mostra o campo **Observação**, mas `renegociarFinanciamentoLoja` não envia esse texto. A criação do carnê grava a observação; a renegociação não.
 - **Risco:** a equipe pode acreditar que uma ressalva ficou registrada no acordo.
 - **Confirmado:** o payload da renegociação contém identificadores e parcelas, sem observação.
@@ -128,79 +219,100 @@ Restam **9 itens** para investigação, decisão ou correção: **9 a 17**. O pr
 - **Histórico e fluxos:** a observação original da capa do carnê e os registros de acordos anteriores não são sobrescritos. Autor e data continuam nos campos existentes do acordo. Campo opcional, com limite de 2000 caracteres; vazio fica null. O mesmo componente atende a Experimental e o carnê originado na Expressa. A criação inicial do carnê mantém sua observação própria e não foi alterada.
 - **Validação local:** `npm run typecheck`, 9 testes de `npm run test:renegotiation-note` e 8 de `npm run test:express-financing` aprovados. SQL real em PostgreSQL/WASM sintético executa a rotina financeira existente e a nova RPC; cobre nota/autor/data, preservação do histórico, texto opcional/limite, recebimentos anteriores, redução de saldo, rollback por falha na nota, permissões e reaplicação. Action e formulário reais foram exercitados em memória, incluindo o texto após o PIN.
 - **Regressão:** os 9 testes de `npx tsx --test tests/installment-balance.test.ts` e `git diff --check` também passaram.
-- **Entrega e limites:** aplicar a nova migration 20261107160000 depois da 20261107140000 antes de publicar. Banco remoto e vendas reais não foram acessados; navegador visual e concorrência entre conexões independentes não foram exercitados. Não recupera textos perdidos anteriormente nem cria uma tela de consulta do histórico. As regras financeiras e a RPC original são preservadas. Teste local depende de `npm run test:wallet:setup`.
+- **Entrega e limites:** o usuário informou em 07/11/2026 que aplicou `20261107160000_financing_renegotiation_note.sql` com sucesso, depois da 20261107140000. Ambiente do banco não especificado, sem consulta independente ao schema instalado. Publicação e validação operacional seguem pendentes de confirmação. Banco remoto e vendas reais não foram acessados; navegador visual e concorrência entre conexões independentes não foram exercitados. Não recupera textos perdidos anteriormente nem cria uma tela de consulta do histórico. As regras financeiras e a RPC original são preservadas. Teste local depende de `npm run test:wallet:setup`.
 
 ### 9. Data sugerida do primeiro vencimento pode mudar de dia
 
-- **Situação:** comportamento possível no código; correção adiada.
-- **Comportamento observado:** a data inicial do carnê é calculada no fuso local e depois convertida com `toISOString()`. No fuso do Brasil, de madrugada, o dia sugerido pode ser o anterior.
+- **Situação:** falha confirmada e corrigida localmente em 07/11/2026. Sem nova migration; publicação e validação operacional pendentes de confirmação.
+- **Comportamento confirmado:** a função anterior mantinha a hora atual ao avançar para o próximo mês e depois usava `toISOString()`. No horário de Brasília, a partir das 21h, a conversão UTC podia sugerir o dia seguinte. Isso corrige a hipótese original do relato, que mencionava dia anterior de madrugada.
 - **Risco:** vencimento diferente do dia que a equipe espera, se ninguém conferir o campo.
 - **Confirmado:** a função usa o mês seguinte e converte a data para UTC antes de preencher o campo.
-- **Decisão pendente:** definir se a sugestão deve usar somente a data local, sem conversão UTC.
+- **Correção:** `src/lib/financing-dates.ts` monta ano/mês/dia pelo calendário local, sem conversão UTC. Mantém o mesmo dia do mês seguinte e limita ao último dia se necessário. `FinanciamentoBox` usa o helper na inicialização e ao reiniciar o formulário, inclusive renegociação. Os dois fluxos em uso, Expressa e Experimental, compartilham o componente.
+- **Validação:** `npm run typecheck`, 9 testes de `npm run test:financing-dates` e 8 de `npm run test:express-financing` aprovados. Testes de calendário executados em processos separados nos fusos America/Sao_Paulo, UTC, Pacific/Kiritimati e America/Los_Angeles, com horários de madrugada e noite, 31 de janeiro, fevereiro bissexto, mês de 30 dias e virada de ano. `git diff --check` aprovado.
+- **Limites:** alteração apenas da sugestão do primeiro vencimento; o campo continua editável. Não modifica datas já gravadas, cálculo das demais parcelas ou data dos recebimentos, que permanece no item 10. Nenhum banco remoto ou venda real foi acessado; navegador visual não foi exercitado. A data de referência continua sendo a do navegador, conforme o fluxo anterior.
 
 ### 10. Data do recebimento da parcela usa o dia UTC
 
-- **Situação:** comportamento confirmado no código; correção adiada.
+- **Situação:** comportamento confirmado e corrigido localmente em 07/11/2026. Sem nova migration; publicação e validação operacional pendentes de confirmação.
 - **Comportamento observado:** a janela de recebimento não deixa escolher a data. Ela envia `new Date().toISOString().split('T')[0]`, que é o dia em UTC.
-- **Risco:** de madrugada no Brasil, o recebimento pode ficar no dia anterior.
+- **Risco confirmado:** no horário de Brasília, após as 21h, a data UTC pode ser o dia seguinte. A referência original a dia anterior de madrugada estava incorreta.
 - **Confirmado:** o formulário de `ParcelaSearchModal` acrescenta essa data pronta; não há campo de data na tela.
-- **Decisão pendente:** definir se o recebimento deve usar a data local e se a equipe pode informar outro dia.
+- **Correção:** `getLocalDateKey`, em `src/lib/financing-dates.ts`, formata ano/mês/dia locais sem converter para UTC. `ParcelaSearchModal` usa esse helper e captura a data uma única vez no envio, reutilizando-a na assinatura que identifica a tentativa. `FinanciamentoBox` usa o mesmo helper na data inicial do modal de recebimento existente. A action `receberParcela` já repassava a data à RPC sem conversão e mantém esse comportamento.
+- **Escopo operacional:** mantém a data automática de hoje no formulário de busca; não acrescenta lançamento retroativo. O modal alternativo que já possuía campo de data continua editável. Carnês originados na Expressa e Experimental usam o mesmo recebimento. Conciliação automática Pix e datas de pagamentos diretos não foram alteradas.
+- **Validação:** `npm run typecheck`, 13 testes de `npm run test:financing-dates`, 2 de `npm run test:receipt-date` e 8 de `npm run test:express-financing` aprovados. Calendário testado em processos com quatro fusos, horários de noite/madrugada e virada do ano. O modal real foi executado em memória para confirmar uma única leitura da data, envio e repetição da chave; a action real foi testada para preservar a data na RPC. `git diff --check` aprovado.
+- **Limites:** nenhuma alteração retroativa, acesso ao banco remoto ou recebimento real. Navegador visual não exercitado. A data depende do relógio/fuso do navegador, como a referência local adotada no item 9; a correção elimina a conversão UTC desse caminho.
 
 ### 11. Excedente da parcela é anunciado antes da validação do carnê
 
-- **Situação:** comportamento confirmado no código; correção adiada.
+- **Situação:** comportamento confirmado e corrigido localmente em 07/11/2026; publicação e validação operacional pendentes de confirmação. Sem nova migration.
 - **Comportamento observado:** se o principal passa do saldo da parcela, a tela avisa que o excedente será descontado da próxima. O servidor percorre as pendentes seguintes e recusa o recebimento quando o valor ultrapassa o saldo em aberto do carnê.
 - **Risco:** a pessoa confirma esperando amortização e recebe erro, ou entende que só a próxima parcela será afetada quando várias podem ser.
 - **Confirmado:** a mensagem está no modal; a recusa está em `receive_installment_payment_core`, com a exceção de principal acima do saldo do carnê.
-- **Decisão pendente:** alinhar o aviso da tela com o limite real antes de confirmar.
+- **Correção:** o modal substitui a promessa de desconto automático na próxima parcela por Excedente a validar. Explica, antes do PIN, que o servidor confere o saldo das pendentes seguintes do mesmo carnê, que uma ou mais parcelas podem ser abatidas se houver saldo e que o recebimento será recusado se ultrapassar esse saldo. Somente sucesso confirma a amortização. A mensagem também aparece com excedente de exatamente um centavo.
+- **Escopo:** carnês originados na Expressa e Experimental usam o mesmo modal. Juros continuam separados do principal no cálculo da diferença. Não modifica regras financeiras ou cria outra pré-validação remota; a RPC continua sendo a autoridade sobre o saldo disponível no momento da confirmação. O modal alternativo de `FinanciamentoBox` não continha a promessa incorreta e não precisou dessa alteração.
+- **Validação:** `npm run typecheck`, os 2 testes de `npm run test:receipt-date` ampliados com cenário de excedente de um centavo e valor alto, e `git diff --check` aprovados. Modal real executado em memória, verificando aviso condicional e ausência de gravação ao mudar o valor. O caminho SQL existente foi conferido: percorre parcelas pendentes a partir da origem e lança erro se sobrar principal não alocado. Não houve recebimento real, consulta ao banco remoto ou teste visual em navegador.
 
 ### 12. Descrição do recebimento usa a observação da parcela
 
-- **Situação:** comportamento confirmado no código; correção adiada.
+- **Situação:** confirmado e corrigido localmente no bloco 12/13 em 07/11/2026. Migration aplicada com sucesso conforme relato do usuário na mesma data; publicação e validação operacional pendentes de confirmação.
 - **Comportamento observado:** o pagamento da parcela grava em `obs` o texto `Cliente:` seguido de `financiamento_parcelas.obs`, não do nome do cliente.
 - **Risco:** o Livro Caixa, que lê esse trecho como nome, pode mostrar a observação da parcela no lugar do cliente.
 - **Confirmado:** o formato está em `receive_installment_payment_core`.
-- **Decisão pendente:** gravar o nome do cliente e preservar a observação em outro campo.
+- **Correção:** a migration `20261107180000_installment_payment_customer_description.sql` acrescenta `pagamentos.installment_note_snapshot` e um trigger BEFORE INSERT para novos pagamentos com parcela e operação de recebimento. Busca a parcela e seus vínculos de carnê/venda no mesmo store/tenant; monta `Cliente:` com nome cadastral, usando razão social/nome fantasia se o nome principal estiver vazio. Sem cliente acessível, grava Cliente não identificado. A anotação original de cada parcela alocada fica no campo separado, sem contaminar o nome.
+- **Transação e fluxos:** o trigger roda dentro do recebimento já atômico e antes de seu RETURNING; o snapshot `payments_created` da operação também recebe a descrição corrigida e a anotação separada. Falha de vínculo desfaz pagamentos, parcelas e operação. Não reescreve as RPCs financeiras existentes, anotações da parcela, pagamentos diretos ou recebimentos antigos. Aplica-se a carnês originados na Expressa e Experimental.
+- **Validação e entrega:** 15 testes do bloco em `npm run test:customer-receipt-search` aprovados com SQL real PostgreSQL/WASM sintético, incluindo execução da rotina de recebimento existente, múltiplas parcelas/formas, preservação dos snapshots, nome PJ, cliente ausente/fora do tenant e rollback. `npm run typecheck`, 8 testes de Expressa/carnê, 2 do modal/data do recebimento e `git diff --check` aprovados. O usuário informou que aplicou a migration 20261107180000 com sucesso em 07/11/2026, após a 20261107160000. Ambiente não especificado e sem consulta independente ao schema instalado. Banco remoto e navegador visual não foram acessados.
 
 ### 13. Busca do Receituário não consulta telefone
 
-- **Situação:** comportamento confirmado no código; correção adiada.
+- **Situação:** confirmado e corrigido localmente no bloco 12/13 em 07/11/2026. Mesma migration aplicada conforme relato do usuário; publicação e validação operacional pendentes de confirmação.
 - **Comportamento observado:** o campo diz “Nome, CPF ou Telefone...”, mas `searchCustomersByName` procura nome, razão social, nome fantasia, CPF e CNPJ. `fone_movel` não entra na consulta.
 - **Risco:** a equipe busca pelo telefone, não encontra o cadastro e cria outro cliente.
 - **Confirmado:** o placeholder está em `atendimento/page.tsx`; a consulta está em `searchCustomersByName`.
-- **Decisão pendente:** incluir o telefone na busca ou alterar o texto do campo.
+- **Correção:** a migration do bloco acrescenta colunas geradas `customers.search_mobile_digits` e `search_phone_digits`, removendo máscara sem alterar os campos originais. `searchCustomersByName` inclui ambos quando a entrada é telefônica e tem ao menos três dígitos; aceita trechos e retira +55 de buscas brasileiras de 12/13 dígitos como alternativa. Nomes/documentos continuam disponíveis, com valores entre aspas para proteger separadores do filtro PostgREST.
+- **Acesso e consumidores:** exige sessão e perfil; operador consulta somente sua loja, administrador continua limitado ao tenant. A consulta filtra store e tenant e mantém limite de 50 resultados. A mesma action atende Receituário/Experimental e seleção de cliente da Expressa. Não mescla cadastros nem seleciona automaticamente um resultado ambíguo. Não houve alteração de `fetchDefaultCustomers`, que é outra consulta.
+- **Validação e limites:** os 15 testes do bloco incluem a action real com predicados executados no banco sintético, busca mascarada/sem máscara, +55, telefone fixo/celular, trechos, nome, CPF/CNPJ, nome com separadores e isolamento de loja/tenant. O adaptador de teste simula o transporte PostgREST; integração real com Supabase e desempenho em grandes cadastros não foram medidos. Sem as novas colunas, a busca telefônica retorna erro, sem alternativa que silencie a falha. A mesma migration 20261107180000 foi aplicada com sucesso conforme relato do usuário; publicação e validação operacional seguem pendentes de confirmação.
 
 ### 14. Nova venda usa a loja do perfil, não a loja da tela
 
-- **Situação:** comportamento confirmado no código; correção adiada.
+- **Situação:** confirmado e corrigido localmente no bloco 14/15 em 07/11/2026; publicação e validação operacional pendentes. Sem nova migration.
 - **Comportamento observado:** a busca do Receituário usa a loja da rota. `createNewVenda` grava `profile.store_id` e não recebe a loja exibida. O navegador depois abre a venda na loja da rota.
 - **Risco:** um acesso administrativo em outra loja pode criar a venda na loja do perfil e a tela experimental da loja visitada não encontrá-la.
 - **Confirmado:** a gravação está em `createNewVenda`; o redirecionamento usa o `storeId` da página.
-- **Decisão pendente:** gravar a venda na loja da tela, depois de conferir o acesso do administrador.
+- **Correção:** `createNewVenda` exige `storeId` explícito. Receituário e `CatalogLensSaleActions`, os dois consumidores encontrados no código, enviam a loja da tela. A action confere sessão/perfil, loja do mesmo tenant, cliente da loja e vendedor ativo da loja/tenant. Operador fica na própria loja; administrador pode operar outra loja do mesmo tenant, inclusive sem loja fixa no perfil. A gravação, o bloqueio comercial e a verificação de avaliação aberta usam o destino validado.
+- **Validação:** 19 testes de `npm run test:sale-store-context`, `npm run typecheck`, 23 de `npm run test:sale-financial-boundary`, 8 de `npm run test:express-financing` e `git diff --check` aprovados. Actions reais executadas com cliente Supabase sintético que aplica os filtros; cobrem admin em outra loja, operador, tenant/cliente/vendedor incompatíveis, vendedor inativo, loja ausente/inválida, bloqueio comercial e avaliação aberta.
+- **Escopo e limites:** a Expressa já recebe `storeId` explícito em sua criação; seu fluxo foi preservado e os testes de regressão passaram. Não houve venda real, consulta ao banco remoto, reparo de vendas antigas ou teste visual em navegador. A criação e o ranking mantêm as transações anteriores; não há promessa de atomicidade adicional.
 
 ### 15. Item da venda grava a loja do perfil
 
-- **Situação:** comportamento confirmado no código; correção adiada.
+- **Situação:** confirmado e corrigido localmente no bloco 14/15 em 07/11/2026; publicação e validação operacional pendentes. Sem nova migration.
 - **Comportamento observado:** ao incluir um produto na venda experimental, `addVendaItem` consulta a venda pelo tenant, mas grava `store_id` com `profile.store_id`, não com a loja da venda.
 - **Risco:** um administrador operando outra loja pode deixar o item vinculado à loja do perfil.
 - **Confirmado:** a montagem do item está em `src/lib/actions/vendas.actions.ts`, na inclusão experimental.
-- **Decisão pendente:** gravar o item com a loja da venda já conferida.
+- **Correção:** `addVendaItem` consulta a venda no tenant do perfil, exige acesso à loja e status Em Aberto, e usa `saleContext.store_id/tenant_id` em todos os tipos de item. Produto local precisa pertencer à mesma loja/tenant. Configuração da loja também é consultada no tenant correto. Oferta de tabela mantém sua conferência de ativação por loja e aceita produto local nulo. Caches de vendas, detalhe experimental e comissões são invalidados com a loja da venda; foram corrigidos os caminhos antigos com espaços indevidos.
+- **Validação:** os 19 testes do bloco cobrem Outro, Serviço, Armação, Solar, Tratamento e Lente; acesso negado a operador de outra loja, venda de outro tenant/fechada, produto incompatível, conversão de par para unidades e oferta de tabela sem produto local. TypeScript e regressões citados no item 14 aprovados.
+- **Escopo e limites:** inclui vendas originadas na Expressa quando abertas pela Experimental. Não transfere itens antigos entre lojas nem altera dados reais. Inserção, recálculo financeiro e comissão mantêm as transações anteriores; a correção resolve o contexto de acesso/gravação nesta action.
 
 ### 16. Entrega pode ficar salva e o envelope NFC continuar vinculado
 
-- **Situação:** comportamento confirmado no código; correção adiada.
+- **Situação:** confirmado e corrigido localmente em 07/11/2026. A migration `20261107200000` foi aplicada com sucesso conforme relato do usuário em 07/11/2026, sem consulta independente ao schema. Publicação e validação operacional pendentes.
 - **Comportamento observado:** `updateLabTracking` grava a data de entrega e, em seguida, tenta liberar o envelope. Se essa liberação falha, a resposta diz que a entrega foi salva, mas o envelope não foi liberado.
 - **Risco:** a OS sai da lista de entrega e a tag continua presa à OS.
 - **Confirmado:** o retorno de erro acontece depois do update em `src/lib/actions/lab.actions.ts`.
-- **Decisão pendente:** definir se a entrega e a liberação da tag devem ser uma única operação.
+- **Correção:** `20261107200000_atomic_delivery_nfc_release.sql` instala trigger AFTER INSERT/UPDATE de `dt_entregue_em` em `service_orders`, quando a data está preenchida. Bloqueia os envelopes vinculados em ordem de ID, confere a mesma loja, solta o vínculo e grava TRAY_UNLINKED com motivo/data. Tudo participa da transação da OS: falha em qualquer envelope ou evento desfaz a entrega. Sem envelope, a entrega continua normalmente. Repetir a gravação sem vínculo não duplica eventos; remover a data não reassocia tags.
+- **Aplicação e fluxos:** removidas as limpezas posteriores separadas em `updateLabTracking` e na action de salvar OS em `vendas.actions.ts`. O laboratório agora exige sessão/acesso, filtra tenant/loja e confirma a linha alterada. O trigger cobre entradas de entrega da OS independentemente da origem da venda; a Expressa de balcão sem OS não é afetada.
+- **Validação:** `npm run typecheck`, 7 testes de `npm run test:delivery-nfc` e `git diff --check` aprovados. SQL real em PostgreSQL/WASM sintético: dois envelopes, evento, repetição, falha em liberação/evento, vínculo de outra loja, entrega sem tag, inserção entregue e reaplicação. Action real exercitada em memória para autorização e linha inexistente/falha. Nenhuma OS real ou banco remoto foi alterado; navegador visual e concorrência entre conexões independentes não foram testados.
+- **Entrega e limites:** o usuário informou em 07/11/2026 que aplicou `20261107200000` com sucesso, depois da 20261107180000. Esse relato não é consulta independente ao schema. Publicação e validação operacional continuam pendentes. A migration não reprocessa entregas antigas com vínculo residual. O escopo atômico é data da OS + vínculo + evento; demais gravações do formulário completo da OS mantêm suas transações anteriores. Rotinas NFC antigas possuem sua própria ordem de locks; conflitos concorrentes ainda podem exigir repetição após conferir a OS. O helper antigo de limpeza permanece no repositório, sem chamadas nesses fluxos atualizados.
 
 ### 17. Troca imediata usa identificador de funcionário vazio
 
-- **Situação:** comportamento confirmado no código; correção adiada.
-- **Comportamento observado:** ao abrir assistência **Imediata** com produto cadastrado, o ticket é criado e depois a baixa de estoque recebe `employee_id` a partir de `profile.id`. O perfil carregado só traz papel, loja e tenant, então esse identificador fica 0.
-- **Risco:** o ticket pode existir e a baixa falhar, ou o estoque ser lançado sem o funcionário correto.
-- **Confirmado:** a sequência está em `createAssistanceTicket`, em `src/lib/actions/assistance.actions.ts`.
-- **Decisão pendente:** definir qual funcionário autoriza a baixa e se o ticket deve ser criado somente depois dela.
+- **Situação:** confirmado e corrigido localmente em 07/11/2026. A migration `20261107220000` foi aplicada com sucesso conforme relato do usuário em 07/11/2026, sem consulta independente ao schema. Publicação e validação operacional pendentes.
+- **Causa:** `createAssistanceTicket` enviava `profile.id` como funcionário, aceitava a substituição pelo primeiro ativo em `registrarMovimentacao` e ignorava seu resultado. Ticket, telefone, estoque e histórico eram gravados separadamente, permitindo Troca Realizada sem baixa efetiva.
+- **Decisões do usuário:** registrar o funcionário ativo que informar o PIN, sem exigir gerência e sem escolher outro automaticamente; manter a possibilidade de estoque negativo.
+- **Correção:** na Imediata com produto cadastrado, o modal exige PIN e envia autorização assinada para usuário/tenant/loja/cliente/produto/tentativa. A action deriva o funcionário do token, e a RPC `create_immediate_assistance_atomic` revalida acesso, funcionário ativo, cliente, produto e eventual venda original. Confirma telefone, ticket em LogisticaReversa/Troca Realizada, baixa de uma unidade, movimento com custo/autor e histórico na mesma transação. Falha em qualquer gravação desfaz tudo. A chamada antiga de movimentação separada foi removida deste caminho.
+- **Repetição:** chave e snapshot reconhecem a mesma tentativa e devolvem o resultado sem nova baixa/ticket; chave com dados diferentes é recusada, inclusive outro autorizador. O modal congela os dados ao abrir o PIN, impede envio simultâneo e conserva a chave para os mesmos dados após erro. Fechar/reabrir ou recarregar pode iniciar outra tentativa: conferir o histórico antes de reenviar resultado incerto.
+- **Escopo:** conserva baixa no produto, sem selecionar variante, como o fluxo anterior. Produtos externos/avulsos sem cadastro continuam em triagem, sem baixa fictícia, com aviso explícito. Padrão, Garantida e demais transições da assistência mantêm seu fluxo anterior; esta correção não torna todas as operações de assistência atômicas. Origem da venda pode ser Expressa ou Experimental.
+- **Validação:** 22 testes em `npm run test:immediate-assistance`, com SQL real PostgreSQL/WASM sintético, action, emissor/verificador de token e modal reais em memória. Cobrem rollback nas seis gravações, estoque negativo, funcionário exato, PIN de vendedor, tentativa repetida/conflitante, isolamento, autorização adulterada, erro de banco e produto manual nas três modalidades. TypeScript, `git diff --check` e 47 testes de regressão (7 de entrega, 8 de Expressa/carnê e 32 de devolução) aprovados. Banco remoto, navegador visual e concorrência entre conexões independentes não foram exercitados.
+- **Entrega:** o usuário informou em 07/11/2026 que aplicou `20261107220000_atomic_immediate_assistance.sql` com sucesso, depois da 20261107200000. Esse relato não é consulta independente ao schema. Publicação e validação operacional continuam pendentes. Teste depende de `npm run test:wallet:setup`. Não corrige retroativamente tickets ou estoques antigos.
 
 ### 18. CPF informado na NFC-e conserva o nome do cliente da venda
 
@@ -239,5 +351,17 @@ Restam **9 itens** para investigação, decisão ou correção: **9 a 17**. O pr
 - **Comissão e interface:** o recálculo de comissão permanece posterior à transação financeira. Exceções desse passo geram aviso de comissão pendente de revisão, sem declarar falha na remoção já confirmada. A lista mostra a mensagem também nas formas comuns e diferencia falha de atualização da página de falha na remoção. A implementação preexistente da comissão pode absorver erros internamente; esta correção não reescreve esse cálculo nem garante atomicidade com ele.
 - **Validação:** `npm run typecheck`, 29 testes de `npm run test:payment-removal`, 39 testes de `npm run test:wallet`, 20 testes de `npm run test:sale-financial-boundary` e `git diff --check` aprovados. SQL real executado em PostgreSQL/WASM isolado com esquema mínimo sintético; inclui transação, snapshots, bloqueios de acesso, Pix integrado, carnê, repetição, rollback de cada gravação e integração da action sem exclusões alternativas. Concorrência entre conexões independentes e navegador visual não foram testados.
 - **Entrega:** o usuário informou em 06/11/2026 que aplicou `20261106170000_atomic_direct_payment_removal.sql` com sucesso, após as migrations anteriores. Ambiente do banco não especificado; sem consulta independente ao schema instalado. Publicação e validação operacional continuam pendentes de confirmação. Testes locais dependem de `npm run test:wallet:setup`.
+
+### 21. NFC-e da loja Center bloqueada por XML provisório no serviço fiscal
+
+- **Origem:** foto de erro de emissão e investigação em 07/11/2026. Consulta somente leitura identificou a venda 14212, loja 5 (Ótica Center), de R$ 1.550,00, com quatro tentativas em erro: registros 589–592, números 152–155, série 2, todos com `NFCE_TIME_REFRESH_UNPROVEN`.
+- **Situação:** causa confirmada no código do serviço Nuvem Local Fiscal em execução, commit `5bcad9d`. Correção e testes preparados em 07/11/2026 no commit local `d6906a4`, branch do serviço `fix/nfce-center-first-send-20261107`, na cópia isolada `tmp/nlf-center-fix` deste workspace. O usuário fará a publicação; nenhum push, deploy ou reinício foi executado.
+- **Causa:** `createDocument`, em `src/store.ts` do serviço fiscal, inicializa `xml` com `<mock ... />`. O primeiro processamento de NFC-e de produção sem chave/XML assinado chama `refreshNfceIssueTime`, em `src/lib/nfce-issue-time.ts`, que recusa qualquer `document.xml` preenchido. O documento recém-criado é bloqueado antes da geração/assinatura e transmissão. A loja 5 segue esse caminho; o controlador de recuperação usa outra inicialização.
+- **Validação inicial:** leitura do banco do aplicativo e do código efetivamente executado pelo serviço; reprodução isolada da função compilada, com dados sintéticos e sem transmissão: `xml` vazio passa, XML provisório retorna exatamente `NFCE_TIME_REFRESH_UNPROVEN`.
+- **Conferência central concluída:** banco central e histórico em memória confirmam, nas quatro tentativas, somente o XML provisório original e um evento de falha na tentativa zero, sem estado externo incerto ou repetição agendada. Não há chave, XML gerado/assinado, lote, recibo, protocolo, resposta SEFAZ ou evento de início de transmissão. O código falha antes dessas etapas. Não houve consulta direta à SEFAZ, pois nenhuma chave foi gerada. A última nota autorizada é a 151; não havia nota posterior à 155 nem inutilização abrangendo 152–155.
+- **Correção e testes:** `createDocument` do serviço inicia XML vazio somente nas novas NFC-e de produção não autorizadas; o guard e os registros antigos ficam preservados. TypeScript e build aprovados; suíte padrão com 270 aprovados/13 pulados e suíte compilada com 283 aprovados, zero falhas e zero pulados. Os testes incluem store real, preparação, falhas de XSD/persistência, consulta/transmissão simuladas, não reenvio e manutenção do bloqueio de documentos antigos. Nenhuma emissão real foi feita.
+- **Relação com a publicação:** as migrations recentes de financeiro, entrega NFC e assistência não causam esse bloqueio. Publicar somente o repositório MB Optical no GitHub/Vercel não altera a função defeituosa no serviço fiscal separado.
+- **Contador restaurado:** em 07/11/2026 às 13:02:34 de Brasília, a linha 168 de `nfce_sequences`, loja 5/série 2/produção, passou de 155 para 151; próximo número 152. Ensaio com rollback confirmou a próxima reserva; aplicação em transação serializável bloqueou contador/notas e repetiu as verificações centrais. Conferência posterior confirmou contador 151 e os quatro registros do aplicativo idênticos aos snapshots anteriores. Notas e documentos centrais não foram apagados, renumerados, cancelados, inutilizados ou retransmitidos. Evidências locais em `tmp/nfce-center-20261107`.
+- **Próximo passo:** publicar a correção do serviço fiscal antes de nova emissão pelo aplicativo. Não assinar ou transmitir manualmente os quatro documentos antigos, mantidos como histórico da falha com numeração devolvida. Detalhes em `tmp/nlf-center-fix/docs/NFCE_CENTER_FIRST_SEND_20261107.md`. A primeira emissão operacional após a publicação ainda precisa ser validada.
 
 Para cada ponto futuro, registrar a origem, a situação, o comportamento relatado, o risco e o próximo passo. Preservar os itens até que tenham sido verificados e sua resolução ou decisão tenha sido registrada.

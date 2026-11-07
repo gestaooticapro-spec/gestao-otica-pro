@@ -4,17 +4,17 @@ import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-import { registrarMovimentacao } from './stock.actions'
+import { verifyEmployeeAuthorization } from '@/lib/server/employee-authorization'
 
 // --- SCHEMAS ---
 const AssistanceSchema = z.object({
-    store_id: z.coerce.number(),
-    customer_id: z.coerce.number(),
+    store_id: z.coerce.number().int().positive(),
+    customer_id: z.coerce.number().int().positive(),
     updated_phone: z.string().optional(),
     
-    product_id: z.coerce.number().optional().nullable(),
+    product_id: z.coerce.number().int().positive().optional().nullable(),
     product_descricao: z.string().min(2, "Descrição do produto obrigatória"),
-    venda_original_id: z.coerce.number().optional().nullable(),
+    venda_original_id: z.coerce.number().int().positive().optional().nullable(),
     
     descricao_defeito: z.string().min(3, "Descreva o defeito"),
     fotos_urls: z.array(z.string()).optional(),
@@ -43,16 +43,19 @@ export async function createAssistanceTicket(formData: FormData): Promise<Create
     const profile = await getProfileByAdmin(user.id) as any
     if (!profile) return { success: false, message: 'Perfil inválido.' }
 
+    let photos: unknown
+    try { photos = JSON.parse(String(formData.get('fotos_urls') || '[]')) }
+    catch { return { success: false, message: 'Fotos invalidas.' } }
     const rawData = {
         store_id: formData.get('store_id'),
         customer_id: formData.get('customer_id'),
         updated_phone: formData.get('updated_phone'),
-        product_id: formData.get('product_id'),
+        product_id: formData.get('product_id') || null,
         product_descricao: formData.get('product_descricao'),
-        venda_original_id: formData.get('venda_original_id'),
+        venda_original_id: formData.get('venda_original_id') || null,
         descricao_defeito: formData.get('descricao_defeito'),
         modalidade: formData.get('modalidade'),
-        fotos_urls: JSON.parse(formData.get('fotos_urls') as string || '[]')
+        fotos_urls: photos
     }
 
     const val = AssistanceSchema.safeParse(rawData)
@@ -64,11 +67,41 @@ export async function createAssistanceTicket(formData: FormData): Promise<Create
     } = val.data
 
     try {
+        if (!profile.tenant_id || (profile.role !== 'admin' && profile.store_id !== store_id)) {
+            return { success: false, message: 'Usuario sem acesso a esta loja.' }
+        }
+        if (modalidade === 'TrocaImediata' && product_id) {
+            const key = z.string().uuid().safeParse(formData.get('idempotency_key'))
+            if (!key.success) return { success: false, message: 'Tentativa de troca invalida.' }
+            const authorization = verifyEmployeeAuthorization(String(formData.get('authorization_token') || ''), {
+                userId: user.id, tenantId: profile.tenant_id, storeId: store_id,
+                purpose: 'immediate_assistance', context: `immediate:${customer_id}:${product_id}:${key.data}`,
+            })
+            if (!authorization) return { success: false, message: 'Autorize a troca com o PIN do funcionario ativo.' }
+            const { data: ticket, error } = await (supabaseAdmin as any).rpc('create_immediate_assistance_atomic', {
+                p_store_id: store_id, p_customer_id: customer_id, p_product_id: product_id,
+                p_original_sale_id: venda_original_id || null, p_description: product_descricao,
+                p_defect: descricao_defeito, p_photos: fotos_urls || [], p_phone: updated_phone || null,
+                p_employee_id: authorization.employeeId, p_user_id: user.id, p_tenant_id: profile.tenant_id,
+                p_key: key.data,
+            })
+            if (error) throw error
+            if (!ticket?.id) throw new Error('Resultado da troca indisponivel. Confira o historico antes de repetir.')
+            revalidatePath(`/dashboard/loja/${store_id}/assistencia`)
+            revalidatePath(`/dashboard/loja/${store_id}/estoque`)
+            return { success: true, message: 'Troca imediata registrada!', ticket }
+        }
+        const { data: store, error: storeError } = await supabaseAdmin.from('stores').select('id')
+            .eq('id', store_id).eq('tenant_id', profile.tenant_id).maybeSingle()
+        if (storeError || !store) throw new Error('Loja nao encontrada.')
+        const { data: customer, error: customerError } = await supabaseAdmin.from('customers').select('id')
+            .eq('id', customer_id).eq('store_id', store_id).eq('tenant_id', profile.tenant_id).maybeSingle()
+        if (customerError || !customer) throw new Error('Cliente nao encontrado nesta loja.')
         // Atualizar telefone
         if (updated_phone) {
             await (supabaseAdmin.from('customers') as any)
                 .update({ fone_movel: updated_phone })
-                .eq('id', customer_id)
+                .eq('id', customer_id).eq('store_id', store_id).eq('tenant_id', profile.tenant_id)
         }
 
         // Criar Ticket
@@ -94,26 +127,6 @@ export async function createAssistanceTicket(formData: FormData): Promise<Create
         if (error) throw error
 
         await registrarTimeline(ticket.id, 'Sistema', 'Solicitação aberta.', user.id, profile.tenant_id)
-
-        // Efeitos colaterais (Troca Imediata)
-        if (modalidade === 'TrocaImediata' && product_id) {
-            const fdSaida = new FormData()
-            fdSaida.append('store_id', store_id.toString())
-            fdSaida.append('employee_id', (profile.id || 0).toString())
-            fdSaida.append('product_id', product_id.toString())
-            fdSaida.append('tipo', 'Saida')
-            fdSaida.append('quantidade', '1')
-            fdSaida.append('motivo', `Troca Imediata Garantia Ticket #${ticket.id}`)
-            
-            await registrarMovimentacao({ success: false, message: '' }, fdSaida)
-            await registrarTimeline(ticket.id, 'Alerta', 'Baixa de estoque realizada (Troca Imediata).', null, profile.tenant_id)
-            
-            await (supabaseAdmin.from('assistance_tickets') as any)
-                .update({ status: 'LogisticaReversa', status_publico: 'Troca Realizada', dt_troca_cliente: new Date().toISOString() })
-                .eq('id', ticket.id)
-            
-            ticket.status = 'LogisticaReversa' // Atualiza local para retorno
-        }
 
         // RETORNAR DADO COMPLETO (JOIN) PARA O FRONT
         const { data: fullTicket } = await (supabaseAdmin.from('assistance_tickets') as any)

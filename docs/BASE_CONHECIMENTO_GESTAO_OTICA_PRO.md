@@ -68,7 +68,7 @@ Uma venda específica é aberta na rota `/dashboard/loja/{storeId}/vendas/{venda
 
 ### Como localizar ou cadastrar um cliente?
 
-1. Para iniciar uma venda de óculos, abra **Atendimento → Receituário**. Na barra lateral, o nome é **Venda Óculos**. Em **Selecione o cliente**, digite nome, razão social, nome fantasia, CPF ou CNPJ. A busca fica na loja ativa e mostra até 50 cadastros. O campo diz “telefone”, mas o telefone não entra nessa busca.
+1. Para iniciar uma venda de óculos, abra **Atendimento → Receituário**. Na barra lateral, o nome é **Venda Óculos**. Em **Selecione o cliente**, digite nome, razão social, nome fantasia, CPF, CNPJ, celular ou telefone. Para telefone, use ao menos três dígitos; números completos funcionam com ou sem máscara e com +55. A busca fica na loja autorizada e mostra até 50 cadastros. Confira o titular antes de escolher entre resultados parecidos.
 2. Confira o nome e o CPF ou CNPJ antes de selecionar. Um aviso **Inadimplente** não impede a venda; ele só alerta sobre parcelas vencidas. **Restrição Interna** mostra a observação do cadastro.
 3. Se for um cliente novo, use **Novo Cadastro**, informe nome completo e celular e escolha **Salvar e selecionar**. O cadastro rápido não abre a venda sozinho.
 4. Depois da seleção, a tela mostra as duas vendas mais recentes, com paciente, produtos e receita quando existirem. Essa lista não abre a venda. **Raio-X** abre o histórico completo do cliente. O **Dossiê**, no menu Atendimento, também busca o cliente e abre esse histórico.
@@ -106,7 +106,7 @@ Fontes: `src/components/vendas/PdvExpressInterface.tsx`, `src/components/modals/
 ### Como começar ou continuar uma venda de óculos?
 
 1. Abra **Atendimento → Receituário**, selecione ou cadastre o cliente e escolha o **Vendedor**. A lista traz funcionários ativos da loja. O seletor só fica utilizável depois do cliente. **Iniciar nova venda** permanece desabilitado até os dois estarem selecionados.
-2. Clique em **Iniciar nova venda**. A venda nasce **Em Aberto**, sem produtos, sem OS e sem saldo. O que segue para a tela experimental é o cliente e o vendedor escolhidos. O dependente, a receita e os produtos são lançados depois.
+2. Clique em **Iniciar nova venda**. A venda nasce **Em Aberto** na loja da tela, sem produtos, sem OS e sem saldo. Cliente e vendedor precisam pertencer à loja autorizada. Administradores podem operar outra loja da mesma empresa; os demais perfis ficam na loja vinculada. O que segue para a tela experimental é o cliente e o vendedor escolhidos. O dependente, a receita e os produtos são lançados depois. Itens adicionados usam a loja da venda, e produtos locais são conferidos nessa loja.
 3. A tela experimental mostra **Produtos**, **Protocolo (OS)**, **Pagamentos**, **Observações** e **Parcelamento** quando o módulo está habilitado. A loja pode usar uma OS embutida ou várias fichas por venda; isso muda o botão da OS, não a abertura.
 4. Em **Produtos → Novo Produto**, procure e selecione o item. Lente, armação, solar e tratamento devem usar a seleção do catálogo.
 
@@ -174,7 +174,7 @@ Se não houver carnê e o pagamento deixar **A Receber** zerado, a venda é fech
 Para o carnê, a venda precisa estar aberta, o módulo de parcelamento precisa estar habilitado e ainda não pode existir carnê nessa venda. Só existe um carnê por venda.
 
 1. Na venda experimental, abra **Parcelamento → Novo Parcelamento**. Se faltar CPF ou CNPJ, ou telefone, a tela pede para completar o cadastro antes de abrir o formulário.
-2. O campo **Valor Total** começa com **A Receber**. Informe o **1º Vencimento**; a sugestão é o mesmo dia do mês seguinte. Escolha a quantidade, de 1 a 24.
+2. O campo **Valor Total** começa com **A Receber**. Informe o **1º Vencimento**; a sugestão usa o mesmo dia do mês seguinte no calendário local do navegador. Se esse dia não existir, usa o último dia do mês, como 31 de janeiro → 28 de fevereiro (29 em ano bissexto). Você pode ajustar a data. Escolha a quantidade, de 1 a 24.
 3. Clique em **Calcular**. As parcelas seguintes vencem mês a mês. Os valores podem ser ajustados parcela a parcela. A soma precisa corresponder ao valor financiado; se não corresponder, a tela mostra **Soma inválida** e não confirma.
 4. A observação desse formulário de criação pode ser preenchida. Escolha **Gerar Carnê**. Se faltar o documento ou o celular do cadastro, complete os dados na janela apresentada. Depois informe o PIN na janela **Autorizar Emissão**. O funcionário precisa estar ativo na loja.
 5. Aguarde a confirmação. A tela abre a promissória para impressão. No carnê já emitido também existem **Imprimir Duplicata** e **Imprimir Carnê**.
@@ -236,11 +236,13 @@ Receber parcela não é pagamento direto da venda e não é contato de cobrança
 1. Abra **Atendimento → Parcelas**. Na barra lateral, o acesso equivalente é **Baixa Parcelas**. Isso abre uma janela de busca, sem página própria.
 2. Busque o cliente. A busca mostra quem tem parcela pendente; quem não tem pode não aparecer. Na lista de compras, localize a venda, confira vencimento, valor da parcela, o que já foi recebido, valores transferidos e **Valor a Receber**. Selecione a parcela pendente.
 3. **Total Recebido** começa com o saldo da parcela. Distribua o valor em **Formas de recebimento**. A primeira forma sugerida é **PIX Remoto**; as opções são **PIX Remoto**, **PIX na maquininha**, **Dinheiro**, **Cartão Débito** e **Cartão Crédito**. **Adicionar forma** inclui outra linha, inicialmente em **Dinheiro**. A soma das formas precisa ser igual ao total recebido. Esta janela não oferece cheque, transferência, boleto, crédito em loja nem Pix Sicredi como forma manual.
-4. A data do recebimento é o dia atual da tela e não é escolhida nesse formulário. Confira antes de confirmar.
+4. A data do recebimento é o dia atual no calendário local do navegador e não é escolhida nesse formulário. O envio não converte esse dia para UTC. Confira o relógio e a data do computador antes de confirmar.
 5. Se a parcela estiver vencida na tela, aparece **Juros / Multa**. Informe só o que foi cobrado de verdade. Esse valor entra no **Total Recebido**, não abate o principal e não pode ser o total inteiro: precisa sobrar valor para abater a parcela.
 6. Se o principal for menor que o saldo, escolha **Baixa parcial** para deixar o restante na mesma parcela ou, quando existir próxima parcela pendente, **Jogar para a próxima**. Essa segunda opção marca a parcela atual como paga e transfere o restante para a próxima, sem mudar o valor contratado. Sem próxima parcela, a opção fica indisponível.
-7. Se o principal for maior que o saldo, o excedente abate as parcelas pendentes seguintes, na ordem. Não pode ultrapassar o saldo em aberto do carnê; se ultrapassar, o recebimento é recusado. Não registre esse excedente também como pagamento direto da venda.
+7. Se o principal for maior que o saldo, a tela mostra **Excedente a validar**. O servidor confere o saldo disponível nas parcelas pendentes seguintes do mesmo carnê. Se houver saldo suficiente, o excedente pode abater uma ou mais parcelas, na ordem; se ultrapassar esse saldo, o recebimento é recusado. Considere a amortização confirmada somente após a mensagem de sucesso. Não registre esse excedente também como pagamento direto da venda.
 8. Escolha **Receber** e informe o PIN de um funcionário ativo na janela **Autorizar Pagamento**. Aguarde **Pagamento Confirmado**. O recibo pode abrir na hora. A tela oferece **Reimprimir Recibo** e **Enviar recibo por WhatsApp**. O envio depende do canal e do telefone; a tentativa não prova que a mensagem chegou.
+
+Novos recebimentos de parcelas identificam o cliente pelo nome cadastral no Livro Caixa. A anotação da parcela é preservada separadamente no registro do pagamento; não passa a ser o nome do cliente. Lançamentos antigos não são reescritos por essa correção.
 
 Para consultar sem receber, use **Loja Vazia → Parcelamentos**. A busca aceita nome do cliente ou número da venda. Os filtros incluem **Todas**, **Pendentes**, **Atrasadas** e **Pagas**, além de período de vencimento e de pagamento. Essa página não substitui a janela de recebimento.
 
@@ -268,7 +270,7 @@ Fontes: `src/app/dashboard/loja/[storeId]/laboratorio/page.tsx`, `src/app/nfc/[s
 1. Abra **Atendimento → Entrega**. Na barra lateral, o nome é **Entrega Óculos**. Busque por OS, protocolo, cliente ou dependente.
 2. A lista mostra OS montadas e ainda não entregues, da loja atual, cuja venda não está cancelada nem devolvida. Confira paciente e situação da venda.
 3. Se o botão for **Ir para Fechamento**, a venda ainda está **Em Aberto**. Esse botão abre a venda experimental para o fechamento. Ele não confirma a entrega.
-4. Se o botão for **Confirmar Entrega**, a janela mostra laboratório, data em que a lente chegou, data da montagem e **Entregue Cliente**. A data de entrega começa com o momento atual e pode ser conferida. Não há PIN nessa confirmação. Aguarde **Entrega confirmada**. A entrega também libera o envelope NFC vinculado, quando existir.
+4. Se o botão for **Confirmar Entrega**, a janela mostra laboratório, data em que a lente chegou, data da montagem e **Entregue Cliente**. A data de entrega começa com o momento atual e pode ser conferida. Não há PIN nessa confirmação. Aguarde **Entrega confirmada**. A data, a liberação dos envelopes NFC vinculados e seus eventos são salvos juntos; falha na liberação impede confirmar a entrega. Se houver erro ou resposta incerta, atualize a OS e confira seu estado antes de repetir. Remover a data de entrega não reassocia o envelope automaticamente.
 
 Se a OS não aparecer, ela pode não estar montada, já ter sido entregue, estar em outra loja ou pertencer a venda cancelada ou devolvida. **Loja Vazia → Gaveta**, na barra lateral **Gaveta (Prontos)**, lista os mesmos prontos aguardando retirada e mostra há quantos dias estão prontos. A gaveta não confirma a entrega. Se estiver vazia e houver óculos físicos, confira se a OS foi marcada como montada. O aviso de WhatsApp da gaveta ou da entrega depende de telefone e canal e não substitui **Confirmar Entrega**.
 
@@ -293,7 +295,9 @@ Fontes: `src/components/pos-venda/PostSalesInterface.tsx`, `README.md` — conti
 **Assistência** está no atendimento e na barra lateral para administração, gerência, operação, vendedor e técnico.
 
 1. Escolha **Nova Assistência**, busque o cliente e selecione um produto da compra ou **Produto Não Cadastrado / Externo**.
-2. Descreva o defeito e escolha a modalidade. A tela explica o efeito: **Padrão** deixa o produto para análise; **Garantida** o cliente leva o produto e a loja pede outro ao fornecedor; **Imediata** informa que baixa o estoque da loja agora. Não há prazo de garantia calculado nessa tela. Confira o texto antes de **Abrir ticket**.
+2. Descreva o defeito e escolha a modalidade. A tela explica o efeito: **Padrão** deixa o produto para análise; **Garantida** o cliente leva o produto e a loja pede outro ao fornecedor; **Imediata**, com produto cadastrado, pede o PIN de um funcionário ativo e registra ticket, baixa de uma unidade e histórico juntos. Estoque negativo é permitido. Se falhar, a troca não é confirmada. Sem produto cadastrado, permanece em triagem e não faz baixa automática. Não há prazo de garantia calculado nessa tela. Confira o texto antes de **Abrir ticket**.
+Se houver erro ou resultado incerto, confira o quadro e o histórico antes de reenviar. Repetir os mesmos dados com o mesmo autorizador na janela aberta conserva a tentativa; fechar ou recarregar pode iniciar outra.
+
 3. O quadro tem **Triagem / Análise**, **Em Tratativa**, **Aguardando Peça**, **Pronto / Retirada** e **Logística Reversa**. As ações pedem confirmação: **Iniciar**, **Solicitado**, **Chegou**, **Entregue** e **Finalizar**. No **Padrão**, a retirada conclui o caso. Nas outras modalidades, a retirada vai para logística reversa e só depois **Finalizar** conclui. **Histórico / Chat** mostra os registros.
 4. **Rastreio WhatsApp** envia o link público de acompanhamento. Sem telefone, a tela avisa **Cliente sem telefone**. O envio depende do canal. A tentativa não prova que o cliente abriu o link.
 

@@ -1,5 +1,19 @@
 # Alterações pendentes para o próximo deploy
 
+- A troca imediata com produto cadastrado pede o PIN do funcionário responsável e registra ticket, baixa e histórico juntos. Mantém estoque negativo e impede duplicar a mesma tentativa na janela aberta; produtos externos permanecem em triagem sem baixa automática.
+
+- A confirmação de entrega salva a data, libera os envelopes NFC vinculados e registra o histórico em uma única operação, evitando entrega confirmada com envelope preso após falha intermediária.
+
+- Vendas iniciadas pelo Receituário ou tabela de lentes usam a loja da tela, com cliente, vendedor e acesso conferidos. Os itens ficam vinculados à loja da venda, inclusive quando um administrador opera outra loja da mesma empresa.
+
+- O recebimento de parcelas identifica o cliente pelo nome cadastral e preserva a anotação da parcela separadamente. A busca de clientes do Receituário e da Expressa também encontra celular e telefone com ou sem máscara, respeitando a loja autorizada.
+
+- O aviso de excedente no recebimento de parcelas explica a validação do saldo do carnê e o possível abatimento de várias parcelas, sem prometer amortização antes da confirmação.
+
+- O recebimento manual de parcelas usa a data local, evitando registrar o dia seguinte à noite. A mesma data é usada no pagamento e na identificação da tentativa.
+
+- A sugestão do primeiro vencimento do carnê mantém o dia correto no calendário local, inclusive à noite, na virada do ano e em meses mais curtos.
+
 - A observação informada na renegociação do carnê é salva junto ao acordo, com autor e data, preservando os registros anteriores. Se o texto não puder ser gravado, a renegociação também não é confirmada.
 
 - O carnê da Venda Expressa usa o cliente selecionado para completar documento e celular e seguir à autorização por PIN. Ao sair depois de criar a venda, a operação continua no mesmo registro pela Venda Experimental e a cesta da Expressa é limpa.

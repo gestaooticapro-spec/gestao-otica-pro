@@ -1194,6 +1194,8 @@ export interface Database {
           store_id: number
           full_name: string
           receivable_search_name: string
+          search_mobile_digits: string | null
+          search_phone_digits: string | null
           razao_social: string | null
           nome_fantasia: string | null
           person_type: 'PF' | 'PJ'
@@ -2150,6 +2152,7 @@ export interface Database {
           parcelas: number
           data_pagamento: string
           obs: string | null
+          installment_note_snapshot: string | null
           created_at: string
           receipt_printed_at: string | null
           parcela_id?: number | null

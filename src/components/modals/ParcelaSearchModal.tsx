@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { X, Search, Calendar, Loader2, Wallet, ArrowLeft, ShoppingBag, CheckCircle2, AlertTriangle, ArrowDownCircle, Printer, MessageCircle, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { receberParcela } from '@/lib/actions/vendas.actions'
+import { getLocalDateKey } from '@/lib/financing-dates'
 import { searchPendenciasCliente, getPendenciasClienteById, type ReceivableSearchCursor } from '@/lib/actions/receivable-search.actions'
 import { sendInstallmentReceiptWhatsApp } from '@/lib/actions/manual-whatsapp.actions'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
@@ -22,7 +23,7 @@ import { getPixInstallmentActionLabel } from '@/lib/pix/installment-charge-prese
 
 const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const formatDate = (d: string) => new Date(d).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
-const getToday = () => new Date().toISOString().split('T')[0]
+const getToday = getLocalDateKey
 const getSaldoParcela = getInstallmentOutstanding
 
 const parseMoney = (val: string) => {
@@ -402,7 +403,8 @@ export default function ParcelaSearchModal({
 
         formData.append('forma_pagamento', recebimentosValidos[0].forma_pagamento)
         formData.append('recebimentos', JSON.stringify(recebimentosValidos))
-        formData.append('data_pagamento', getToday())
+        const dataPagamento = getToday()
+        formData.append('data_pagamento', dataPagamento)
 
         const preview = getInstallmentReceiptPreview({ outstanding: valorOriginal, receivedAmount: valorTotalPago, interestAmount: valorJuros })
         const strategy = preview.isPartial ? estrategia : 'quitacao_total'
@@ -413,7 +415,7 @@ export default function ParcelaSearchModal({
             valorTotalPago,
             valorJuros,
             recebimentos: recebimentosValidos,
-            dataPagamento: getToday(),
+            dataPagamento,
             strategy,
         })
         if (receiptAttemptRef.current?.signature !== requestSignature) {
@@ -748,15 +750,17 @@ export default function ParcelaSearchModal({
                                                 </div>
                                             </div>
                                         )
-                                    } else if (diferenca < -0.01) {
+                                    } else if (diferenca < 0) {
                                         return (
                                             <div className="bg-blue-900/20 p-4 rounded-xl border border-blue-500/20 animate-in fade-in">
                                                 <div className="flex items-center gap-2 text-blue-300 font-bold text-sm">
                                                     <ArrowDownCircle className="h-4 w-4" />
-                                                    <span>Amortização Extra: R$ {formatCurrency(Math.abs(diferenca))}</span>
+                                                    <span>Excedente a validar: {formatCurrency(Math.abs(diferenca))}</span>
                                                 </div>
                                                 <p className="text-xs text-blue-400 mt-2 pl-6 opacity-80">
-                                                    O valor excedente será <strong>descontado automaticamente</strong> da próxima parcela pendente.
+                                                    O servidor conferirá o saldo das parcelas pendentes seguintes deste carnê.
+                                                    Se houver saldo suficiente, o excedente poderá abater uma ou mais parcelas.
+                                                    Se ultrapassar esse saldo, o recebimento será recusado. A amortização só é confirmada após o sucesso do recebimento.
                                                 </p>
                                             </div>
                                         )

@@ -269,7 +269,7 @@ export default function AtendimentoPage() {
         }
 
         startCreateTransition(async () => {
-            const result = await createNewVenda(selectedCustomer.id, parseInt(selectedEmployeeId))
+            const result = await createNewVenda(selectedCustomer.id, parseInt(selectedEmployeeId), storeId)
             if (result.success && result.data) {
                 push(withReturnTo(`/dashboard/loja/${storeId}/vendas/${result.data.id}/experimental`, currentUrl))
             } else if (result.blockedEvaluationId) {

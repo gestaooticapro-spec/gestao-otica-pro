@@ -26,6 +26,7 @@ import UpdateCpfModal from '@/components/modals/UpdateCpfModal'
 import CollapsibleBox from './CollapsibleBox'
 import { useStoreModules } from '@/lib/contexts/StoreModulesContext'
 import { toast } from 'sonner'
+import { getLocalDateKey, getSuggestedFirstDueDate } from '@/lib/financing-dates'
 import { getDefaultPartialReceiptStrategy, getInstallmentChargeTotal, getInstallmentOutstanding, getInstallmentReceiptPreview } from '@/lib/installment-balance'
 import { getPixInstallmentActionLabel, shouldOpenExistingPixInstallmentCharge } from '@/lib/pix/installment-charge-presentation'
 
@@ -84,7 +85,7 @@ const formatDate = (dateStr: string) => {
     }
     return new Date(dateStr).toLocaleDateString('pt-BR')
 }
-const getToday = () => new Date().toISOString().split('T')[0]
+const getToday = getLocalDateKey
 
 function PaymentChoiceModal({
     parcela,
@@ -120,19 +121,6 @@ function PaymentChoiceModal({
             </div>
         </div>
     )
-}
-
-// Sugere data: mesmo dia do próximo mês
-const getFirstDueMonth = () => {
-    const today = new Date();
-    const nextMonth = new Date(today);
-    nextMonth.setMonth(today.getMonth() + 1);
-
-    if (nextMonth.getMonth() !== (today.getMonth() + 1) % 12) {
-        nextMonth.setDate(0);
-    }
-
-    return nextMonth.toISOString().split('T')[0];
 }
 
 const ParcelaInput = ({ valor, index, onChange }: { valor: number, index: number, onChange: (idx: number, val: string) => void }) => {
@@ -289,7 +277,7 @@ export default function FinanciamentoBox({
 
     const [valorFinanciadoStr, setValorFinanciadoStr] = useState('')
     const [qtdeParcelas, setQtdeParcelas] = useState(1)
-    const [vencimentoPrimeira, setVencimentoPrimeira] = useState(getFirstDueMonth())
+    const [vencimentoPrimeira, setVencimentoPrimeira] = useState(getSuggestedFirstDueDate())
     const [parcelasGrid, setParcelasGrid] = useState<ParcelaGridItem[]>([])
     const [obs, setObs] = useState('')
     const [isCreatingCarne, setIsCreatingCarne] = useState(false)
@@ -443,7 +431,7 @@ export default function FinanciamentoBox({
         const valorInicial = valorSugerido !== undefined ? valorSugerido : valorRestante;
         setValorFinanciadoStr(formatCurrency(valorInicial));
         setQtdeParcelas(1);
-        setVencimentoPrimeira(getFirstDueMonth());
+        setVencimentoPrimeira(getSuggestedFirstDueDate());
         setParcelasGrid([]);
         setObs('');
         setAuthedEmployee(null);

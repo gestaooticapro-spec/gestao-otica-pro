@@ -198,8 +198,18 @@ Em 07/11/2026, informou tambem a aplicacao com sucesso de
 `20261107120000_guard_sale_closing_balance.sql`, depois da 180000.
 Na mesma data, informou sucesso na aplicacao de
 `20261107140000_atomic_payment_method_change.sql`, depois da migration de fechamento.
+Tambem informou sucesso na aplicacao de
+`20261107160000_financing_renegotiation_note.sql`, depois da 20261107140000.
+Depois, informou sucesso na aplicacao de
+`20261107180000_installment_payment_customer_description.sql`.
+Na auditoria consolidada de 07/11/2026, informou tambem que as migrations ate
+`20261107220000` foram aplicadas com sucesso, inclusive
+`20261107200000_atomic_delivery_nfc_release.sql` e
+`20261107220000_atomic_immediate_assistance.sql`.
 O ambiente do banco nao foi especificado. Esse e um registro do relato do
-usuario, sem consulta independente ao banco. A publicacao do aplicativo e a
+usuario, sem consulta independente ao banco. A auditoria consolidada dessa data
+encontrou falhas ainda abertas, registradas em
+[docs/AUDITORIA_PENDENCIAS.md](docs/AUDITORIA_PENDENCIAS.md). A publicacao do aplicativo e a
 validacao operacional das correcoes continuam pendentes de confirmacao.
 
 ## Deploy
@@ -262,7 +272,112 @@ provedor confirmar pagamento depois de o saldo ter sido coberto por outra forma,
 a baixa excedente e bloqueada no banco e o fluxo existente sinaliza erro de
 conciliacao para revisao; isso nao devolve dinheiro automaticamente ao cliente.
 
+## Nome no recebimento e busca por telefone
+
+A nova migration `20261107180000_installment_payment_customer_description.sql`
+foi aplicada com sucesso conforme relato do usuario em 07/11/2026, depois da
+20261107160000. Sem consulta independente ao banco; publicacao e validacao
+operacional seguem pendentes de confirmacao.
+Novos pagamentos de parcela com operacao de recebimento usam o nome cadastral
+em Cliente:, preservando a anotacao da parcela em `installment_note_snapshot`.
+Um trigger executa antes do insert e do snapshot da operacao, sem reescrever a
+rotina financeira. Nome vem de cliente da parcela/carne/venda, sempre na mesma
+loja/tenant; se nao houver nome acessivel, fica Cliente nao identificado.
+Pagamentos antigos e anotacoes originais das parcelas nao sao modificados.
+
+A busca compartilhada de clientes consulta celular e telefone por colunas
+geradas de digitos (`search_mobile_digits` e `search_phone_digits`). Aceita
+mascara, trechos com ao menos tres digitos e prefixo brasileiro +55. Preserva
+nome e documento e limita resultados a 50, com sessao e loja/tenant conferidos.
+Vale para Receituario/Experimental e selecao de cliente da Expressa. Os numeros
+originais nao sao alterados; as colunas geradas acompanham futuras edicoes.
+Teste: `npm run test:wallet:setup` e `npm run test:customer-receipt-search`.
+
+## Entrega e liberacao do envelope NFC
+
+A migration `20261107200000_atomic_delivery_nfc_release.sql` foi aplicada com
+sucesso conforme relato do usuario em 07/11/2026, depois da 20261107180000.
+Nao houve consulta independente ao banco. Publicacao e validacao operacional
+seguem pendentes.
+O trigger da OS confirma a data de entrega, libera os envelopes vinculados e
+grava TRAY_UNLINKED na mesma transacao, tanto no laboratorio quanto ao editar
+a OS. Erro na liberacao ou no evento desfaz a gravacao de entrega. Repetir a
+data sem envelopes vinculados nao repete eventos; tirar a data nao reassocia
+envelopes. Vinculo com outra loja bloqueia para revisao. Nao ha limpeza
+retroativa de entregas antigas na migration.
+`updateLabTracking` confere sessao, loja/tenant e linha salva. As duas chamadas
+de limpeza separada do app foram removidas; nao executar uma segunda limpeza
+apos salvar a OS. Isso nao torna todos os demais passos da edicao de OS uma
+unica transacao. Testes locais: `npm run test:wallet:setup` e
+`npm run test:delivery-nfc`. Concorrencia entre conexoes independentes e
+navegador visual ainda nao foram exercitados.
+
+## Troca imediata na assistencia
+
+Na Imediata com produto cadastrado, o funcionario ativo que informar o PIN
+assume a autorizacao da baixa. Nao escolher outro funcionario automaticamente
+nem usar o perfil de login como employee_id. O usuario de login tambem fica
+registrado, separadamente. Estoque negativo continua permitido por decisao do
+usuario. A baixa permanece de uma unidade no produto, sem escolha de variante.
+A RPC `create_immediate_assistance_atomic` confirma telefone, ticket, estoque,
+movimento, historico e snapshot na mesma transacao; falha desfaz todos esses
+passos. Cliente/produto/funcionario e eventual venda original sao conferidos
+na loja e tenant autorizados. Serve a compras dos dois fluxos de venda em uso.
+
+A mesma chave com os mesmos dados retorna o ticket sem repetir a baixa;
+reutilizar a chave com outros dados ou autorizador e recusado. O modal conserva
+a tentativa enquanto permanece aberto e os dados nao mudam. Antes de reenviar
+apos fechar/recarregar ou diante de resultado incerto, conferir o historico.
+Produto manual/externo sem cadastro permanece em triagem, sem baixa automatica.
+Padrao, Garantida e demais transicoes mantem seu fluxo anterior; a garantia de
+transacao unica se limita a abertura Imediata com produto cadastrado.
+
+`20261107220000_atomic_immediate_assistance.sql` foi aplicada com sucesso
+conforme relato do usuario em 07/11/2026, depois da 20261107200000. Nao houve
+consulta independente ao banco. As correcoes locais dos 20 itens originais
+passaram por auditoria consolidada nessa data e ainda tem falhas abertas em
+[docs/AUDITORIA_PENDENCIAS.md](docs/AUDITORIA_PENDENCIAS.md). Publicacao e
+validacao operacional seguem pendentes. Nada foi saneado retroativamente. Teste local:
+`npm run test:wallet:setup` e `npm run test:immediate-assistance` (22 testes).
+Navegador visual, schema remoto e concorrencia entre conexoes nao validados.
+
 ## Regra financeira: venda, pagamentos e carne
+
+Na criacao de venda pelo Receituario ou pela tabela de lentes, `createNewVenda`
+exige o storeId da tela. Valida sessao, tenant, loja, cliente e vendedor ativo;
+admin pode operar outra loja do mesmo tenant, operador fica na propria loja.
+Bloqueio comercial e avaliacao aberta sao conferidos na loja de destino.
+Ao incluir itens, a loja e o tenant vem da venda validada; produtos locais
+precisam pertencer a essa loja. Oferta global de tabela segue sua validacao
+propria por loja, e o modo de lentes por unidade conserva sua conversao.
+Os caches atualizados tambem usam a loja da venda. A Expressa ja envia storeId
+explicitamente; este bloco preserva sua criacao e cobre inclusao ao abrir por
+Experimental. Nao corrige vinculos antigos retroativamente. Sem nova migration.
+Teste: `npm run test:sale-store-context`.
+
+No recebimento de parcela, excedente de principal aparece como Excedente a
+validar, inclusive um centavo. O aviso explica que a baixa pode abranger uma
+ou mais parcelas pendentes seguintes do mesmo carne, somente se houver saldo
+suficiente; valor acima desse saldo e recusado pelo servidor. Nao apresenta
+amortizacao como confirmada antes do sucesso. A validacao final permanece na
+RPC existente, sem nova consulta previa de saldo e sem nova migration.
+Teste: `npm run test:receipt-date`.
+
+A sugestao do primeiro vencimento no formulario compartilhado de carne usa o
+calendario local do navegador, sem converter a data para UTC. Mantem o mesmo
+dia do proximo mes ou seu ultimo dia quando necessario, inclusive ao reiniciar
+o formulario e renegociar. Vale para Expressa e Experimental. Nao altera datas
+ja gravadas nem o calculo das demais parcelas. Sem nova migration.
+Testes locais: `npm run test:financing-dates` e `npm run test:express-financing`.
+
+O recebimento manual de parcelas em `ParcelaSearchModal` usa o dia local do
+navegador, calculado uma unica vez para o pagamento e a assinatura da tentativa.
+A data segue automatica nesse formulario. O modal de recebimento existente em
+`FinanciamentoBox` tambem inicia com a data local e conserva seu campo editavel.
+O servidor repassa a data civil recebida a RPC sem conversao de fuso. Isso vale
+para carnes originados nos dois fluxos em uso. Nao altera recebimentos antigos
+nem a conciliacao automatica de Pix. Sem nova migration.
+Testes locais: `npm run test:receipt-date` e `npm run test:financing-dates`.
 
 Na aba Carne da Expressa, o cliente selecionado acompanha o componente de
 financiamento. Sem documento ou celular, a janela de complemento abre antes do
@@ -306,8 +421,8 @@ e grava `installment_renegotiations.note` na mesma transacao. Autor e data ficam
 no registro do acordo; observacoes anteriores e a observacao original do carne
 sao preservadas. Texto vazio vira null; limite de 2000 caracteres na tela,
 action e banco. A nova migration
-`20261107160000_financing_renegotiation_note.sql` precisa ser aplicada depois da
-20261107140000 e antes de publicar; ainda pendente de aplicacao. Sem essa RPC,
+`20261107160000_financing_renegotiation_note.sql` foi aplicada com sucesso,
+conforme relato do usuario em 07/11/2026, depois da 20261107140000. Sem essa RPC,
 a action falha sem tentar renegociar sem a observacao. Nenhum texto perdido em
 renegociacoes antigas e recuperado retroativamente. O historico e persistido no
 banco; esta correcao nao cria uma tela de consulta do historico.

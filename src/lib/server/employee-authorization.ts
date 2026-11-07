@@ -12,6 +12,7 @@ export type EmployeeAuthorizationPurpose =
   | 'pix_charge_recover'
   | 'daily_health_access'
   | 'sale_return'
+  | 'immediate_assistance'
 
 type EmployeeAuthorizationPayload = {
   version: 1

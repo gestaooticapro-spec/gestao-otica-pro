@@ -1,9 +1,9 @@
 // ARQUIVO: src/lib/actions/lab.actions.ts
 'use server'
 
-import { createAdminClient } from "@/lib/supabase/admin"
+import { createAdminClient, getProfileByAdmin } from "@/lib/supabase/admin"
+import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
-import { clearNfcTrayLinkForDeliveredOrder } from "@/lib/nfc-tray-cleanup"
 
 export type LabOSResult = {
     id: number
@@ -419,6 +419,16 @@ export async function getLensGradeVariants(productId: number, storeId: number): 
 // 5. SALVAR ATUALIZAÇÃO DO LABORATÓRIO
 export async function updateLabTracking(osId: number, storeId: number, formData: FormData) {
     const supabase = createAdminClient()
+    const { data: { user } } = await createClient().auth.getUser()
+    const profile = user ? await getProfileByAdmin(user.id) as any : null
+    if (!profile?.tenant_id || !Number.isSafeInteger(osId) || osId <= 0 ||
+        !Number.isSafeInteger(storeId) || storeId <= 0 ||
+        (profile.role !== 'admin' && Number(profile.store_id) !== storeId)) {
+        return { success: false, message: 'Sem acesso a esta loja.' }
+    }
+    const { data: store } = await (supabase.from('stores') as any)
+        .select('id').eq('id', storeId).eq('tenant_id', profile.tenant_id).maybeSingle()
+    if (!store) return { success: false, message: 'Loja não encontrada nesta empresa.' }
     const toIsoOrNull = (fieldName: string) => {
         const rawValue = formData.get(fieldName)?.toString()
         if (!rawValue) return null
@@ -440,24 +450,21 @@ export async function updateLabTracking(osId: number, storeId: number, formData:
         lab_pedido_por_id: formData.get('lab_pedido_por_id') ? Number(formData.get('lab_pedido_por_id')) : null
     }
 
-    const { error } = await (supabase.from('service_orders') as any)
+    // O trigger confirma data, liberacao do NFC e evento na mesma transacao.
+    const { data: savedOrder, error } = await (supabase.from('service_orders') as any)
         .update(updates)
         .eq('id', osId)
         .eq('store_id', storeId)
+        .eq('tenant_id', profile.tenant_id)
+        .select('id')
+        .maybeSingle()
 
     if (error) {
         console.error("Erro update lab:", error)
-        return { success: false, message: 'Erro ao salvar rastreio.' }
+        return { success: false, message: 'Não foi possível confirmar o rastreio e a liberação do envelope. Atualize a OS e confira antes de repetir.' }
     }
 
-    if (updates.dt_entregue_em) {
-        try {
-            await clearNfcTrayLinkForDeliveredOrder(osId, updates.dt_entregue_em)
-        } catch (cleanupError) {
-            console.error("Erro ao limpar vínculo NFC na entrega:", cleanupError)
-            return { success: false, message: 'Entrega salva, mas falhou ao liberar o envelope.' }
-        }
-    }
+    if (!savedOrder) return { success: false, message: 'OS não encontrada nesta loja.' }
 
     revalidatePath(`/dashboard/loja/${storeId}`)
     revalidatePath(`/nfc/${storeId}`)

@@ -28,6 +28,12 @@
     "test:payment-method": "node --test tests/payment-method-change.test.mjs",
     "test:express-financing": "node --test tests/express-financing.test.mjs",
     "test:renegotiation-note": "node --test tests/renegotiation-note.test.mjs",
+    "test:financing-dates": "node --test tests/financing-dates.test.mjs",
+    "test:receipt-date": "node --test tests/installment-receipt-date.test.mjs",
+    "test:customer-receipt-search": "node --test tests/customer-receipt-search.test.mjs",
+    "test:sale-store-context": "node --test tests/sale-store-context.test.mjs",
+    "test:delivery-nfc": "node --test tests/delivery-nfc-atomic.test.mjs",
+    "test:immediate-assistance": "node --test tests/immediate-assistance.test.mjs",
     "test": "tsx --test tests/evaluation-recommendation-v2.test.ts tests/tower-contracts.test.ts tests/monthly-accountant-closing.test.ts tests/billing-status.test.ts tests/daily-store-health.test.ts tests/whatsapp-tool-agent-contract.test.ts tests/whatsapp-conversation-redesign-contract.test.ts tests/whatsapp-status-context.test.ts tests/front-lens-segmentation.test.ts tests/lens-segment-token.test.ts tests/customer-contacts-workbook.test.ts && node --test tests/tower-migration.test.mjs tests/tower-web-api-contracts.test.mjs tests/whatsapp-reconciliation-interval.test.mjs && npm run test:nfce-recipient"
   },
   "dependencies": {
