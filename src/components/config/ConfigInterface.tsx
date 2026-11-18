@@ -103,6 +103,7 @@ const EMPTY_EMPLOYEE_FORM = {
 
 // --- SUB-COMPONENTE: FORMULÁRIO DA LOJA ---
 function StoreDataForm({ storeId }: { storeId: number }) {
+    const router = useRouter()
     const [data, setData] = useState<StoreData | null>(null)
     const [loading, setLoading] = useState(true)
     const [isSaving, startTransition] = useTransition()
@@ -164,6 +165,7 @@ function StoreDataForm({ storeId }: { storeId: number }) {
                 : current)
             setLogoFile(null)
             setLogoPreviewUrl(result.logoUrl || null)
+            router.refresh()
             alert(result.message)
         })
     }

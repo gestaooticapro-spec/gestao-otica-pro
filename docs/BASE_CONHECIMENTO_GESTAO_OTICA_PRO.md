@@ -69,7 +69,7 @@ Uma venda específica é aberta na rota `/dashboard/loja/{storeId}/vendas/{venda
 ### Como localizar ou cadastrar um cliente?
 
 1. Para iniciar uma venda de óculos, abra **Atendimento → Receituário**. Na barra lateral, o nome é **Venda Óculos**. Em **Selecione o cliente**, digite nome, razão social, nome fantasia, CPF, CNPJ, celular ou telefone. Para telefone, use ao menos três dígitos; números completos funcionam com ou sem máscara e com +55. A busca fica na loja autorizada e mostra até 50 cadastros. Confira o titular antes de escolher entre resultados parecidos.
-2. Confira o nome e o CPF ou CNPJ antes de selecionar. Um aviso **Inadimplente** não impede a venda; ele só alerta sobre parcelas vencidas. **Restrição Interna** mostra a observação do cadastro.
+2. Confira o nome e o CPF ou CNPJ antes de selecionar. O aviso **Inadimplente** sinaliza parcelas vencidas e permite continuar a venda. **Observação para atendimento** mostra em âmbar as orientações do cadastro. As anotações identificadas como migração ficam disponíveis no cadastro do cliente.
 3. Se for um cliente novo, use **Novo Cadastro**, informe nome completo e celular e escolha **Salvar e selecionar**. O cadastro rápido não abre a venda sozinho.
 4. Depois da seleção, a tela mostra as duas vendas mais recentes, com paciente, produtos e receita quando existirem. Essa lista não abre a venda. **Raio-X** abre o histórico completo do cliente. O **Dossiê**, no menu Atendimento, também busca o cliente e abre esse histórico.
 5. O dependente ou paciente não é escolhido nesta tela. Ele entra depois, na OS da venda experimental.

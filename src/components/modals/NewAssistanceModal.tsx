@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import EmployeeAuthModal from './EmployeeAuthModal'
 import { createAssistanceTicket } from '@/lib/actions/assistance.actions'
 import { searchCustomersByName, getItensCompradosPorCliente, type CustomerSearchResult, type ItemComprado } from '@/lib/actions/vendas.actions'
@@ -40,6 +40,22 @@ export default function NewAssistanceModal({
     // Passo 4: Detalhes
     const [defeito, setDefeito] = useState('')
     const [modalidade, setModalidade] = useState<'Padrao' | 'TrocaGarantida' | 'TrocaImediata'>('Padrao')
+    const [ajudaModalidade, setAjudaModalidade] = useState<string | null>(null)
+    const ajudaTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+    const esconderAjuda = () => {
+        if (ajudaTimer.current) clearTimeout(ajudaTimer.current)
+        ajudaTimer.current = null
+        setAjudaModalidade(null)
+    }
+    const mostrarAjudaDepois = (texto: string) => {
+        esconderAjuda()
+        ajudaTimer.current = setTimeout(() => setAjudaModalidade(texto), 2000)
+    }
+    useEffect(() => {
+        return () => { if (ajudaTimer.current) clearTimeout(ajudaTimer.current) }
+    }, [])
+    useEffect(() => { esconderAjuda() }, [step, isOpen])
 
     const [isPending, setIsPending] = useState(false)
     const submitting = useRef(false)
@@ -260,19 +276,21 @@ export default function NewAssistanceModal({
                             </div>
 
                             <div className="grid grid-cols-3 gap-2">
-                                <button onClick={() => setModalidade('Padrao')} className={`p-3 rounded-xl border transition-all ${modalidade === 'Padrao' ? 'border-indigo-500 bg-indigo-500/20 text-indigo-300' : 'border-white/10 bg-white/5 text-slate-400 hover:border-white/20 hover:text-slate-200'}`}>
+                                <button type="button" onMouseEnter={() => mostrarAjudaDepois('O cliente deixa o produto para análise.')} onMouseLeave={esconderAjuda} onFocus={() => mostrarAjudaDepois('O cliente deixa o produto para análise.')} onBlur={esconderAjuda} onClick={() => setModalidade('Padrao')} className={`p-3 rounded-xl border transition-all ${modalidade === 'Padrao' ? 'border-indigo-500 bg-indigo-500/20 text-indigo-300' : 'border-white/10 bg-white/5 text-slate-400 hover:border-white/20 hover:text-slate-200'}`}>
                                     <Package className="h-6 w-6 mx-auto mb-1" />
                                     <span className="block text-[10px] font-bold uppercase">Padrão</span>
                                 </button>
-                                <button onClick={() => setModalidade('TrocaGarantida')} className={`p-3 rounded-xl border transition-all ${modalidade === 'TrocaGarantida' ? 'border-purple-500 bg-purple-500/20 text-purple-300' : 'border-white/10 bg-white/5 text-slate-400 hover:border-white/20 hover:text-slate-200'}`}>
+                                <button type="button" onMouseEnter={() => mostrarAjudaDepois('O cliente leva o produto; a loja pede um novo ao fornecedor.')} onMouseLeave={esconderAjuda} onFocus={() => mostrarAjudaDepois('O cliente leva o produto; a loja pede um novo ao fornecedor.')} onBlur={esconderAjuda} onClick={() => setModalidade('TrocaGarantida')} className={`p-3 rounded-xl border transition-all ${modalidade === 'TrocaGarantida' ? 'border-purple-500 bg-purple-500/20 text-purple-300' : 'border-white/10 bg-white/5 text-slate-400 hover:border-white/20 hover:text-slate-200'}`}>
                                     <History className="h-6 w-6 mx-auto mb-1" />
                                     <span className="block text-[10px] font-bold uppercase">Garantida</span>
                                 </button>
-                                <button onClick={() => setModalidade('TrocaImediata')} className={`p-3 rounded-xl border transition-all ${modalidade === 'TrocaImediata' ? 'border-orange-500 bg-orange-500/20 text-orange-300' : 'border-white/10 bg-white/5 text-slate-400 hover:border-white/20 hover:text-slate-200'}`}>
+                                <button type="button" onMouseEnter={() => mostrarAjudaDepois('Com produto cadastrado, a troca baixa uma unidade mediante PIN; produto manual segue para triagem.')} onMouseLeave={esconderAjuda} onFocus={() => mostrarAjudaDepois('Com produto cadastrado, a troca baixa uma unidade mediante PIN; produto manual segue para triagem.')} onBlur={esconderAjuda} onClick={() => setModalidade('TrocaImediata')} className={`p-3 rounded-xl border transition-all ${modalidade === 'TrocaImediata' ? 'border-orange-500 bg-orange-500/20 text-orange-300' : 'border-white/10 bg-white/5 text-slate-400 hover:border-white/20 hover:text-slate-200'}`}>
                                     <AlertTriangle className="h-6 w-6 mx-auto mb-1" />
                                     <span className="block text-[10px] font-bold uppercase">Imediata</span>
                                 </button>
                             </div>
+
+                            {ajudaModalidade && <p role="status" className="rounded-lg border border-cyan-400/25 bg-slate-900 px-3 py-2 text-center text-xs text-cyan-100">{ajudaModalidade}</p>}
 
                             <p className="text-center text-xs text-slate-500">
                                 {modalidade === 'Padrao' && 'Cliente deixa o produto para análise.'}

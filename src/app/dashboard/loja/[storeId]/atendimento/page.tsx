@@ -19,7 +19,7 @@ import {
     Loader2, Search, X, PlusCircle, UserCircle,
     History, ChevronDown, ChevronUp, Eye, Wallet,
     AlertTriangle, CheckCircle2, User, Briefcase,
-    ShoppingCart, UserPlus, Ban, ArrowLeft
+    ShoppingCart, UserPlus, ArrowLeft
 } from 'lucide-react'
 import { useBackgroundPreference, BackgroundToggle } from '@/components/ui/BackgroundToggle';
 import { Database } from '@/lib/database.types'
@@ -159,10 +159,10 @@ function HistoryCard({ data, customerObs }: { data: CustomerSaleHistory, custome
                     {/* ATUALIZAÇÃO 2: Exibindo a observação do cadastro na parte inferior do card */}
                     {customerObs && (
                         <div className="mt-8 pt-6 border-t border-white/5">
-                            <p className="text-[10px] font-black text-rose-400 uppercase mb-3 flex items-center gap-2 tracking-widest">
+                            <p className="text-[10px] font-black text-amber-300 uppercase mb-3 flex items-center gap-2 tracking-widest">
                                 <AlertTriangle className="h-4 w-4" /> Observações do Cadastro
                             </p>
-                            <div className="bg-rose-500/10 text-rose-300 text-sm p-4 rounded-2xl border border-rose-500/20 font-bold shadow-inner leading-relaxed">
+                            <div className="bg-amber-500/10 text-amber-100 text-sm p-4 rounded-2xl border border-amber-500/20 font-bold leading-relaxed whitespace-pre-line">
                                 {customerObs}
                             </div>
                         </div>
@@ -285,6 +285,10 @@ export default function AtendimentoPage() {
         })
     }
 
+    const customerNotice = selectedCustomer?.obs_debito
+        ?.replace(/\[migra[çc][ãa]o:[^\[\]\r\n]*\]/gi, '')
+        .trim()
+
     return (
         <div className="relative flex flex-col h-[calc(100vh-64px)] bg-slate-950 overflow-hidden font-sans">
 
@@ -375,7 +379,7 @@ export default function AtendimentoPage() {
                                             <div>
                                                 <div className="flex items-center gap-2">
                                                     <p className="font-black text-white text-sm group-hover:text-cyan-400 transition-colors uppercase tracking-tight">{cust.full_name}</p>
-                                                    {cust.tem_pendencia && <span className="text-[9px] bg-rose-500/20 text-rose-400 px-2 py-0.5 rounded-full font-black border border-rose-500/30 uppercase tracking-widest">Inadimplente</span>}
+                                                    {cust.tem_pendencia && <span className="text-[9px] bg-amber-500/15 text-amber-300 px-2 py-0.5 rounded-full font-black border border-amber-500/25 uppercase tracking-widest">Inadimplente</span>}
                                                 </div>
                                                 <p className="text-[10px] text-slate-400 font-bold mt-0.5">{cust.person_type === 'PJ' ? 'CNPJ' : 'CPF'}: {cust.person_type === 'PJ' ? cust.cnpj || 'N/A' : cust.cpf || 'N/A'}</p>
                                             </div>
@@ -473,12 +477,12 @@ export default function AtendimentoPage() {
                                     <History className="h-5 w-5 group-hover:scale-110 transition-transform" />
                                     <span className="text-xs font-bold uppercase tracking-widest hidden sm:inline">Raio-X</span>
                                 </button>
-                                {selectedCustomer.obs_debito && (
-                                    <div className="bg-rose-500/20 text-rose-300 px-5 py-2.5 rounded-2xl text-xs font-black flex items-center gap-3 border border-rose-500/30 shadow-2xl backdrop-blur-sm animate-pulse">
-                                        <AlertTriangle className="h-5 w-5 text-rose-500" />
+                                {customerNotice && (
+                                    <div className="bg-amber-500/10 text-amber-300 px-5 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-3 border border-amber-500/25">
+                                        <AlertTriangle className="h-5 w-5 shrink-0" />
                                         <div className="flex flex-col">
-                                            <span className="uppercase text-[9px] tracking-widest opacity-70 font-black">Restrição Interna</span>
-                                            <span className="text-white tracking-tight">{selectedCustomer.obs_debito}</span>
+                                            <span className="uppercase text-[9px] tracking-widest font-black">Observação para atendimento</span>
+                                            <span className="text-amber-100 whitespace-pre-line">{customerNotice}</span>
                                         </div>
                                     </div>
                                 )}
@@ -487,13 +491,13 @@ export default function AtendimentoPage() {
 
                         {/* ===== NOVO: ALERTA DE DÍVIDA (AQUI) ===== */}
                         {selectedCustomer.tem_pendencia && (
-                            <div className="bg-gradient-to-r from-rose-600/40 to-rose-900/40 backdrop-blur-xl border border-rose-500/30 p-6 rounded-3xl shadow-2xl flex items-start gap-5 animate-in fade-in zoom-in-95 duration-500">
-                                <div className="p-4 bg-rose-500 text-white rounded-2xl shadow-[0_0_20px_rgba(244,63,94,0.4)]">
-                                    <Ban className="h-8 w-8" />
+                            <div className="bg-amber-500/10 border border-amber-500/25 p-6 rounded-3xl flex items-start gap-5">
+                                <div className="p-4 bg-amber-500/15 text-amber-300 rounded-2xl">
+                                    <AlertTriangle className="h-8 w-8" />
                                 </div>
                                 <div>
                                     <h3 className="text-xl font-black text-white leading-tight uppercase tracking-tight">Paciente com Pendências Financeiras</h3>
-                                    <p className="text-rose-100/80 text-sm mt-2 font-medium leading-relaxed max-w-2xl">
+                                    <p className="text-amber-100/90 text-sm mt-2 font-medium leading-relaxed max-w-2xl">
                                         Existem parcelas vencidas no sistema para este CPF. É recomendável regularizar a situação ou consultar a gerência antes de processar novas vendas a prazo ou no carnê.
                                     </p>
                                 </div>
@@ -528,7 +532,7 @@ export default function AtendimentoPage() {
                                     <div className="flex-1 h-[1px] bg-white/5 ml-2" />
                                 </div>
                                 {history.map((item) => (
-                                    <HistoryCard key={item.venda_id} data={item} customerObs={selectedCustomer.obs_debito} />
+                                    <HistoryCard key={item.venda_id} data={item} customerObs={customerNotice} />
                                 ))}
                             </div>
                         )}

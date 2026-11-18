@@ -1,0 +1,223 @@
+{
+  "status": "committed",
+  "created_at": "2026-11-18T20:12:47.318Z",
+  "tenant": "1d0d4843-a0dc-4ef8-8945-4497d89bf77a",
+  "store": "11",
+  "employee": "24",
+  "suppliers": [
+    {
+      "id": "22",
+      "nome_fantasia": "TESTE LUNE - Fornecedor Óptico"
+    },
+    {
+      "id": "23",
+      "nome_fantasia": "TESTE LUNE - Laboratório"
+    }
+  ],
+  "customers": [
+    {
+      "id": "28354",
+      "full_name": "Consumidor Final"
+    },
+    {
+      "id": "28355",
+      "full_name": "TESTE LUNE - Cliente 01"
+    },
+    {
+      "id": "28356",
+      "full_name": "TESTE LUNE - Cliente 02"
+    },
+    {
+      "id": "28357",
+      "full_name": "TESTE LUNE - Cliente 03"
+    },
+    {
+      "id": "28358",
+      "full_name": "TESTE LUNE - Cliente 04"
+    }
+  ],
+  "doctor": {
+    "id": "327",
+    "nome_completo": "TESTE LUNE - Oftalmologista"
+  },
+  "products": [
+    {
+      "id": "11690",
+      "nome": "TESTE LUNE - Armação 01",
+      "referencia": "TESTE-LUNE-ARMACAO-01",
+      "tipo_produto": "Armacao"
+    },
+    {
+      "id": "11691",
+      "nome": "TESTE LUNE - Armação 02",
+      "referencia": "TESTE-LUNE-ARMACAO-02",
+      "tipo_produto": "Armacao"
+    },
+    {
+      "id": "11692",
+      "nome": "TESTE LUNE - Armação 03",
+      "referencia": "TESTE-LUNE-ARMACAO-03",
+      "tipo_produto": "Armacao"
+    },
+    {
+      "id": "11693",
+      "nome": "TESTE LUNE - Armação 04",
+      "referencia": "TESTE-LUNE-ARMACAO-04",
+      "tipo_produto": "Armacao"
+    },
+    {
+      "id": "11694",
+      "nome": "TESTE LUNE - Solar 01",
+      "referencia": "TESTE-LUNE-SOLAR-01",
+      "tipo_produto": "Solar"
+    },
+    {
+      "id": "11695",
+      "nome": "TESTE LUNE - Solar 02",
+      "referencia": "TESTE-LUNE-SOLAR-02",
+      "tipo_produto": "Solar"
+    },
+    {
+      "id": "11696",
+      "nome": "TESTE LUNE - Solar 03",
+      "referencia": "TESTE-LUNE-SOLAR-03",
+      "tipo_produto": "Solar"
+    },
+    {
+      "id": "11697",
+      "nome": "TESTE LUNE - Solar 04",
+      "referencia": "TESTE-LUNE-SOLAR-04",
+      "tipo_produto": "Solar"
+    },
+    {
+      "id": "11698",
+      "nome": "TESTE LUNE - Lente oftálmica 01",
+      "referencia": "TESTE-LUNE-LENTE-01",
+      "tipo_produto": "Lente"
+    },
+    {
+      "id": "11699",
+      "nome": "TESTE LUNE - Lente oftálmica 02",
+      "referencia": "TESTE-LUNE-LENTE-02",
+      "tipo_produto": "Lente"
+    },
+    {
+      "id": "11700",
+      "nome": "TESTE LUNE - Lente oftálmica 03",
+      "referencia": "TESTE-LUNE-LENTE-03",
+      "tipo_produto": "Lente"
+    },
+    {
+      "id": "11701",
+      "nome": "TESTE LUNE - Lente oftálmica 04",
+      "referencia": "TESTE-LUNE-LENTE-04",
+      "tipo_produto": "Lente"
+    },
+    {
+      "id": "11702",
+      "nome": "TESTE LUNE - Lente de contato 01",
+      "referencia": "TESTE-LUNE-LENTECONTATO-01",
+      "tipo_produto": "LenteContato"
+    },
+    {
+      "id": "11703",
+      "nome": "TESTE LUNE - Lente de contato 02",
+      "referencia": "TESTE-LUNE-LENTECONTATO-02",
+      "tipo_produto": "LenteContato"
+    },
+    {
+      "id": "11704",
+      "nome": "TESTE LUNE - Lente de contato 03",
+      "referencia": "TESTE-LUNE-LENTECONTATO-03",
+      "tipo_produto": "LenteContato"
+    },
+    {
+      "id": "11705",
+      "nome": "TESTE LUNE - Lente de contato 04",
+      "referencia": "TESTE-LUNE-LENTECONTATO-04",
+      "tipo_produto": "LenteContato"
+    },
+    {
+      "id": "11706",
+      "nome": "TESTE LUNE - Tratamento 01",
+      "referencia": "TESTE-LUNE-TRATAMENTO-01",
+      "tipo_produto": "Tratamento"
+    },
+    {
+      "id": "11707",
+      "nome": "TESTE LUNE - Tratamento 02",
+      "referencia": "TESTE-LUNE-TRATAMENTO-02",
+      "tipo_produto": "Tratamento"
+    },
+    {
+      "id": "11708",
+      "nome": "TESTE LUNE - Tratamento 03",
+      "referencia": "TESTE-LUNE-TRATAMENTO-03",
+      "tipo_produto": "Tratamento"
+    },
+    {
+      "id": "11709",
+      "nome": "TESTE LUNE - Tratamento 04",
+      "referencia": "TESTE-LUNE-TRATAMENTO-04",
+      "tipo_produto": "Tratamento"
+    },
+    {
+      "id": "11710",
+      "nome": "TESTE LUNE - Serviço 01",
+      "referencia": "TESTE-LUNE-SERVICO-01",
+      "tipo_produto": "Servico"
+    },
+    {
+      "id": "11711",
+      "nome": "TESTE LUNE - Serviço 02",
+      "referencia": "TESTE-LUNE-SERVICO-02",
+      "tipo_produto": "Servico"
+    },
+    {
+      "id": "11712",
+      "nome": "TESTE LUNE - Serviço 03",
+      "referencia": "TESTE-LUNE-SERVICO-03",
+      "tipo_produto": "Servico"
+    },
+    {
+      "id": "11713",
+      "nome": "TESTE LUNE - Serviço 04",
+      "referencia": "TESTE-LUNE-SERVICO-04",
+      "tipo_produto": "Servico"
+    },
+    {
+      "id": "11714",
+      "nome": "TESTE LUNE - Acessório 01",
+      "referencia": "TESTE-LUNE-OUTRO-01",
+      "tipo_produto": "Outro"
+    },
+    {
+      "id": "11715",
+      "nome": "TESTE LUNE - Acessório 02",
+      "referencia": "TESTE-LUNE-OUTRO-02",
+      "tipo_produto": "Outro"
+    },
+    {
+      "id": "11716",
+      "nome": "TESTE LUNE - Acessório 03",
+      "referencia": "TESTE-LUNE-OUTRO-03",
+      "tipo_produto": "Outro"
+    },
+    {
+      "id": "11717",
+      "nome": "TESTE LUNE - Acessório 04",
+      "referencia": "TESTE-LUNE-OUTRO-04",
+      "tipo_produto": "Outro"
+    }
+  ],
+  "settings": {
+    "module_fiscal_enabled": false,
+    "module_installments_enabled": true,
+    "module_quick_sale_enabled": true,
+    "module_post_sales_enabled": true,
+    "module_global_tables_enabled": false,
+    "pre_sale_analysis_enabled": false
+  },
+  "name_correction": "Luna para Lune; IDs preservados",
+  "settings_note": "Configura??o na cria??o; pode ter sido alterada depois."
+}

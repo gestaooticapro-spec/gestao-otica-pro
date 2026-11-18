@@ -9,6 +9,10 @@ export type Release = {
 // altera o Dashboard ou o modal de histórico.
 export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'A tela de login oferece a instalação do MB Optical nos dispositivos compatíveis e orienta a instalação no iPhone e iPad.',
+  'Ao trocar a logo da loja, a Central de Operações passa a mostrar a imagem atualizada.',
+  'No Receituário, avisos de atendimento e de parcelas vencidas aparecem em âmbar, e anotações de migração ficam no cadastro do cliente.',
+  'A nova assistência explica as modalidades de garantia ao manter o cursor sobre cada opção.',
   'O novo atendimento do WhatsApp passa a ser o padrao de todas as lojas. Cada loja continua decidindo se usa a automacao e a IA, com seus proprios dados, horarios e pausas de atendimento.',
   'A ajuda por IA explica estoque, cadastros, XML, etiquetas e as telas de gestão, respeitando o perfil e os módulos da loja.',
   'A ajuda por IA explica o pós-venda, a assistência e os envios de WhatsApp, sem tratar tentativa de envio como mensagem lida pelo cliente.',

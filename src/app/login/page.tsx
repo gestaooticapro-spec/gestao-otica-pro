@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react'
 import { useFormStatus } from 'react-dom'
 import { Loader2, Eye, EyeOff, Maximize2, Minimize2 } from 'lucide-react'
 import Link from 'next/link'
+import InstallAppButton from '@/components/InstallAppButton'
 
 // --- Componente do Botão de Submit (Mantido e Estilizado) ---
 function SubmitButton() {
@@ -189,6 +190,8 @@ export default function LoginPage() {
             </Link>
           </div>
         </form>
+
+        <InstallAppButton />
 
         {/* Footer discreto */}
         <div className="mt-8 pt-6 border-t border-white/5 text-center">

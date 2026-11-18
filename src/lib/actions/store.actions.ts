@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { createAdminClient, getProfileByAdmin } from '@/lib/supabase/admin'
 import { Database, Json } from '@/lib/database.types'
@@ -550,11 +551,11 @@ export async function uploadStoreLogo(
     const currentStore = await getStoreProfile(storeId)
     if (!currentStore) return { success: false, message: 'Loja nao encontrada.' }
 
-    const logoPath = `stores/${storeId}/logo.${extension}`
+    const logoPath = `stores/${storeId}/logo-${randomUUID()}.${extension}`
     const admin = createAdminClient()
     const { error: uploadError } = await admin.storage
         .from(STORE_LOGOS_BUCKET)
-        .upload(logoPath, bytes, { contentType: mimeType, upsert: true })
+        .upload(logoPath, bytes, { contentType: mimeType, upsert: false })
     if (uploadError) return { success: false, message: `Erro ao enviar logo: ${uploadError.message}` }
 
     const settings = ((currentStore.settings || {}) as StoreSettings | Json) as StoreSettings
