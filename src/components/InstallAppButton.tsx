@@ -11,6 +11,7 @@ export default function InstallAppButton() {
   const [prompt, setPrompt] = useState<InstallPromptEvent | null>(null)
   const [isAppleMobile, setIsAppleMobile] = useState(false)
   const [isInstalled, setIsInstalled] = useState(false)
+  const [isReady, setIsReady] = useState(false)
   const [showInstructions, setShowInstructions] = useState(false)
 
   useEffect(() => {
@@ -34,6 +35,7 @@ export default function InstallAppButton() {
     setIsAppleMobile(/iPad|iPhone|iPod/.test(navigator.userAgent) ||
       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
     updateInstalled()
+    setIsReady(true)
     displayModes.forEach(mode => mode.addEventListener('change', updateInstalled))
     window.addEventListener('beforeinstallprompt', handlePrompt)
     window.addEventListener('appinstalled', handleInstalled)
@@ -44,7 +46,7 @@ export default function InstallAppButton() {
     }
   }, [])
 
-  if (isInstalled || (!prompt && !isAppleMobile && !showInstructions)) return null
+  if (!isReady || isInstalled) return null
 
   const handleInstall = async () => {
     if (!prompt) {
@@ -76,7 +78,7 @@ export default function InstallAppButton() {
           {isAppleMobile ? (
             <>No navegador, toque em <Share2 className="inline h-4 w-4 align-text-bottom" aria-label="Compartilhar" /> <strong>Compartilhar</strong> e depois em <strong>Adicionar à Tela de Início</strong>.</>
           ) : (
-            <>Use a opção de instalar aplicativo no menu ou na barra de endereço do navegador.</>
+            <>Procure <strong>Instalar aplicativo</strong> no menu ou na barra de endereço do navegador. A opção depende do navegador e das configurações do dispositivo.</>
           )}
         </p>
       )}

@@ -9,7 +9,7 @@ export type Release = {
 // altera o Dashboard ou o modal de histórico.
 export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
-  'A tela de login oferece a instalação do MB Optical nos dispositivos compatíveis e orienta a instalação no iPhone e iPad.',
+  'A tela de login oferece a instalação do MB Optical e orienta o uso do navegador quando a instalação direta não está disponível.',
   'Ao trocar a logo da loja, a Central de Operações passa a mostrar a imagem atualizada.',
   'No Receituário, avisos de atendimento e de parcelas vencidas aparecem em âmbar, e anotações de migração ficam no cadastro do cliente.',
   'A nova assistência explica as modalidades de garantia ao manter o cursor sobre cada opção.',
