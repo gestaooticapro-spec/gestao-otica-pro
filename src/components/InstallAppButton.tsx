@@ -78,7 +78,7 @@ export default function InstallAppButton() {
           {isAppleMobile ? (
             <>No navegador, toque em <Share2 className="inline h-4 w-4 align-text-bottom" aria-label="Compartilhar" /> <strong>Compartilhar</strong> e depois em <strong>Adicionar à Tela de Início</strong>.</>
           ) : (
-            <>Procure <strong>Instalar aplicativo</strong> no menu ou na barra de endereço do navegador. A opção depende do navegador e das configurações do dispositivo.</>
+            <><strong>Instalador automático não disponível</strong><br />Procure <strong>Instalar aplicativo ou instalar página como app... no navegador.</strong></>
           )}
         </p>
       )}
