@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useCallback, useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useFormState, useFormStatus } from 'react-dom'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
@@ -21,6 +21,8 @@ import ListaPagamentos from '@/components/vendas/ListaPagamentos'
 import ResumoFinanceiro from '@/components/vendas/ResumoFinanceiro'
 import VendaActions from '@/components/vendas/VendaActions'
 import { saveServiceOrder, updateVendaExperimentalFields, type SaveSOResult } from '@/lib/actions/vendas.actions'
+import { useManualPrescription } from '@/lib/hooks/use-manual-prescription'
+import { prescriptionFields, type ManualPrescription } from '@/lib/manual-prescriptions'
 import { toast } from 'sonner'
 import ReceiptSelectionModal from '@/components/modals/ReceiptSelectionModal'
 import UpdateCpfModal from '@/components/modals/UpdateCpfModal'
@@ -255,13 +257,13 @@ const osOptionStyle = 'bg-slate-950 text-slate-100'
 const osLabelStyle = 'block text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-wider'
 const osGridInput = `${osInputStyle} text-center`
 
-function SingleOSSubmitButton({ hasOrder }: { hasOrder: boolean }) {
+function SingleOSSubmitButton({ hasOrder, loadingPrescription }: { hasOrder: boolean; loadingPrescription: boolean }) {
     const { pending } = useFormStatus()
 
     return (
         <button
             type="submit"
-            disabled={pending}
+            disabled={pending || loadingPrescription}
             className="h-10 px-5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-black uppercase tracking-[0.12em] border border-cyan-400/20 shadow-lg shadow-cyan-500/10 disabled:opacity-50 flex items-center justify-center gap-2"
         >
             {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -319,6 +321,8 @@ function SingleServiceOrderCard({
 
     const [dependenteId, setDependenteId] = useState('')
     const [oftalmologistaId, setOftalmologistaId] = useState('')
+    const [prescriptionDate, setPrescriptionDate] = useState('')
+    const [obsOs, setObsOs] = useState('')
     const [protocolo, setProtocolo] = useState('')
     const [lenteOdItemId, setLenteOdItemId] = useState('')
     const [lenteOeItemId, setLenteOeItemId] = useState('')
@@ -332,6 +336,8 @@ function SingleServiceOrderCard({
     const [longeOeEsf, setLongeOeEsf] = useState('')
     const [longeOeCil, setLongeOeCil] = useState('')
     const [longeOeEixo, setLongeOeEixo] = useState('')
+    const [pertoOdEsf, setPertoOdEsf] = useState(''); const [pertoOdCil, setPertoOdCil] = useState(''); const [pertoOdEixo, setPertoOdEixo] = useState('')
+    const [pertoOeEsf, setPertoOeEsf] = useState(''); const [pertoOeCil, setPertoOeCil] = useState(''); const [pertoOeEixo, setPertoOeEixo] = useState('')
     const [adicao, setAdicao] = useState('')
 
     const [dnpOd, setDnpOd] = useState('')
@@ -344,6 +350,39 @@ function SingleServiceOrderCard({
     const [medV, setMedV] = useState('')
     const [medDiag, setMedDiag] = useState('')
     const [medPonte, setMedPonte] = useState('')
+
+    const applyManualPrescription = useCallback((recipe: ManualPrescription | null) => {
+        setLongeOdEsf(recipe?.receita_longe_od_esferico ?? '')
+        setLongeOdCil(recipe?.receita_longe_od_cilindrico ?? '')
+        setLongeOdEixo(recipe?.receita_longe_od_eixo ?? '')
+        setLongeOeEsf(recipe?.receita_longe_oe_esferico ?? '')
+        setLongeOeCil(recipe?.receita_longe_oe_cilindrico ?? '')
+        setLongeOeEixo(recipe?.receita_longe_oe_eixo ?? '')
+        setPertoOdEsf(recipe?.receita_perto_od_esferico ?? '')
+        setPertoOdCil(recipe?.receita_perto_od_cilindrico ?? '')
+        setPertoOdEixo(recipe?.receita_perto_od_eixo ?? '')
+        setPertoOeEsf(recipe?.receita_perto_oe_esferico ?? '')
+        setPertoOeCil(recipe?.receita_perto_oe_cilindrico ?? '')
+        setPertoOeEixo(recipe?.receita_perto_oe_eixo ?? '')
+        setAdicao(recipe?.receita_adicao ?? '')
+        setDnpOd(recipe?.medida_dnp_od ?? '')
+        setDnpOe(recipe?.medida_dnp_oe ?? '')
+        setAltOd(recipe?.medida_altura_od ?? '')
+        setAltOe(recipe?.medida_altura_oe ?? '')
+        setObsOs(recipe?.obs_os ?? '')
+        setPrescriptionDate(recipe?.data_receita ?? '')
+        setOftalmologistaId(recipe?.oftalmologista_id?.toString() ?? '')
+    }, [])
+    const manualPrescription = useManualPrescription(venda.store_id, customer?.id ?? venda.customer_id, dependenteId, !serviceOrder, applyManualPrescription)
+
+    function selectPatient(patient: string) {
+        if (patient === dependenteId) return
+        if (!serviceOrder) {
+            manualPrescription.skipPendingImport()
+            applyManualPrescription(null)
+        }
+        setDependenteId(patient)
+    }
 
     useEffect(() => {
         setLocalDependentes(dependentes)
@@ -364,17 +403,7 @@ function SingleServiceOrderCard({
             setArmacaoItemId('')
             setArmacaoComCliente(false)
             setOsEnviadaAoLab(false)
-            setLongeOdEsf('')
-            setLongeOdCil('')
-            setLongeOdEixo('')
-            setLongeOeEsf('')
-            setLongeOeCil('')
-            setLongeOeEixo('')
-            setAdicao('')
-            setDnpOd('')
-            setDnpOe('')
-            setAltOd('')
-            setAltOe('')
+            applyManualPrescription(null)
             setDiamOd('')
             setDiamOe('')
             setMedH('')
@@ -386,6 +415,8 @@ function SingleServiceOrderCard({
 
         setDependenteId(os.dependente_id?.toString() ?? '')
         setOftalmologistaId(os.oftalmologista_id?.toString() ?? '')
+        setPrescriptionDate(os.data_receita ?? '')
+        setObsOs(os.obs_os ?? '')
         setProtocolo(os.protocolo_fisico ?? '')
         setLenteOdItemId(os.links?.find((l: any) => l.uso_na_os === 'lente_od')?.venda_item_id?.toString() ?? '')
         setLenteOeItemId(os.links?.find((l: any) => l.uso_na_os === 'lente_oe')?.venda_item_id?.toString() ?? '')
@@ -395,9 +426,15 @@ function SingleServiceOrderCard({
         setLongeOdEsf(os.receita_longe_od_esferico ?? '')
         setLongeOdCil(os.receita_longe_od_cilindrico ?? '')
         setLongeOdEixo(os.receita_longe_od_eixo ?? '')
+        setPertoOdEsf(os.receita_perto_od_esferico ?? '')
+        setPertoOdCil(os.receita_perto_od_cilindrico ?? '')
+        setPertoOdEixo(os.receita_perto_od_eixo ?? '')
         setLongeOeEsf(os.receita_longe_oe_esferico ?? '')
         setLongeOeCil(os.receita_longe_oe_cilindrico ?? '')
         setLongeOeEixo(os.receita_longe_oe_eixo ?? '')
+        setPertoOeEsf(os.receita_perto_oe_esferico ?? '')
+        setPertoOeCil(os.receita_perto_oe_cilindrico ?? '')
+        setPertoOeEixo(os.receita_perto_oe_eixo ?? '')
         setAdicao(os.receita_adicao ?? '')
         setDnpOd(os.medida_dnp_od ?? '')
         setDnpOe(os.medida_dnp_oe ?? '')
@@ -409,7 +446,7 @@ function SingleServiceOrderCard({
         setMedV(os.medida_vertical ?? '')
         setMedDiag(os.medida_diagonal ?? '')
         setMedPonte(os.medida_ponte ?? '')
-    }, [serviceOrder])
+    }, [serviceOrder, applyManualPrescription])
 
     useEffect(() => {
         if (!saveState.timestamp || saveState.timestamp === lastHandledSaveRef.current) return
@@ -522,11 +559,20 @@ function SingleServiceOrderCard({
         <div className="p-3">
             {cardHeader}
             {isCollapsed ? null : (
-            <form action={dispatch} className="mt-3 space-y-4">
+            <form action={dispatch} className="mt-3 space-y-4"
+                onSubmit={event => { if (manualPrescription.loading) event.preventDefault() }}
+                onChangeCapture={event => {
+                    const name = (event.target as HTMLInputElement).name
+                    if (prescriptionFields.some(field => field === name)
+                        || ['data_receita', 'oftalmologista_id', 'obs_os'].includes(name)) {
+                        manualPrescription.skipPendingImport()
+                    }
+                }}>
                 {serviceOrder && <input type="hidden" name="id" value={serviceOrder.id} />}
                 <input type="hidden" name="store_id" value={venda.store_id} />
                 <input type="hidden" name="venda_id" value={venda.id} />
                 <input type="hidden" name="customer_id" value={customer?.id || venda.customer_id} />
+                <input type="hidden" name="manual_prescription_id" value={manualPrescription.id ?? ''} />
                 <input type="hidden" name="lab_pedido_por_id" value={firstEmployeeId || ''} />
                 <input type="hidden" name="item_links_json" value={JSON.stringify(itemLinks)} />
 
@@ -564,7 +610,7 @@ function SingleServiceOrderCard({
                                     <UserPlus className="h-4 w-4" />
                                 </button>
                             </div>
-                            <select name="dependente_id" value={dependenteId} onChange={(e) => setDependenteId(e.target.value)} disabled={disabled} className={osSelectStyle}>
+                            <select name="dependente_id" value={dependenteId} onChange={(e) => selectPatient(e.target.value)} disabled={disabled} className={osSelectStyle}>
                                 <option value="" className={osOptionStyle}>Titular: {customer?.full_name || 'Cliente'}</option>
                                 {localDependentes.map((dep) => (
                                     <option key={dep.id} value={dep.id} className={osOptionStyle}>{dep.full_name}</option>
@@ -594,6 +640,14 @@ function SingleServiceOrderCard({
                                     <option key={doc.id} value={doc.id} className={osOptionStyle}>{doc.nome_completo}</option>
                                 ))}
                             </select>
+                            <label className="flex items-center gap-2 text-xs text-slate-400">
+                                <span className="shrink-0">Data da receita</span>
+                                <input type="date" name="data_receita" value={prescriptionDate}
+                                    onChange={event => setPrescriptionDate(event.target.value)} disabled={disabled} className={osInputStyle} />
+                            </label>
+                            {manualPrescription.loading && <p role="status" className="text-xs text-slate-400">Consultando grau avulso…</p>}
+                            {manualPrescription.id && <p className="text-xs text-cyan-300">Grau avulso preenchido</p>}
+                            {manualPrescription.error && <p role="alert" className="text-xs text-amber-300">Não foi possível consultar o grau avulso.</p>}
                         </div>
 
                         <div className="rounded-xl border border-white/10 bg-black/20 p-3 space-y-3">
@@ -659,6 +713,28 @@ function SingleServiceOrderCard({
                                 <label className={osLabelStyle}>Adição</label>
                                 <DegreeInput name="receita_adicao" value={adicao} onChange={setAdicao} className={osGridInput} />
                             </div>
+                            <details open={Boolean(pertoOdEsf || pertoOdCil || pertoOdEixo || pertoOeEsf || pertoOeCil || pertoOeEixo)}
+                                className="mt-3 space-y-2 rounded-lg border border-white/10 p-2">
+                                <summary className="cursor-pointer text-xs font-bold text-cyan-200">Grau para perto</summary>
+                                <div className="grid grid-cols-[auto_repeat(3,minmax(0,1fr))] items-center gap-1 text-center text-xs text-slate-400">
+                                    <span /><span>ESF</span><span>CIL</span><span>EIXO</span>
+                                    <span>OD</span>
+                                    <DegreeInput name="receita_perto_od_esferico" value={pertoOdEsf} onChange={setPertoOdEsf} className={osGridInput} />
+                                    <DegreeInput name="receita_perto_od_cilindrico" value={pertoOdCil} onChange={setPertoOdCil} className={osGridInput} />
+                                    <input name="receita_perto_od_eixo" value={pertoOdEixo}
+                                        onChange={event => setPertoOdEixo(event.target.value)} className={osGridInput} aria-label="Eixo para perto OD" />
+                                    <span>OE</span>
+                                    <DegreeInput name="receita_perto_oe_esferico" value={pertoOeEsf} onChange={setPertoOeEsf} className={osGridInput} />
+                                    <DegreeInput name="receita_perto_oe_cilindrico" value={pertoOeCil} onChange={setPertoOeCil} className={osGridInput} />
+                                    <input name="receita_perto_oe_eixo" value={pertoOeEixo}
+                                        onChange={event => setPertoOeEixo(event.target.value)} className={osGridInput} aria-label="Eixo para perto OE" />
+                                </div>
+                            </details>
+                            <label className="mt-3 block">
+                                <span className={osLabelStyle}>Observações</span>
+                                <textarea name="obs_os" value={obsOs} onChange={event => setObsOs(event.target.value)}
+                                    disabled={disabled} className={osInputStyle} rows={2} />
+                            </label>
                         </div>
 
                         <div className="rounded-xl border border-white/10 bg-black/20 p-3">
@@ -726,7 +802,7 @@ function SingleServiceOrderCard({
                             Cancelar
                         </button>
                     )}
-                    <SingleOSSubmitButton hasOrder={!!serviceOrder} />
+                    <SingleOSSubmitButton hasOrder={!!serviceOrder} loadingPrescription={manualPrescription.loading} />
                 </div>
             </form>
             )}
@@ -737,7 +813,7 @@ function SingleServiceOrderCard({
                     onClose={() => setIsDepModalOpen(false)}
                     onSuccess={(newDep) => {
                         setLocalDependentes((prev) => [...prev, newDep])
-                        setDependenteId(newDep.id.toString())
+                        selectPatient(newDep.id.toString())
                     }}
                     storeId={venda.store_id}
                     customerId={customer.id}

@@ -52,7 +52,8 @@ export interface FinancialSummary {
 export interface PrescriptionSummary {
     id: number
     dataCompra: string
-    origem?: 'os' | 'legado'
+    origem?: 'os' | 'legado' | 'avulso'
+    medidas?: [string, string | null][]
     descricaoServico?: string | null
     // Longe
     longeOdEsf: string | null

@@ -23,6 +23,8 @@ import { Database } from '@/lib/database.types'
 import AddDependenteModal from '@/components/modals/AddDependenteModal'
 import AddOftalmoModal from '@/components/modals/AddOftalmoModal'
 import PrescriptionHistoryModal from '@/components/modals/PrescriptionHistoryModal'
+import { useManualPrescription } from '@/lib/hooks/use-manual-prescription'
+import { prescriptionFields, type ManualPrescription } from '@/lib/manual-prescriptions'
 import OpticalEvaluationImportModal from '@/components/modals/OpticalEvaluationImportModal'
 import EmployeeAuthModal from '@/components/modals/EmployeeAuthModal'
 import { DegreeInput } from '@/components/ui/DegreeInput'
@@ -35,11 +37,11 @@ import {
 
 type ServiceOrderWithLinks = any
 
-function SaveServiceOrderButton() {
+function SaveServiceOrderButton({ loadingPrescription }: { loadingPrescription: boolean }) {
     const { pending } = useFormStatus()
 
     return (
-        <button type="submit" disabled={pending} className="px-6 py-2 text-xs font-bold rounded-lg border border-cyan-500/20 bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 shadow-[0_0_20px_rgba(6,182,212,0.15)] transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-wait">
+        <button type="submit" disabled={pending || loadingPrescription} className="px-6 py-2 text-xs font-bold rounded-lg border border-cyan-500/20 bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 shadow-[0_0_20px_rgba(6,182,212,0.15)] transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-wait">
             {pending ? <Loader2 className="animate-spin h-4 w-4" /> : <Save className="h-4 w-4" />} {pending ? 'SALVANDO OS' : 'SALVAR OS'}
         </button>
     )
@@ -317,6 +319,7 @@ function ServiceOrderFormContent({
     const [protocolo, setProtocolo] = useState('')
     const [dependenteId, setDependenteId] = useState('')
     const [oftalmologistaId, setOftalmologistaId] = useState('')
+    const [prescriptionDate, setPrescriptionDate] = useState('')
 
     // Vínculos
     const [lenteOdItemId, setLenteOdItemId] = useState('')
@@ -421,6 +424,39 @@ function ServiceOrderFormContent({
     // Cast 'as any' no currentOrder
     const currentOrder = (currentIndex >= 0 && currentIndex < existingOrders.length ? existingOrders[currentIndex] : undefined) as any
 
+    const applyManualPrescription = useCallback((recipe: ManualPrescription | null) => {
+        setLongeOdEsf(recipe?.receita_longe_od_esferico ?? '')
+        setLongeOdCil(recipe?.receita_longe_od_cilindrico ?? '')
+        setLongeOdEixo(recipe?.receita_longe_od_eixo ?? '')
+        setLongeOeEsf(recipe?.receita_longe_oe_esferico ?? '')
+        setLongeOeCil(recipe?.receita_longe_oe_cilindrico ?? '')
+        setLongeOeEixo(recipe?.receita_longe_oe_eixo ?? '')
+        setPertoOdEsf(recipe?.receita_perto_od_esferico ?? '')
+        setPertoOdCil(recipe?.receita_perto_od_cilindrico ?? '')
+        setPertoOdEixo(recipe?.receita_perto_od_eixo ?? '')
+        setPertoOeEsf(recipe?.receita_perto_oe_esferico ?? '')
+        setPertoOeCil(recipe?.receita_perto_oe_cilindrico ?? '')
+        setPertoOeEixo(recipe?.receita_perto_oe_eixo ?? '')
+        setAdicao(recipe?.receita_adicao ?? '')
+        setDnpOd(recipe?.medida_dnp_od ?? '')
+        setDnpOe(recipe?.medida_dnp_oe ?? '')
+        setAltOd(recipe?.medida_altura_od ?? '')
+        setAltOe(recipe?.medida_altura_oe ?? '')
+        setObsOs(recipe?.obs_os ?? '')
+        setPrescriptionDate(recipe?.data_receita ?? '')
+        setOftalmologistaId(recipe?.oftalmologista_id?.toString() ?? '')
+    }, [])
+    const manualPrescription = useManualPrescription(storeId, customer?.id, dependenteId, !currentOrder, applyManualPrescription)
+
+    function selectPatient(patient: string) {
+        if (patient === dependenteId) return
+        if (!currentOrder) {
+            manualPrescription.skipPendingImport()
+            applyManualPrescription(null)
+        }
+        setDependenteId(patient)
+    }
+
     // CORREÇÃO: activeId garante que usamos o ID recém-salvo mesmo se o currentIndex ainda não atualizou
     const activeId = currentOrder?.id || (saveState?.success && saveState?.data?.id ? saveState.data.id : undefined)
     const persistedSourceEvaluationId = Number(currentOrder?.source_optical_evaluation_id || 0)
@@ -462,6 +498,7 @@ function ServiceOrderFormContent({
     }, [existingOrders, onListChange, pendingWhatsApp, saveState])
 
     const resetForm = useCallback(() => {
+        setPrescriptionDate('')
         setDependenteId(''); setOftalmologistaId(''); setLenteOdItemId(''); setLenteOeItemId(''); setArmacaoItemId('')
         setLongeOdEsf(''); setLongeOdCil(''); setLongeOdEixo(''); setLongeOeEsf(''); setLongeOeCil(''); setLongeOeEixo('')
         setPertoOdEsf(''); setPertoOdCil(''); setPertoOdEixo(''); setPertoOeEsf(''); setPertoOeCil(''); setPertoOeEixo(''); setAdicao('')
@@ -485,6 +522,7 @@ function ServiceOrderFormContent({
             setPendingEvaluationSelection(null)
             setDependenteId(os.dependente_id?.toString() ?? '')
             setOftalmologistaId(os.oftalmologista_id?.toString() ?? '')
+            setPrescriptionDate(os.data_receita ?? '')
             const linkLenteOd = os.links?.find((l: any) => l.uso_na_os === 'lente_od'); setLenteOdItemId(linkLenteOd?.venda_item_id.toString() ?? '')
             const linkLenteOe = os.links?.find((l: any) => l.uso_na_os === 'lente_oe'); setLenteOeItemId(linkLenteOe?.venda_item_id.toString() ?? '')
             const linkArmacao = os.links?.find((l: any) => l.uso_na_os === 'armacao'); setArmacaoItemId(linkArmacao?.venda_item_id.toString() ?? '')
@@ -540,10 +578,10 @@ function ServiceOrderFormContent({
         })
     }
 
-    const handleDependenteAdded = useCallback((newDep: Dependente) => {
+    const handleDependenteAdded = (newDep: Dependente) => {
         setLocalDependentes(prev => [...prev, newDep])
-        setDependenteId(newDep.id.toString())
-    }, [])
+        selectPatient(newDep.id.toString())
+    }
 
     const handleOftalmoAdded = useCallback((newDoc: any) => {
         setLocalOftalmos(prev => [...prev, newDoc])
@@ -552,6 +590,7 @@ function ServiceOrderFormContent({
 
     const handleImportPrescription = (data: PrescriptionHistoryItem) => {
         if (confirm("Deseja preencher os campos com os dados desta receita antiga?")) {
+            manualPrescription.skipPendingImport()
             setLongeOdEsf(data.receita_longe_od_esferico || ''); setLongeOdCil(data.receita_longe_od_cilindrico || ''); setLongeOdEixo(data.receita_longe_od_eixo || '');
             setLongeOeEsf(data.receita_longe_oe_esferico || ''); setLongeOeCil(data.receita_longe_oe_cilindrico || ''); setLongeOeEixo(data.receita_longe_oe_eixo || '');
             setAdicao(data.receita_adicao || ''); setDnpOd(data.medida_dnp_od || ''); setDnpOe(data.medida_dnp_oe || '');
@@ -564,6 +603,7 @@ function ServiceOrderFormContent({
         unlinkAuthorizer: EvaluationUnlinkAuthorizer | null = null,
     ) => {
         startApplyEvaluationTransition(async () => {
+            manualPrescription.skipPendingImport()
             const result = await applyOpticalEvaluationToServiceOrder({
                 storeId,
                 evaluationId: evaluation.id,
@@ -688,6 +728,7 @@ function ServiceOrderFormContent({
     }
 
     const sendWhatsAppPedido = (overrideId?: number, overrideProtocol?: string) => {
+        if (manualPrescription.loading) return
         // Silent Save Trigger
         const finalId = overrideId || activeId
         if (!finalId) {
@@ -775,7 +816,15 @@ ${tokenLab ? `\nFoto das medidas:\nhttps://gestao-otica-pro.vercel.app/lab/${tok
 
     return (
         <>
-            <form ref={formRef} action={dispatch} className="flex-1 flex flex-col min-h-0 relative">
+            <form ref={formRef} action={dispatch} className="flex-1 flex flex-col min-h-0 relative"
+                onSubmit={event => { if (manualPrescription.loading) event.preventDefault() }}
+                onChangeCapture={event => {
+                    const name = (event.target as HTMLInputElement).name
+                    if (prescriptionFields.some(field => field === name)
+                        || ['data_receita', 'oftalmologista_id', 'obs_os'].includes(name)) {
+                        manualPrescription.skipPendingImport()
+                    }
+                }}>
                 {/* BACKGROUND IMAGE - VENDASOS.JPG */}
                 <div className={`absolute inset-0 z-0 transition-opacity duration-1000 ${preference === 'image' ? 'opacity-100' : 'opacity-0'}`}>
                     <div className="absolute inset-0 bg-cover bg-center opacity-50" style={{ backgroundImage: "url('/os.jpg')" }} />
@@ -887,7 +936,7 @@ ${tokenLab ? `\nFoto das medidas:\nhttps://gestao-otica-pro.vercel.app/lab/${tok
                                     <div className="flex items-center gap-2 mb-2">
                                         <label className={`w-16 ${labelBlue} text-right shrink-0 mb-0`}>Paciente</label>
                                         <div className="flex-1 flex gap-1">
-                                            <select name="dependente_id" value={dependenteId} onChange={e => setDependenteId(e.target.value)} className={`${inputStyle} text-slate-200`}>
+                                            <select name="dependente_id" value={dependenteId} onChange={e => selectPatient(e.target.value)} className={`${inputStyle} text-slate-200`}>
                                                 <option value="" className="bg-slate-800">{customer.full_name} (Titular)</option>
                                                 {localDependentes.map(dep => (
                                                     <option key={dep.id} value={dep.id} className="bg-slate-800">
@@ -900,6 +949,15 @@ ${tokenLab ? `\nFoto das medidas:\nhttps://gestao-otica-pro.vercel.app/lab/${tok
                                             </button>
                                         </div>
                                     </div>
+
+                                    <label className="flex items-center gap-2 text-xs text-slate-400">
+                                        <span className="shrink-0">Data da receita</span>
+                                        <input type="date" name="data_receita" value={prescriptionDate}
+                                            onChange={event => setPrescriptionDate(event.target.value)} className={inputStyle} />
+                                    </label>
+                                    {manualPrescription.loading && <p role="status" className="text-xs text-slate-400">Consultando grau avulso…</p>}
+                                    {manualPrescription.id && <p className="text-xs text-cyan-300">Grau avulso preenchido</p>}
+                                    {manualPrescription.error && <p role="alert" className="text-xs text-amber-300">Não foi possível consultar o grau avulso.</p>}
 
                                     <div className="flex items-center gap-2 mb-2">
                                         <label className={`w-16 ${labelBlue} text-right shrink-0 mb-0`}>Médico</label>
@@ -1172,6 +1230,23 @@ ${tokenLab ? `\nFoto das medidas:\nhttps://gestao-otica-pro.vercel.app/lab/${tok
                                         </div>
                                     </div>
                                 </div>
+                                <details open={Boolean(pertoOdEsf || pertoOdCil || pertoOdEixo || pertoOeEsf || pertoOeCil || pertoOeEixo)}
+                                    className="mt-3 space-y-2 rounded-lg border border-white/10 p-2">
+                                    <summary className="cursor-pointer text-xs font-bold text-cyan-200">Grau para perto</summary>
+                                    <div className="grid grid-cols-[auto_repeat(3,minmax(0,1fr))] items-center gap-1 text-center text-xs text-slate-400">
+                                        <span /><span>ESF</span><span>CIL</span><span>EIXO</span>
+                                        <span>OD</span>
+                                        <DegreeInput name="receita_perto_od_esferico" value={pertoOdEsf} onChange={setPertoOdEsf} className={gridInput} />
+                                        <DegreeInput name="receita_perto_od_cilindrico" value={pertoOdCil} onChange={setPertoOdCil} className={gridInput} />
+                                        <input name="receita_perto_od_eixo" value={pertoOdEixo}
+                                            onChange={event => setPertoOdEixo(event.target.value)} className={gridInput} aria-label="Eixo para perto OD" />
+                                        <span>OE</span>
+                                        <DegreeInput name="receita_perto_oe_esferico" value={pertoOeEsf} onChange={setPertoOeEsf} className={gridInput} />
+                                        <DegreeInput name="receita_perto_oe_cilindrico" value={pertoOeCil} onChange={setPertoOeCil} className={gridInput} />
+                                        <input name="receita_perto_oe_eixo" value={pertoOeEixo}
+                                            onChange={event => setPertoOeEixo(event.target.value)} className={gridInput} aria-label="Eixo para perto OE" />
+                                    </div>
+                                </details>
                             </div>
                             {/* CARD TEAL (PRAZOS) */}
                             <div className={cardTeal}>
@@ -1281,7 +1356,7 @@ ${tokenLab ? `\nFoto das medidas:\nhttps://gestao-otica-pro.vercel.app/lab/${tok
                             {isDeleting ? <Loader2 className="animate-spin h-3 w-3" /> : <Trash2 className="h-3 w-3" />} EXCLUIR
                         </button>
                     )}
-                    <SaveServiceOrderButton />
+                    <SaveServiceOrderButton loadingPrescription={manualPrescription.loading} />
                 </div>
 
                 {/* Hidden Inputs */}
@@ -1289,6 +1364,7 @@ ${tokenLab ? `\nFoto das medidas:\nhttps://gestao-otica-pro.vercel.app/lab/${tok
                 <input type="hidden" name="store_id" value={storeId} />
                 <input type="hidden" name="venda_id" value={vendaId} />
                 <input type="hidden" name="customer_id" value={customer.id} />
+                <input type="hidden" name="manual_prescription_id" value={manualPrescription.id ?? ''} />
                 <input type="hidden" name="source_optical_evaluation_id" value={sourceOpticalEvaluationId} />
                 <input type="hidden" name="evaluation_unlink_authorization" value={evaluationUnlinkAuthorizer?.authorization_token ?? ''} />
                 <input type="hidden" name="item_links_json" value={JSON.stringify([{ item_id: lenteOdItemId, uso: 'lente_od' }, { item_id: lenteOeItemId, uso: 'lente_oe' }, { item_id: armacaoItemId, uso: 'armacao' }].filter(x => x.item_id))} />

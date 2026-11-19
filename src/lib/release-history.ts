@@ -9,6 +9,8 @@ export type Release = {
 // altera o Dashboard ou o modal de histórico.
 export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
 export const PENDING_RELEASE_CHANGES: readonly string[] = [
+  'O Histórico de Graus permite cadastrar, editar e apagar receitas avulsas para o titular ou dependente. A digitação segue o padrão da OS e a adição calcula o esférico de perto por olho. A nova OS preenche a receita avulsa mais recente e registra seu uso ao salvar com o mesmo grau.',
+  'O Histórico de Graus só fecha pelo botão X.',
   'A tela de login oferece a instalação do MB Optical e orienta o uso do navegador quando a instalação direta não está disponível.',
   'Ao trocar a logo da loja, a Central de Operações passa a mostrar a imagem atualizada.',
   'No Receituário, avisos de atendimento e de parcelas vencidas aparecem em âmbar, e anotações de migração ficam no cadastro do cliente.',

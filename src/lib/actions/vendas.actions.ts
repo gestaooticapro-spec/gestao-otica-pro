@@ -325,6 +325,12 @@ export async function saveServiceOrder(
   }
 
   const { id, ...osData } = validated.data
+  const rawPrescriptionDate = formData.get('data_receita')
+  const prescriptionDate = z.string().date().nullable().safeParse(nullIfEmpty(rawPrescriptionDate))
+  if (!prescriptionDate.success) {
+    return { success: false, message: 'Confira a data da receita.', timestamp: Date.now() }
+  }
+  const importedPrescriptionId = Number(formData.get('manual_prescription_id'))
   const { data: vendaDaOS } = await (supabaseAdmin.from('vendas') as any)
     .select('is_historical_import')
     .eq('id', osData.venda_id)
@@ -534,6 +540,7 @@ export async function saveServiceOrder(
       ...orderDataWithoutEvaluationLink
     } = osData
     const payload: any = { ...orderDataWithoutEvaluationLink, tenant_id }
+    if (rawPrescriptionDate !== null) payload.data_receita = prescriptionDate.data
     let savedId: number
 
     if (typeof payload.protocolo_fisico === 'string') {
@@ -872,6 +879,19 @@ export async function saveServiceOrder(
       .select('*, links:venda_itens_os_links(venda_item_id, uso_na_os)')
       .eq('id', savedId)
       .single()
+
+    if (!id && Number.isSafeInteger(importedPrescriptionId) && importedPrescriptionId > 0) {
+      const { error } = await (supabaseAdmin as any).rpc('consume_manual_prescription', {
+        p_prescription_id: importedPrescriptionId,
+        p_order_id: savedId,
+        p_store_id: osData.store_id,
+        p_tenant_id: tenant_id,
+      })
+      if (error) {
+        console.error('Erro ao marcar receita avulsa como utilizada:', error.code)
+        reservationErrors.push('Não foi possível confirmar o uso da receita avulsa.')
+      }
+    }
 
     const saveMessage = reservationErrors.length > 0
       ? `OS salva com sucesso! Atenção: ${reservationErrors.join(' ')}`
