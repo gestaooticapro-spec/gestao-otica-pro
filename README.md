@@ -532,16 +532,16 @@ A politica obrigatoria para o historico esta em [RELEASE_VERSIONING_POLICY.md](/
 
 O rodape da Central de Operacoes exibe a versao atual e permite abrir o historico de deploys. O registro fica em `src/lib/release-history.ts`.
 
-- A versão exibida no Dashboard é sempre a primeira de `RELEASE_HISTORY`: ela identifica o último deploy fechado. `PENDING_RELEASE_VERSION` nunca altera o número exibido no Dashboard ou no histórico.
+- A versão exibida no Dashboard é sempre a primeira de `RELEASE_HISTORY` no código publicado. Ao receber **"mude a versao"**, prepare esse primeiro registro antes do próximo push, para que a nova versão apareça na UI após a publicação. `PENDING_RELEASE_VERSION` não altera diretamente o número exibido.
 - Uma nova versão patch só pode ser aberta depois que a versão atual estiver efetivamente publicada. Commit, push, validação local ou tentativa de deploy não contam como publicação.
 - Até a publicação efetiva, toda correção, melhoria ou ajuste solicitado pelo usuário continua pertencendo à versão atual, mesmo depois do comando “mude a versão”. Atualize o registro dessa mesma versão; não abra o próximo patch.
-- Depois de uma publicação efetiva, a primeira alteração aprovada abre `PENDING_RELEASE_VERSION` com o próximo patch e entra em `PENDING_RELEASE_CHANGES`; as demais alterações da próxima entrega completam essa mesma versão.
+- Depois de uma publicação efetiva, a primeira alteração aprovada entra em `PENDING_RELEASE_CHANGES`; `PENDING_RELEASE_VERSION` só pode ser aberto ou alterado com a frase literal de autorização. As demais alterações completam a mesma entrega pendente.
 - Itens de implementações novas podem usar caixa alta no histórico. Correções e melhorias devem usar escrita normal, em frase clara para o usuário.
 - A redação pendente deve descrever o comportamento final percebido pelo usuário, nunca tentativas, erros intermediários, fallbacks técnicos ou detalhes internos de implementação.
 - Se uma alteração pendente for desfeita, abandonada ou substituída antes da publicação, remova ou atualize seu item para que a lista descreva somente o que será entregue.
-- A frase **“mude a versão”** é o comando explícito para fechar o registro da versão atual no histórico e preparar sua publicação. Se houver ajustes antes da publicação efetiva, eles corrigem esse mesmo registro já fechado.
+- A frase exata **"mude a versao"** autoriza preparar imediatamente o registro da nova versão no histórico, antes do próximo push. Se houver ajustes antes da publicação efetiva, eles corrigem esse mesmo registro preparado.
 - Antes dessa frase, nenhuma alteração pendente deve ser movida para `RELEASE_HISTORY`, mesmo que já tenha sido validada ou esteja pronta para publicar.
-- `RELEASE_HISTORY` guarda apenas deploys concluídos e preserva todas as versões antigas. O modal do programa nunca exibe versões pendentes.
+- `RELEASE_HISTORY` preserva todas as versões antigas e pode conter no código local, como primeiro registro, uma versão preparada ainda não publicada. O modal do programa publicado mostra o histórico incluído naquele deploy; a presença de um registro local não comprova que ele foi publicado. Use a data de preparação e atualize-a para a data real se a publicação ocorrer em outro dia.
 - Alterar a linha/minor, como `1.02.xx` -> `1.03.00`, somente mediante solicitacao expressa do usuario.
 - O modal mostra inicialmente os tres deploys mais recentes e carrega versoes mais antigas conforme a rolagem; o arquivo nao deve descartar historico antigo.
 

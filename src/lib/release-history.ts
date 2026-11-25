@@ -4,78 +4,10 @@ export type Release = {
   changes: string[]
 }
 
-// A versão visível é sempre a primeira de RELEASE_HISTORY. Uma pendência só
-// abre o próximo patch depois da publicação efetiva da versão atual e nunca
-// altera o Dashboard ou o modal de histórico.
-export const PENDING_RELEASE_VERSION: string | null = '1.02.15'
-export const PENDING_RELEASE_CHANGES: readonly string[] = [
-  'O Histórico de Graus permite cadastrar, editar e apagar receitas avulsas para o titular ou dependente. A digitação segue o padrão da OS e a adição calcula o esférico de perto por olho. A nova OS preenche a receita avulsa mais recente e registra seu uso ao salvar com o mesmo grau.',
-  'A tela de login oferece a instalação do MB Optical e orienta o uso do navegador quando a instalação direta não está disponível.',
-  'A nova assistência explica as modalidades de garantia ao manter o cursor sobre cada opção.',
-  'O novo atendimento do WhatsApp passa a ser o padrao de todas as lojas. Cada loja continua decidindo se usa a automacao e a IA, com seus proprios dados, horarios e pausas de atendimento.',
-  'A ajuda por IA explica estoque, cadastros, XML, etiquetas e as telas de gestão, respeitando o perfil e os módulos da loja.',
-  'A ajuda por IA explica o pós-venda, a assistência e os envios de WhatsApp, sem tratar tentativa de envio como mensagem lida pelo cliente.',
-  'A ajuda por IA explica o laboratório, a gaveta e a entrega, inclusive quando a OS não aparece ou a venda ainda precisa ser fechada.',
-  'A ajuda por IA explica como incluir produtos e preencher a OS na venda de óculos, distinguindo a ficha embutida da ficha separada conforme o botão da loja.',
-  'A ajuda por IA explica como iniciar e retomar a venda de óculos, inclusive quando o botão está desabilitado, há avaliação aberta ou a loja está bloqueada.',
-  'A ajuda por IA distingue recebimento de parcela, reversão, Pix pendente e contato de cobrança, sem tratar lembrete ou WhatsApp como pagamento.',
-  'A ajuda por IA explica como gerar e renegociar o carnê, inclusive a entrada pedida depois de uma venda a prazo, sem registrar o mesmo valor duas vezes.',
-  'A ajuda por IA orienta o pagamento direto da venda rápida e da venda experimental, a diferença para a parcela do carnê e a correção do valor sem usar o Livro Caixa para apagar o recebimento.',
-  'Um recebimento parcial de parcela passa a mostrar Reverter na consulta por cliente e na venda, mesmo com a parcela ainda em aberto.',
-  'O recibo em PDF enviado pelo WhatsApp mostra o valor total que o cliente entregou, tambem quando esse recebimento quita mais de uma parcela.',
-  'A reimpressao do recibo de parcela mostra o valor total recebido quando esse pagamento quita mais de uma parcela.',
-  'O botão Reimprimir Recibo da parcela carimba o recibo como reimpressão. O recibo aberto automaticamente na baixa continua sem esse carimbo.',
-  'A baixa da parcela abre o recibo original junto com a confirmação da senha.',
-  'Na tela Gerar Recibos e na venda expressa, o recibo sai carimbado quando inclui parcela ou pagamento já impresso. O carimbo do recibo completo fica legível.',
-  'Os recibos de parcela passam a mostrar o valor do contrato, o valor pago e o que ainda falta do carnê.',
-  'A consulta de OS na Loja 1 reconhece nomes completos informados pelo cliente, localiza pedidos de outro cadastro sem trocar o titular do WhatsApp e pede identificacao quando houver ambiguidade.',
-  'Os lembretes automaticos de parcelas a vencer retomam o agendamento com a credencial vigente, preservando a antecedencia configurada e as preferencias dos clientes.',
-  'Reacoes a mensagens no WhatsApp deixam de acionar novas respostas ou pausas humanas, incluindo troca e remocao da reacao; emojis enviados como mensagem continuam sendo recebidos normalmente.',
-  'Na Loja 1, audios recebem encaminhamento neutro para a equipe, sem interpretar o conteudo ou registrar adaptacao e ajuste a partir de mensagens sem texto; audios adicionais preservam o encaminhamento existente.',
-  'Na Loja 1, saudacoes apos um aviso recente da equipe retomam a retirada; confirmacoes como ja vou buscar recebem um agradecimento sem consultar novamente o pedido.',
-  'Na Loja 1, arquivos adicionais nao repetem a apresentacao da IAra nem o aviso de encaminhamento quando a equipe ja foi acionada; a fila de envio tambem e conferida antes de criar outra resposta.',
-  'Funcionarios desativados deixam de aparecer nas selecoes de Atendimento, PDV Express e Cobranca; editar o cadastro preserva o status inativo.',
-  'O WhatsApp retoma acompanhamentos confirmados de pos-venda, distingue cumprimento e ajuste simples de reclamacao e reconhece confirmacoes de pagamento futuro sem registrar baixa. Novas tentativas atualizam o tempo desde a entrega; o painel mostra falhas de envio e explica as pausas em portugues.',
-  'O tablet exibe o motivo quando as medidas nao podem ser gravadas na OS e avisa sobre falhas de conexao, preservando a foto e os ajustes na tela para nova tentativa.',
-  'As respostas da IA no WhatsApp evitam repetir o nome completo da otica, mantendo a identificacao da IAra e os dados oficiais necessarios ao atendimento.',
-  'A opcao IA proxima do WhatsApp libera a pausa humana anterior no novo atendimento, permitindo que a proxima mensagem do cliente entre pelo fluxo da IA.',
-  'O WhatsApp operacional prioriza conversas e atendimento, com filtros de pendencias e atendimento humano; manutencao e detalhes tecnicos ficam sob demanda. A limpeza passa a ter rotina diaria para mensagens concluidas com mais de 15 dias, preservando atendimento humano, mensagens pendentes e a memoria do novo fluxo.',
-  'O botao das parcelas exibe Receber parcela nas lojas, oferece baixa manual ou Pix nas lojas habilitadas e preserva a consulta de cobrancas Pix existentes.',
-  'A renegociacao de carne em vendas abertas permite reduzir o saldo parcelado e receber a diferenca como entrada, preservando os pagamentos anteriores.',
-  'O texto de Visagismo explica somente os formatos e as proporcoes das armacoes, sem recomendacoes de cores.',
-  'Lembretes de parcela e pos-venda enviados pelo sistema retomam a conversa apos uma pausa humana anterior, mantem a memoria de assuntos anteriores e reconhecem agradecimentos ligados ao lembrete mais recente sem confundi-los com outras conversas.',
-  'No WhatsApp da Loja 1, respostas de OS sem previsao oficial deixam de prometer retirada ou recomendar novo contato; o envio concorrente da mesma resposta e bloqueado, e o caminho do atendimento ganha rastreamento sem dados pessoais.',
-  'No pos-venda da Loja 1, respostas como "minha nota e 5" encerram a avaliacao com confirmacao contextual; agradecimentos e mudancas de assunto preservam a nota pendente sem repetir a pergunta.',
-  'Na Loja 1, a IA redige o pedido de nota e a confirmacao da avaliacao de pos-venda com base na acao aprovada pelo sistema; respostas genericas ou inconsistentes nao sao enviadas.',
-  'Na Loja 1, o acompanhamento de pos-venda continua apos perguntas intercaladas sobre OS: respostas de adaptacao e notas seguem o fluxo de pos-venda, enquanto consultas de OS permanecem no piloto seguro.',
-  'A busca de recebimentos encontra clientes por nome com ou sem acentos e por documento, mostra todas as parcelas em aberto e permite carregar mais resultados.',
-  'Na Loja 1, respostas de OS exigem a consulta pelo identificador correto e validam numero, dependente ou titular e situacao de cada pedido; encaminhamentos sao redigidos e validados pela IA, e o estado so muda depois que a saida e aceita.',
-  'A consulta de OS pelo WhatsApp apresenta pela IA ate dois pedidos em aberto, incluindo numero da OS, dependente e situacao; acima de dois ou sem vinculo por telefone, pede um identificador sem escolher pedidos. A resposta e o pedido de identificador atualizam a memoria de OS e mantem o fluxo conversacional.',
-  'Encaminhamentos de OS nao localizada usam um modelo OpenAI mais capaz, validam a identificacao da IAra, o contato da equipe e a ausencia de status inventado; a IA e orientada a reformular com palavras proprias em vez de copiar o texto canonico.',
-  'Pedidos de status sem OS vinculada aceitam a pergunta natural da IA solicitando um identificador, inclusive formas como “poderia me passar”, sem recorrer ao texto fixo.',
-  'Uma resposta automática não silencia perguntas novas durante a janela temporária; somente a repetição da mesma mensagem é suprimida, sem alterar a pausa humana.',
-  'Uma OS informada explicitamente no WhatsApp continua sendo consultada pelo agente de IA mesmo que a classificação inicial confunda o assunto.',
-  'A consulta de OS usa decisão própria no redesign; saídas confirmadas sincronizam pedido de identificador e status com a memória, e falhas do planejador não repetem o pedido ao cliente.',
-  'A resposta humanizada sobre uma OS preserva a etapa oficial do pedido; se a IA desviar do status, o sistema usa a informação confirmada.',
-  'As respostas do WhatsApp usam exclusivamente OpenAI; na Loja 1, falhas de geração ou validação semântica não disparam mensagens prontas.',
-  'O atendimento do WhatsApp não troca para outro provedor quando o OpenAI falha; na Loja 1, sem uma resposta validada, nenhuma mensagem automática é enviada.',
-  'Na Loja 1, se a decisão do redesign falhar, o atendimento não volta ao roteador antigo; fora do expediente, a intenção recebida não é substituída por um aviso genérico de loja fechada.',
-  'O atendimento do WhatsApp consulta o status real de OS/retirada quando identifica o pedido com segurança, pede o número da OS quando há mais de um pedido e usa a IA para redigir a resposta com base no estágio cadastrado.',
-  'Mensagens repetidas recebidas pelo WhatsApp passam a gerar no máximo uma resposta automática.',
-  'Na Loja 1, as respostas do novo atendimento por WhatsApp são redigidas pela IA com base na conversa e nos dados oficiais; falhas de geração ou validação não disparam mensagens prontas.',
-  'Na Loja 1, perguntas sobre óculos prontos priorizam consulta de OS, mesmo quando a classificação inicial indica horário; respostas de horário exigem evidência explícita na mensagem.',
-  'A IAra passa a se identificar antes de encaminhar a conversa a um atendente ou quando não tiver segurança para responder.',
-  'A liberação da pausa humana passa a considerar os formatos equivalentes do telefone, evitando que uma pausa antiga continue bloqueando respostas.',
-  'As respostas automáticas seguras do WhatsApp no piloto passaram a acompanhar o idioma detectado na conversa (português, espanhol ou inglês), inclusive saudações como “Buenos días”, horários, endereço, encaminhamentos, avisos de fechamento e chave Pix oficial.',
-  'Perguntas em português ou espanhol sobre o horário de amanhã passam a receber o horário oficial do dia solicitado, em vez do horário de hoje.',
-  'A pergunta pela chave Pix oficial da loja passou a ser reconhecida de forma deterministica, evitando encaminhamento incorreto para atendente por classificacao ambigua.',
-  'O perfil lateral da lente no relatório do cliente passou a ser centralizado e ajustado ao quadro, sem exigir tamanho físico real.',
-  'O salvamento de medidas no tablet alerta para ponte ou DNP fora do padrao e bloqueia pontes com desvio critico, orientando refazer a foto quando o rosto estiver desalinhado.',
-  'O cadastro de clientes ganhou a exportação em Excel da lista de nomes e telefones da loja atual.',
-  'Clientes com apenas um telefone cadastrado passam a ter os dois campos de telefone preenchidos automaticamente na migração.',
-  'A tabela de parcelas passou a usar toda a largura disponível para exibir integralmente os botões de comprovante e reversão.',
-  'A ativação de tabelas globais passou a aceitar somente versões publicadas, protegendo as lojas contra catálogos em rascunho ou arquivados.',
-]
+// A versão visível é a primeira de RELEASE_HISTORY no código publicado.
+// A autorização "mude a versao" prepara esse registro antes do próximo push.
+export const PENDING_RELEASE_VERSION: string | null = null
+export const PENDING_RELEASE_CHANGES: readonly string[] = []
 
 const RELEASE_10209_CHANGES: readonly string[] = [
   'IMPLEMENTADO O CADASTRO DE CLIENTES PJ COM RAZAO SOCIAL, NOME FANTASIA E CNPJ, COM EMISSAO DE NFC-E PARA EMPRESAS.',
@@ -154,11 +86,84 @@ const RELEASE_10205_CHANGES: readonly string[] = [
   'Inclui uma leitura mensal de subutilização do programa, indicando áreas e recursos que merecem atenção.',
 ]
 
-// Esta lista contém somente deploys concluídos e deve preservar todo o histórico.
+// O primeiro registro local pode estar preparado para o próximo deploy.
+// Preserve todo o histórico anterior e confirme a publicação separadamente.
 // A versao 1.02.00 e o registro mais antigo atualmente disponivel neste repositorio.
-// Abra uma versão pendente na primeira alteração após o último fechamento.
+// A abertura ou alteração do número pendente exige autorização literal do usuário.
 // Alterações de linha/minor (ex.: 1.02.xx -> 1.03.00) exigem solicitação expressa.
 export const RELEASE_HISTORY: Release[] = [
+  {
+    version: '1.02.15',
+    date: '25/11/2026',
+    changes: [
+      'O Histórico de Graus permite cadastrar, editar e apagar receitas avulsas para o titular ou dependente. A digitação segue o padrão da OS e a adição calcula o esférico de perto por olho. A nova OS preenche a receita avulsa mais recente e registra seu uso ao salvar com o mesmo grau.',
+      'A tela de login oferece a instalação do MB Optical e orienta o uso do navegador quando a instalação direta não está disponível.',
+      'A nova assistência explica as modalidades de garantia ao manter o cursor sobre cada opção.',
+      'O novo atendimento do WhatsApp passa a ser o padrao de todas as lojas. Cada loja continua decidindo se usa a automacao e a IA, com seus proprios dados, horarios e pausas de atendimento.',
+      'A ajuda por IA explica estoque, cadastros, XML, etiquetas e as telas de gestão, respeitando o perfil e os módulos da loja.',
+      'A ajuda por IA explica o pós-venda, a assistência e os envios de WhatsApp, sem tratar tentativa de envio como mensagem lida pelo cliente.',
+      'A ajuda por IA explica o laboratório, a gaveta e a entrega, inclusive quando a OS não aparece ou a venda ainda precisa ser fechada.',
+      'A ajuda por IA explica como incluir produtos e preencher a OS na venda de óculos, distinguindo a ficha embutida da ficha separada conforme o botão da loja.',
+      'A ajuda por IA explica como iniciar e retomar a venda de óculos, inclusive quando o botão está desabilitado, há avaliação aberta ou a loja está bloqueada.',
+      'A ajuda por IA distingue recebimento de parcela, reversão, Pix pendente e contato de cobrança, sem tratar lembrete ou WhatsApp como pagamento.',
+      'A ajuda por IA explica como gerar e renegociar o carnê, inclusive a entrada pedida depois de uma venda a prazo, sem registrar o mesmo valor duas vezes.',
+      'A ajuda por IA orienta o pagamento direto da venda rápida e da venda experimental, a diferença para a parcela do carnê e a correção do valor sem usar o Livro Caixa para apagar o recebimento.',
+      'Um recebimento parcial de parcela passa a mostrar Reverter na consulta por cliente e na venda, mesmo com a parcela ainda em aberto.',
+      'O recibo em PDF enviado pelo WhatsApp mostra o valor total que o cliente entregou, tambem quando esse recebimento quita mais de uma parcela.',
+      'A reimpressao do recibo de parcela mostra o valor total recebido quando esse pagamento quita mais de uma parcela.',
+      'O botão Reimprimir Recibo da parcela carimba o recibo como reimpressão. O recibo aberto automaticamente na baixa continua sem esse carimbo.',
+      'A baixa da parcela abre o recibo original junto com a confirmação da senha.',
+      'Na tela Gerar Recibos e na venda expressa, o recibo sai carimbado quando inclui parcela ou pagamento já impresso. O carimbo do recibo completo fica legível.',
+      'Os recibos de parcela passam a mostrar o valor do contrato, o valor pago e o que ainda falta do carnê.',
+      'A consulta de OS na Loja 1 reconhece nomes completos informados pelo cliente, localiza pedidos de outro cadastro sem trocar o titular do WhatsApp e pede identificacao quando houver ambiguidade.',
+      'Os lembretes automaticos de parcelas a vencer retomam o agendamento com a credencial vigente, preservando a antecedencia configurada e as preferencias dos clientes.',
+      'Reacoes a mensagens no WhatsApp deixam de acionar novas respostas ou pausas humanas, incluindo troca e remocao da reacao; emojis enviados como mensagem continuam sendo recebidos normalmente.',
+      'Na Loja 1, audios recebem encaminhamento neutro para a equipe, sem interpretar o conteudo ou registrar adaptacao e ajuste a partir de mensagens sem texto; audios adicionais preservam o encaminhamento existente.',
+      'Na Loja 1, saudacoes apos um aviso recente da equipe retomam a retirada; confirmacoes como ja vou buscar recebem um agradecimento sem consultar novamente o pedido.',
+      'Na Loja 1, arquivos adicionais nao repetem a apresentacao da IAra nem o aviso de encaminhamento quando a equipe ja foi acionada; a fila de envio tambem e conferida antes de criar outra resposta.',
+      'Funcionarios desativados deixam de aparecer nas selecoes de Atendimento, PDV Express e Cobranca; editar o cadastro preserva o status inativo.',
+      'O WhatsApp retoma acompanhamentos confirmados de pos-venda, distingue cumprimento e ajuste simples de reclamacao e reconhece confirmacoes de pagamento futuro sem registrar baixa. Novas tentativas atualizam o tempo desde a entrega; o painel mostra falhas de envio e explica as pausas em portugues.',
+      'O tablet exibe o motivo quando as medidas nao podem ser gravadas na OS e avisa sobre falhas de conexao, preservando a foto e os ajustes na tela para nova tentativa.',
+      'As respostas da IA no WhatsApp evitam repetir o nome completo da otica, mantendo a identificacao da IAra e os dados oficiais necessarios ao atendimento.',
+      'A opcao IA proxima do WhatsApp libera a pausa humana anterior no novo atendimento, permitindo que a proxima mensagem do cliente entre pelo fluxo da IA.',
+      'O WhatsApp operacional prioriza conversas e atendimento, com filtros de pendencias e atendimento humano; manutencao e detalhes tecnicos ficam sob demanda. A limpeza passa a ter rotina diaria para mensagens concluidas com mais de 15 dias, preservando atendimento humano, mensagens pendentes e a memoria do novo fluxo.',
+      'O botao das parcelas exibe Receber parcela nas lojas, oferece baixa manual ou Pix nas lojas habilitadas e preserva a consulta de cobrancas Pix existentes.',
+      'A renegociacao de carne em vendas abertas permite reduzir o saldo parcelado e receber a diferenca como entrada, preservando os pagamentos anteriores.',
+      'O texto de Visagismo explica somente os formatos e as proporcoes das armacoes, sem recomendacoes de cores.',
+      'Lembretes de parcela e pos-venda enviados pelo sistema retomam a conversa apos uma pausa humana anterior, mantem a memoria de assuntos anteriores e reconhecem agradecimentos ligados ao lembrete mais recente sem confundi-los com outras conversas.',
+      'No WhatsApp da Loja 1, respostas de OS sem previsao oficial deixam de prometer retirada ou recomendar novo contato; o envio concorrente da mesma resposta e bloqueado, e o caminho do atendimento ganha rastreamento sem dados pessoais.',
+      'No pos-venda da Loja 1, respostas como "minha nota e 5" encerram a avaliacao com confirmacao contextual; agradecimentos e mudancas de assunto preservam a nota pendente sem repetir a pergunta.',
+      'Na Loja 1, a IA redige o pedido de nota e a confirmacao da avaliacao de pos-venda com base na acao aprovada pelo sistema; respostas genericas ou inconsistentes nao sao enviadas.',
+      'Na Loja 1, o acompanhamento de pos-venda continua apos perguntas intercaladas sobre OS: respostas de adaptacao e notas seguem o fluxo de pos-venda, enquanto consultas de OS permanecem no piloto seguro.',
+      'A busca de recebimentos encontra clientes por nome com ou sem acentos e por documento, mostra todas as parcelas em aberto e permite carregar mais resultados.',
+      'Na Loja 1, respostas de OS exigem a consulta pelo identificador correto e validam numero, dependente ou titular e situacao de cada pedido; encaminhamentos sao redigidos e validados pela IA, e o estado so muda depois que a saida e aceita.',
+      'A consulta de OS pelo WhatsApp apresenta pela IA ate dois pedidos em aberto, incluindo numero da OS, dependente e situacao; acima de dois ou sem vinculo por telefone, pede um identificador sem escolher pedidos. A resposta e o pedido de identificador atualizam a memoria de OS e mantem o fluxo conversacional.',
+      'Encaminhamentos de OS nao localizada usam um modelo OpenAI mais capaz, validam a identificacao da IAra, o contato da equipe e a ausencia de status inventado; a IA e orientada a reformular com palavras proprias em vez de copiar o texto canonico.',
+      'Pedidos de status sem OS vinculada aceitam a pergunta natural da IA solicitando um identificador, inclusive formas como “poderia me passar”, sem recorrer ao texto fixo.',
+      'Uma resposta automática não silencia perguntas novas durante a janela temporária; somente a repetição da mesma mensagem é suprimida, sem alterar a pausa humana.',
+      'Uma OS informada explicitamente no WhatsApp continua sendo consultada pelo agente de IA mesmo que a classificação inicial confunda o assunto.',
+      'A consulta de OS usa decisão própria no redesign; saídas confirmadas sincronizam pedido de identificador e status com a memória, e falhas do planejador não repetem o pedido ao cliente.',
+      'A resposta humanizada sobre uma OS preserva a etapa oficial do pedido; se a IA desviar do status, o sistema usa a informação confirmada.',
+      'As respostas do WhatsApp usam exclusivamente OpenAI; na Loja 1, falhas de geração ou validação semântica não disparam mensagens prontas.',
+      'O atendimento do WhatsApp não troca para outro provedor quando o OpenAI falha; na Loja 1, sem uma resposta validada, nenhuma mensagem automática é enviada.',
+      'Na Loja 1, se a decisão do redesign falhar, o atendimento não volta ao roteador antigo; fora do expediente, a intenção recebida não é substituída por um aviso genérico de loja fechada.',
+      'O atendimento do WhatsApp consulta o status real de OS/retirada quando identifica o pedido com segurança, pede o número da OS quando há mais de um pedido e usa a IA para redigir a resposta com base no estágio cadastrado.',
+      'Mensagens repetidas recebidas pelo WhatsApp passam a gerar no máximo uma resposta automática.',
+      'Na Loja 1, as respostas do novo atendimento por WhatsApp são redigidas pela IA com base na conversa e nos dados oficiais; falhas de geração ou validação não disparam mensagens prontas.',
+      'Na Loja 1, perguntas sobre óculos prontos priorizam consulta de OS, mesmo quando a classificação inicial indica horário; respostas de horário exigem evidência explícita na mensagem.',
+      'A IAra passa a se identificar antes de encaminhar a conversa a um atendente ou quando não tiver segurança para responder.',
+      'A liberação da pausa humana passa a considerar os formatos equivalentes do telefone, evitando que uma pausa antiga continue bloqueando respostas.',
+      'As respostas automáticas seguras do WhatsApp no piloto passaram a acompanhar o idioma detectado na conversa (português, espanhol ou inglês), inclusive saudações como “Buenos días”, horários, endereço, encaminhamentos, avisos de fechamento e chave Pix oficial.',
+      'Perguntas em português ou espanhol sobre o horário de amanhã passam a receber o horário oficial do dia solicitado, em vez do horário de hoje.',
+      'A pergunta pela chave Pix oficial da loja passou a ser reconhecida de forma deterministica, evitando encaminhamento incorreto para atendente por classificacao ambigua.',
+      'O perfil lateral da lente no relatório do cliente passou a ser centralizado e ajustado ao quadro, sem exigir tamanho físico real.',
+      'O salvamento de medidas no tablet alerta para ponte ou DNP fora do padrao e bloqueia pontes com desvio critico, orientando refazer a foto quando o rosto estiver desalinhado.',
+      'O cadastro de clientes ganhou a exportação em Excel da lista de nomes e telefones da loja atual.',
+      'Clientes com apenas um telefone cadastrado passam a ter os dois campos de telefone preenchidos automaticamente na migração.',
+      'A tabela de parcelas passou a usar toda a largura disponível para exibir integralmente os botões de comprovante e reversão.',
+      'A ativação de tabelas globais passou a aceitar somente versões publicadas, protegendo as lojas contra catálogos em rascunho ou arquivados.',
+    ],
+  },
   {
     version: '1.02.14',
     date: '08/09/2026',
@@ -288,6 +293,5 @@ export const RELEASE_HISTORY: Release[] = [
   },
 ]
 
-// A versão exibida no Dashboard identifica sempre o último deploy fechado.
-// Uma pendência pertence à próxima entrega e não pode antecipar o rodapé.
+// O Dashboard usa a primeira versão do histórico incluído no código publicado.
 export const CURRENT_VERSION = RELEASE_HISTORY[0].version

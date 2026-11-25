@@ -11,7 +11,7 @@ Estas regras sao obrigatorias para qualquer alteracao em `src/lib/release-histor
 
 - A autorizacao literal do usuario **"mude a versao"** e exigida para qualquer mudanca de numero/estado da versao, nao apenas para fechar o historico.
 - Atualizar `PENDING_RELEASE_CHANGES` faz parte do trabalho normal de cada alteracao aprovada. `PENDING_RELEASE_VERSION` so pode ser alterado depois da senha literal.
-- Confirmar deploy, publicar na `main`, fazer commit, validar localmente ou receber um "sim" para outra tarefa nao autoriza mover textos para `RELEASE_HISTORY`.
+- Confirmar deploy, publicar na `main`, fazer commit, validar localmente ou receber um "sim" para outra tarefa nao substitui a autorizacao literal.
 - Sem a senha, o numero da versao pendente e o numero/estado publicado devem permanecer inalterados, mesmo depois de deploy concluido.
 
 ## Conteudo permitido
@@ -25,9 +25,11 @@ Estas regras sao obrigatorias para qualquer alteracao em `src/lib/release-histor
 
 Somente depois de **"mude a versao"**:
 
-1. inserir a versao pendente no inicio de `RELEASE_HISTORY`, com a data do deploy e os textos aprovados;
+1. antes do proximo push, inserir a versao pendente no inicio de `RELEASE_HISTORY`, com a data de preparacao e os textos aprovados, para a UI mostrar a nova versao apos a proxima publicacao;
 2. limpar `PENDING_RELEASE_VERSION` e `PENDING_RELEASE_CHANGES`;
 3. preservar todo o historico anterior;
-4. validar o arquivo e publicar a alteracao.
+4. validar o arquivo e informar que a publicacao ainda esta pendente. O push ou deploy nao deve ser feito sem autorizacao para publica-lo.
+
+O primeiro registro local pode representar uma versao preparada e ainda nao publicada: nao afirme que o deploy foi concluido apenas porque ela esta em `RELEASE_HISTORY`. Confirme a publicacao separadamente. Se ela ocorrer em outra data, corrija a data do registro para a data real. Ate a publicacao efetiva, mantenha ajustes na mesma versao preparada, sem abrir o proximo patch.
 
 Antes desse comando, nao inserir a versao pendente em `RELEASE_HISTORY`. Durante esse periodo, e permitido e obrigatorio corrigir, incluir ou remover textos de `PENDING_RELEASE_CHANGES` para que eles correspondam ao que sera entregue.
