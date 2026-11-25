@@ -150,15 +150,28 @@ test('mantem o pos-venda pendente ao intercalar OS e retirada antes da nota', ()
   assert.equal(context.stage, 'awaiting_rating')
 
   assert.equal(extractPostSaleRatingForStage('Obrigado. Nota 5.', context.stage), 5)
+  const highRating = extractPostSaleRatingForStage('Nota   10', context.stage)
+  assert.equal(highRating, 5)
   assert.deepEqual(getPostSaleForcedToolCall({
     context,
     disposition: 'handle_post_sale',
     intent: null,
-    explicitRating: 5,
+    explicitRating: highRating,
   }), { name: 'record_post_sale_rating', rating: 5 })
   context = transitionPostSaleContextAfterTurn(context, 'rating_recorded')!
   assert.equal(context.stage, 'completed')
   assert.equal(extractPostSaleRatingForStage('Nota 4', context.stage), null)
+})
+
+test('normaliza notas maiores que cinco apenas quando aguarda avaliacao', () => {
+  for (const message of ['Nota   10', 'Minha nota é 10!', '10', '15', '50', 'nota 5,5', '10 estrelas!', 'nota 05', 'nota 5/5']) {
+    assert.equal(extractPostSaleRatingForStage(message, 'awaiting_rating'), 5, message)
+    assert.equal(extractPostSaleRatingForStage(message, 'awaiting_feedback'), null, message)
+  }
+  for (const message of ['nota -10', 'nota 0', 'nota 4,5', 'faz 10 dias']) {
+    assert.equal(extractPostSaleRatingForStage(message, 'awaiting_rating'), null, message)
+  }
+  assert.equal(extractPostSaleRatingForStage('nota 4', 'awaiting_rating'), 4)
 })
 
 test('piloto da Loja 1 deixa o pos-venda tratar adaptacao e nota apos uma consulta de OS', () => {

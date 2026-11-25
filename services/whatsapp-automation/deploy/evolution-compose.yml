@@ -14,7 +14,8 @@ services:
       - evolution
 
   evolution-api:
-    image: evoapicloud/evolution-api:latest
+    # Evolution 2.3.8 (linux/amd64), validada na VPS de WhatsApp.
+    image: evoapicloud/evolution-api@sha256:1ad187a09dd14c8d6ee78fa79f0ed769f9941c2b560b4263747c8e1bd8204c43
     container_name: evolution_api
     restart: unless-stopped
     depends_on:

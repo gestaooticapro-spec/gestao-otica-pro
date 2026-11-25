@@ -1,0 +1,91 @@
+/* Hallmark · shape: app screen · genre: modern-minimal · theme: GOP · signature: manual numerado com ações no ponto de uso · v2.0.0 */
+/* critique: a leitura vem antes das ações; índice e títulos permitem retomar uma etapa. */
+.page {
+  --guide-base: theme(colors.slate.950);
+  --guide-surface: theme(colors.slate.900);
+  --guide-ink: theme(colors.slate.50);
+  --guide-prose: theme(colors.slate.300);
+  --guide-line: theme(colors.slate.700);
+  --guide-accent: theme(colors.amber.300);
+  background: var(--guide-base);
+  color: var(--guide-ink);
+  min-height: 100vh;
+  padding: 1.5rem clamp(1rem, 4vw, 3rem) 4rem;
+}
+.shell { max-width: 72rem; margin-inline: auto; }
+.topBar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--guide-line);
+  padding-bottom: 1rem;
+  margin-bottom: 2rem;
+}
+.brand { font-size: 1.125rem; font-weight: 750; }
+.logout { min-width: 6rem; }
+.header { max-width: 46rem; margin-bottom: 2rem; }
+.title {
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  font-weight: 750;
+  line-height: 1.1;
+  min-width: 0;
+  overflow-wrap: break-word;
+  text-wrap: balance;
+  margin-block: .5rem 1rem;
+}
+.header p, .step p { color: var(--guide-prose); line-height: 1.7; }
+.document { display: grid; gap: 2.5rem; align-items: start; }
+.contents {
+  background: var(--guide-surface);
+  padding: 1rem 1.25rem;
+  border-radius: .75rem;
+}
+.contents p { font-weight: 750; margin-bottom: .5rem; }
+.contents ol { list-style: decimal; padding-inline-start: 1.5rem; }
+.contents a { display: inline-flex; min-height: 2.75rem; align-items: center; color: var(--guide-prose); }
+.contents a:hover, .brand:hover { color: var(--guide-accent); }
+.step {
+  padding-block: 1.5rem;
+  border-top: 1px solid var(--guide-line);
+  scroll-margin-top: 1rem;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: .85rem;
+}
+.stepNumber { color: var(--guide-accent); }
+.step h2, .stepNumber { font-size: 1.375rem; font-weight: 750; line-height: 1.3; text-wrap: balance; }
+.step p { margin-top: .75rem; max-width: 68ch; }
+.actions { display: flex; gap: .625rem; flex-wrap: wrap; margin-top: 1rem; }
+.action {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding: .5rem .875rem;
+  border: 1px solid var(--guide-line);
+  border-radius: .5rem;
+  background: var(--guide-surface);
+  color: var(--guide-accent);
+  font-size: .9375rem;
+  font-weight: 650;
+}
+.action:hover { border-color: var(--guide-accent); }
+.action:active { background: var(--guide-line); }
+.page :is(a, button, summary):focus-visible {
+  outline: 2px solid var(--guide-accent);
+  outline-offset: 3px;
+}
+@media (min-width: 60rem) {
+  .document { grid-template-columns: minmax(14rem, 17rem) minmax(0, 1fr); }
+  .contents { position: sticky; top: 1rem; }
+}
+.provisioningQr { margin-top: 1rem; }
+.provisioningQr figcaption { font-weight: 650; margin-bottom: .625rem; }
+.provisioningQr img { display: block; width: 20rem; max-width: 100%; height: auto; }
+.qrActions { display: flex; align-items: flex-start; flex-wrap: wrap; gap: .625rem; }
+.qrDisclosure { min-width: 0; max-width: 100%; }
+.qrDisclosure:open { flex-basis: 100%; }
+.qrDisclosure summary { cursor: pointer; }
+.qrDisclosure img { margin-top: .625rem; }
+.qrDisclosure .hideQr,
+.qrDisclosure[open] .showQr { display: none; }
+.qrDisclosure[open] .hideQr { display: inline; }

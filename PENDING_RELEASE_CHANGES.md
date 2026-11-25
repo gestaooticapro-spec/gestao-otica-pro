@@ -85,3 +85,5 @@
 - Todas as chamadas de IA via API da OpenAI passam a usar o GPT-5.4 mini.
 - Clientes Sumidos permite ajustar o período da última compra, classificar por nome, cidade, data da última compra e valor comprado, filtrar por telefone e situação no SPC, consultar dados do cliente, abrir o dossiê e retirar ou restaurar pessoas da lista; o dossiê retorna à tela de origem.
 - Falhas ao atualizar o estado auxiliar da conversa no WhatsApp não bloqueiam o envio pela Evolution conectada; a falha continua registrada no log do servidor.
+
+- O guia de instalação de Torres NeoSmart orienta da identificação do mini PC à conferência da Torre e do tablet na loja, inclui a configuração de acesso remoto e registra a preparação e os testes pendentes do atualizador Windows antes da expansão. O guia abre as ferramentas de cadastro e associação em cada etapa e mostra um QR por vez para os downloads e a preparação do Android.

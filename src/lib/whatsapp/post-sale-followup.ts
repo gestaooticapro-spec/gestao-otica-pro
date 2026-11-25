@@ -341,17 +341,18 @@ export function extractPostSaleRating(message: string | null | undefined) {
 
   // 1) Prioriza "nota N" explícita em qualquer ponto da mensagem.
   //    Ex.: "nota 5", "dei nota 4 pra voces", "nota:3".
-  const explicit = normalized.match(/\bnota\s*:?\s*(?:(?:e|foi|seria|fica)\s+)?([1-5])\b/)
-  if (explicit) {
-    const rating = Number(explicit[1])
-    if (rating >= 1 && rating <= 5) return rating
-  }
+  const explicit = normalized.match(/\bnota\s*:?\s*(?:(?:e|foi|seria|fica)\s+)?(\d+(?:[.,]\d+)?)(?:\s*\/\s*5)?(?![\w/]|[.,]\d)/)
 
   // 2) Mensagem composta APENAS pelo número (eventual pontuação/espacos).
   //    Evita capturar digitos soltos em frases longas como "faz 2 dias, nota 5".
   //    Aceita "5", "5!", "5 estrelas", "5/5".
-  const isolated = normalized.match(/^([1-5])\s*(?:(?:\/\s*5)|estrelas?)?\s*[!.?]*$/)
-  if (isolated) return Number(isolated[1])
+  const isolated = normalized.match(/^(\d+(?:[.,]\d+)?)\s*(?:(?:\/\s*5)|estrelas?)?\s*[!.?]*$/)
+  const value = explicit?.[1] ?? isolated?.[1]
+  if (value) {
+    const rating = Number(value.replace(',', '.'))
+    if (rating > 5) return 5
+    if (Number.isInteger(rating) && rating >= 1) return rating
+  }
 
   return null
 }
